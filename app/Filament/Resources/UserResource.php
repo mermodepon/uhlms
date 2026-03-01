@@ -89,7 +89,13 @@ class UserResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make()
-                    ->visible(fn (User $record) => $record->id !== auth()->id()),
+                    ->visible(fn (User $record) => $record->id !== auth()->id())
+                    ->disabled(fn (User $record) => $record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
+                    ->tooltip(fn (User $record) =>
+                        ($record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
+                            ? 'This user cannot be deleted because they are linked to room assignments or reservations.'
+                            : null
+                    ),
             ])
             ->bulkActions([]);
     }

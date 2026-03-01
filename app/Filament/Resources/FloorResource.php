@@ -72,7 +72,13 @@ class FloorResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->disabled(fn (Floor $record) => $record->rooms()->exists())
+                    ->tooltip(fn (Floor $record) =>
+                        $record->rooms()->exists()
+                            ? 'This floor cannot be deleted because it is linked to rooms.'
+                            : null
+                    ),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

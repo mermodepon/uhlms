@@ -14,7 +14,11 @@ class RoomStatusChart extends ChartWidget
     protected function getData(): array
     {
         $available = Room::where('status', 'available')->where('is_active', true)->count();
-        $occupied = Room::where('status', 'occupied')->count();
+        // Count rooms with active stay logs (checked in, not checked out)
+        $occupied = \App\Models\StayLog::whereNotNull('checked_in_at')
+            ->whereNull('checked_out_at')
+            ->distinct('room_id')
+            ->count('room_id');
         $maintenance = Room::where('status', 'maintenance')->count();
         $inactive = Room::where('status', 'inactive')->orWhere('is_active', false)->count();
 

@@ -13,7 +13,13 @@ class EditUser extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()
+                ->disabled(fn ($record) => $record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
+                ->tooltip(fn ($record) =>
+                    ($record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
+                        ? 'This user cannot be deleted because they are linked to room assignments or reservations.'
+                        : null
+                ),
         ];
     }
 

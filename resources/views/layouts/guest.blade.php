@@ -59,7 +59,7 @@
                 <div class="flex items-center">
                     <a href="{{ route('guest.home') }}" class="flex items-center space-x-3">
                         <img src="{{ asset('images/uh_logo.jpg') }}" alt="UH Lodging Management System" class="h-8 w-auto rounded" />
-                        <span class="text-white font-bold text-lg hidden sm:block">UH Lodging Management System</span>
+                        <span class="text-[#FFC600] font-bold text-lg hidden sm:block drop-shadow">UH Lodging Management System</span>
                     </a>
                 </div>
                 <div class="hidden md:flex items-center space-x-8">

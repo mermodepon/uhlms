@@ -50,11 +50,11 @@
                             'declined' => 'Declined',
                             'cancelled' => 'Cancelled',
                             'checked_in' => 'Checked In',
-                            'checked_out' => 'Checked Out',
+                            'checked_out' => 'Checked out',
                         ];
                     @endphp
                     <span class="px-4 py-1 rounded-full border font-semibold text-sm {{ $statusColors[$reservation->status] ?? 'bg-gray-100 text-gray-800' }}">
-                        {{ $statusLabels[$reservation->status] ?? ucfirst($reservation->status) }}
+                        {{ $statusLabels[$reservation->status] ?? ucfirst(str_replace('_', ' ', $reservation->status)) }}
                     </span>
                 </div>
 

@@ -13,7 +13,9 @@ class EditRoom extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
+              Actions\DeleteAction::make()
+                 ->disabled(fn ($record) => $record->roomAssignments()->exists() || $record->stayLogs()->exists())
+                 ->tooltip('Cannot delete: usage history exists'),
         ];
     }
 

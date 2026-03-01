@@ -6,6 +6,9 @@
     {{-- Hero Section --}}
     <section class="relative bg-gradient-to-br from-[#00491E] via-[#02681E] to-[#00491E] text-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
+            <div class="flex justify-center mb-8">
+                <img src="/images/uh_banner.png" alt="UH Lodging Banner" class="w-full max-w-4xl rounded-xl shadow-lg object-cover" />
+            </div>
             <div class="text-center">
                 <div class="inline-block bg-[#FFC600] text-[#00491E] px-4 py-1 rounded-full text-sm font-bold mb-6">
                     Central Mindanao University

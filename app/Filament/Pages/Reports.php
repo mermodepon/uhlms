@@ -173,6 +173,7 @@ class Reports extends Page
                     'checked_out' => $log->checked_out_at ? Carbon::parse($log->checked_out_at)->format('M d, Y h:i A') : 'Still checked in',
                     'checked_in_by' => $log->checkedInByUser->name ?? '-',
                     'checked_out_by' => $log->checkedOutByUser->name ?? '-',
+                    // Ensure nights is always an integer
                     'nights' => $log->checked_out_at
                         ? Carbon::parse($log->checked_in_at)->diffInDays(Carbon::parse($log->checked_out_at))
                         : Carbon::parse($log->checked_in_at)->diffInDays(Carbon::now()),
