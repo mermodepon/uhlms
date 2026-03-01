@@ -1,0 +1,268 @@
+/*
+ * CMU Color Theme
+ * Yellow: #FFC600
+ * Green: #00491E
+ * Alt Green 1: #02681E
+ * Alt Green 2: #919F02
+ */
+
+/* ===== Sidebar ===== */
+.fi-sidebar {
+    background-color: #00491E !important;
+    border-right-color: #02681E !important;
+}
+
+.fi-sidebar-header {
+    background-color: #00491E !important;
+    border-bottom: 2px solid #FFC600 !important;
+}
+
+/* Sidebar brand name */
+.fi-sidebar-header a,
+.fi-sidebar-header span {
+    color: #FFFFFF !important;
+    font-weight: 700;
+}
+
+/* Sidebar nav items */
+.fi-sidebar-nav-groups {
+    background-color: #00491E !important;
+}
+
+.fi-sidebar-item a,
+.fi-sidebar-item button {
+    color: #FFFFFF !important;
+}
+
+.fi-sidebar-item a:hover,
+.fi-sidebar-item button:hover {
+    color: #FFC600 !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.fi-sidebar-item-active a,
+.fi-sidebar-item-active button {
+    color: #FFC600 !important;
+    background-color: rgba(255, 198, 0, 0.15) !important;
+}
+
+/* Sidebar nav group labels */
+.fi-sidebar-group-label,
+.fi-sidebar-group > button > span {
+    color: rgba(255, 255, 255, 0.7) !important;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+}
+
+/* Sidebar icons */
+.fi-sidebar-item-icon {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.fi-sidebar-item-active .fi-sidebar-item-icon {
+    color: #FFC600 !important;
+}
+
+.fi-sidebar-item a:hover .fi-sidebar-item-icon,
+.fi-sidebar-item button:hover .fi-sidebar-item-icon {
+    color: #FFC600 !important;
+}
+
+/* Sidebar group icons */
+.fi-sidebar-group-icon {
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Sidebar collapse button */
+.fi-sidebar-close-btn,
+.fi-icon-btn.fi-sidebar-collapse-btn {
+    color: #FFFFFF !important;
+}
+
+.fi-sidebar-close-btn:hover,
+.fi-icon-btn.fi-sidebar-collapse-btn:hover {
+    color: #FFC600 !important;
+}
+
+/* ===== Topbar ===== */
+.fi-topbar {
+    background-color: #00491E !important;
+    border-bottom: 3px solid #FFC600 !important;
+}
+
+.fi-topbar nav {
+    background-color: #00491E !important;
+}
+
+/* Topbar brand */
+.fi-topbar a[href],
+.fi-topbar .fi-topbar-brand-name {
+    color: #FFFFFF !important;
+}
+
+/* Topbar icons/buttons */
+.fi-topbar .fi-icon-btn {
+    color: #FFFFFF !important;
+}
+
+.fi-topbar .fi-icon-btn:hover {
+    color: #FFC600 !important;
+}
+
+/* User menu */
+.fi-topbar .fi-avatar {
+    --tw-ring-color: #FFC600 !important;
+}
+
+/* ===== Login / Auth Pages ===== */
+.fi-simple-layout {
+    background: linear-gradient(135deg, #00491E 0%, #02681E 50%, #00491E 100%) !important;
+}
+
+.fi-simple-main-ctn {
+    background-color: white !important;
+    border-top: 4px solid #FFC600 !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Auth page heading / brand */
+.fi-simple-header {
+    color: #00491E !important;
+}
+
+.fi-simple-header h1,
+.fi-simple-header .fi-simple-brand-name {
+    color: #00491E !important;
+    font-weight: 800;
+}
+
+/* Login form button */
+.fi-simple-main .fi-btn-primary,
+.fi-simple-main .fi-btn {
+    background-color: #00491E !important;
+    border-color: #00491E !important;
+}
+
+.fi-simple-main .fi-btn-primary:hover,
+.fi-simple-main .fi-btn:hover {
+    background-color: #02681E !important;
+    border-color: #02681E !important;
+}
+
+/* Login link colors */
+.fi-simple-main a {
+    color: #00491E !important;
+}
+
+.fi-simple-main a:hover {
+    color: #02681E !important;
+}
+
+/* ===== Global accent overrides ===== */
+
+/* Primary buttons everywhere */
+.fi-btn-primary {
+    background-color: #00491E !important;
+    color: #FFFFFF !important;
+}
+
+.fi-btn-primary:hover {
+    background-color: #02681E !important;
+    color: #FFFFFF !important;
+}
+
+/* Tabs active indicator */
+.fi-tabs-item-active {
+    border-color: #FFC600 !important;
+}
+
+/* Dashboard header area */
+.fi-header-heading {
+    color: #00491E !important;
+}
+
+/* Badge styling for primary */
+.fi-badge-primary {
+    background-color: rgba(0, 73, 30, 0.1) !important;
+    color: #00491E !important;
+}
+
+/* Table header */
+.fi-ta-header-cell {
+    color: #00491E !important;
+    font-weight: 600;
+}
+
+/* Focus ring color override for inputs */
+.fi-input:focus,
+.fi-input:focus-within {
+    border-color: #00491E !important;
+    --tw-ring-color: rgba(0, 73, 30, 0.3) !important;
+}
+
+/* Breadcrumbs */
+.fi-breadcrumbs a {
+    color: #00491E !important;
+}
+
+.fi-breadcrumbs a:hover {
+    color: #02681E !important;
+}
+
+/* Notification success */
+.fi-notification-success {
+    border-color: #919F02 !important;
+}
+
+/* Stats widgets */
+.fi-wi-stats-overview-stat-value {
+    color: #00491E !important;
+}
+
+/* ===== Dark Mode Overrides ===== */
+.dark .fi-sidebar {
+    background-color: #001a0b !important;
+    border-right-color: #00491E !important;
+}
+
+.dark .fi-sidebar-header {
+    background-color: #001a0b !important;
+    border-bottom-color: #FFC600 !important;
+}
+
+.dark .fi-topbar {
+    background-color: #001a0b !important;
+    border-bottom-color: #FFC600 !important;
+}
+
+.dark .fi-topbar nav {
+    background-color: #001a0b !important;
+}
+
+.dark .fi-simple-layout {
+    background: linear-gradient(135deg, #001a0b 0%, #00491E 50%, #001a0b 100%) !important;
+}
+
+.dark .fi-simple-main-ctn {
+    background-color: #18181b !important;
+    border-top-color: #FFC600 !important;
+}
+
+.dark .fi-simple-header h1,
+.dark .fi-simple-header .fi-simple-brand-name {
+    color: #FFC600 !important;
+}
+
+.dark .fi-header-heading {
+    color: #FFC600 !important;
+}
+
+.dark .fi-ta-header-cell {
+    color: #FFC600 !important;
+}
+
+.dark .fi-wi-stats-overview-stat-value {
+    color: #FFC600 !important;
+}

@@ -1,0 +1,142 @@
+@extends('layouts.guest')
+
+@section('title', 'Make a Reservation')
+
+@section('content')
+    <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h1 class="text-3xl font-bold mb-2">Make a Reservation</h1>
+            <p class="text-gray-200">Fill out the form below to request a reservation. Our staff will review and respond to your request.</p>
+        </div>
+    </section>
+
+    <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <form action="{{ route('guest.reserve.submit') }}" method="POST" class="space-y-8">
+            @csrf
+
+            {{-- Guest Info --}}
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-xl font-bold text-[#00491E] mb-4">Personal Information</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="guest_name" class="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+                        <input type="text" name="guest_name" id="guest_name" value="{{ old('guest_name') }}" required
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                        @error('guest_name') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="guest_email" class="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
+                        <input type="email" name="guest_email" id="guest_email" value="{{ old('guest_email') }}" required
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                        @error('guest_email') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="guest_phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                        <input type="tel" name="guest_phone" id="guest_phone" value="{{ old('guest_phone') }}"
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                        @error('guest_phone') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="guest_organization" class="block text-sm font-medium text-gray-700 mb-1">Organization / Department</label>
+                        <input type="text" name="guest_organization" id="guest_organization" value="{{ old('guest_organization') }}"
+                               placeholder="e.g., CMU Biology Department"
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                        @error('guest_organization') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="guest_address" class="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                        <textarea name="guest_address" id="guest_address" rows="2"
+                                  class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">{{ old('guest_address') }}</textarea>
+                        @error('guest_address') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                </div>
+            </div>
+
+            {{-- Reservation Details --}}
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-xl font-bold text-[#00491E] mb-4">Reservation Details</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="md:col-span-2">
+                        <label for="preferred_room_type_id" class="block text-sm font-medium text-gray-700 mb-1">Preferred Room Type *</label>
+                        <select name="preferred_room_type_id" id="preferred_room_type_id" required
+                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                            <option value="">Select a room type...</option>
+                            @foreach($roomTypes as $rt)
+                                <option value="{{ $rt->id }}" {{ old('preferred_room_type_id', request('room_type')) == $rt->id ? 'selected' : '' }}>
+                                    {{ $rt->name }} - ₱{{ number_format($rt->base_rate, 0) }}/night ({{ $rt->available_rooms_count }} available, Up to {{ $rt->capacity }} guests)
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('preferred_room_type_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="check_in_date" class="block text-sm font-medium text-gray-700 mb-1">Check-in Date *</label>
+                        <input type="date" name="check_in_date" id="check_in_date" value="{{ old('check_in_date') }}" required
+                               min="{{ date('Y-m-d') }}"
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                        @error('check_in_date') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="check_out_date" class="block text-sm font-medium text-gray-700 mb-1">Check-out Date *</label>
+                        <input type="date" name="check_out_date" id="check_out_date" value="{{ old('check_out_date') }}" required
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                        @error('check_out_date') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="number_of_occupants" class="block text-sm font-medium text-gray-700 mb-1">Number of Occupants *</label>
+                        <input type="number" name="number_of_occupants" id="number_of_occupants" value="{{ old('number_of_occupants', 1) }}" required
+                               min="1" max="20"
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                        @error('number_of_occupants') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="purpose" class="block text-sm font-medium text-gray-700 mb-1">Purpose of Stay</label>
+                        <select name="purpose" id="purpose"
+                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                            <option value="">Select purpose...</option>
+                            <option value="academic" {{ old('purpose') === 'academic' ? 'selected' : '' }}>Academic</option>
+                            <option value="official" {{ old('purpose') === 'official' ? 'selected' : '' }}>Official Business</option>
+                            <option value="personal" {{ old('purpose') === 'personal' ? 'selected' : '' }}>Personal</option>
+                            <option value="event" {{ old('purpose') === 'event' ? 'selected' : '' }}>Event / Conference</option>
+                            <option value="other" {{ old('purpose') === 'other' ? 'selected' : '' }}>Other</option>
+                        </select>
+                        @error('purpose') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="special_requests" class="block text-sm font-medium text-gray-700 mb-1">Special Requests</label>
+                        <textarea name="special_requests" id="special_requests" rows="3"
+                                  placeholder="Any special requirements or requests..."
+                                  class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">{{ old('special_requests') }}</textarea>
+                        @error('special_requests') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                </div>
+            </div>
+
+            {{-- Submit --}}
+            <div class="flex justify-between items-center">
+                <a href="{{ route('guest.rooms') }}" class="text-gray-500 hover:text-[#00491E] transition">
+                    ← Back to Rooms
+                </a>
+                <button type="submit" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg hover:bg-yellow-400 transition shadow-lg">
+                    Submit Reservation
+                </button>
+            </div>
+        </form>
+    </section>
+@endsection
+
+@push('scripts')
+<script>
+    document.getElementById('check_in_date').addEventListener('change', function() {
+        const checkOut = document.getElementById('check_out_date');
+        if (this.value) {
+            const nextDay = new Date(this.value);
+            nextDay.setDate(nextDay.getDate() + 1);
+            checkOut.min = nextDay.toISOString().split('T')[0];
+            if (checkOut.value && checkOut.value <= this.value) {
+                checkOut.value = nextDay.toISOString().split('T')[0];
+            }
+        }
+    });
+</script>
+@endpush
