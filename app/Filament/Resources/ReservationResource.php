@@ -145,6 +145,7 @@ class ReservationResource extends Resource
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->sortable()
+                    ->formatStateUsing(fn ($state) => str_replace('_', ' ', ucfirst($state)))
                     ->color(fn (string $state): string => match ($state) {
                         'pending' => 'warning',
                         'approved' => 'info',
@@ -168,7 +169,7 @@ class ReservationResource extends Resource
                         'declined' => 'Declined',
                         'cancelled' => 'Cancelled',
                         'checked_in' => 'Checked In',
-                        'checked_out' => 'Checked Out',
+                        'checked_out' => 'Checked out',
                     ]),
                 Tables\Filters\SelectFilter::make('preferred_room_type_id')
                     ->relationship('preferredRoomType', 'name')

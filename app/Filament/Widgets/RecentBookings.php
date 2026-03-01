@@ -36,16 +36,21 @@ class RecentBookings extends BaseWidget
                 Tables\Columns\TextColumn::make('check_out_date')
                     ->date(),
                 Tables\Columns\TextColumn::make('status')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'pending' => 'warning',
-                        'approved' => 'info',
-                        'declined' => 'danger',
-                        'cancelled' => 'gray',
-                        'checked_in' => 'success',
-                        'checked_out' => 'gray',
-                        default => 'gray',
-                    }),
+                        ->badge()
+                        ->formatStateUsing(fn (string $state): string => match ($state) {
+                            'checked_out' => 'Checked out',
+                            'checked_in' => 'Checked in',
+                            default => ucfirst(str_replace('_', ' ', $state)),
+                        })
+                        ->color(fn (string $state): string => match ($state) {
+                            'pending' => 'warning',
+                            'approved' => 'info',
+                            'declined' => 'danger',
+                            'cancelled' => 'gray',
+                            'checked_in' => 'success',
+                            'checked_out' => 'gray',
+                            default => 'gray',
+                        }),
             ])
             ->paginated(false);
     }

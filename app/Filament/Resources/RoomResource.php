@@ -63,18 +63,6 @@ class RoomResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('room_number')
-                    ->searchable()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('roomType.name')
-                    ->sortable()
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('floor.name')
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('roomType.base_rate')
-                    ->money('PHP')
-                    ->sortable()
-                    ->label('Rate'),
-                Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->sortable()
                     ->color(fn (string $state): string => match ($state) {
@@ -108,12 +96,19 @@ class RoomResource extends Resource
                         'occupied' => 'Occupied',
                         'maintenance' => 'Under Maintenance',
                         'inactive' => 'Inactive',
+                        'checked_out' => 'Checked out',
                     ]),
                 Tables\Filters\TernaryFilter::make('is_active'),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->disabled(fn (Room $record) => $record->roomAssignments()->exists() || $record->stayLogs()->exists())
+                    ->tooltip(fn (Room $record) =>
+                        ($record->roomAssignments()->exists() || $record->stayLogs()->exists())
+                            ? 'This room cannot be deleted because it is linked to reservations or stay logs.'
+                            : null
+                    ),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

@@ -613,7 +613,7 @@
                                             <div class="text-xs text-gray-400">by {{ $log['checked_out_by'] }}</div>
                                         @endif
                                     </td>
-                                    <td class="py-2 px-3 text-center font-medium text-gray-700 dark:text-gray-300">{{ $log['nights'] }}</td>
+                                    <td class="py-2 px-3 text-center font-medium text-gray-700 dark:text-gray-300">{{ (int) $log['nights'] }}</td>
                                     <td class="py-2 px-3 text-gray-500 text-xs max-w-xs truncate">{{ $log['remarks'] }}</td>
                                 </tr>
                             @empty

@@ -15,7 +15,11 @@ class StatsOverview extends BaseWidget
     protected function getStats(): array
     {
         $totalRooms = Room::where('is_active', true)->count();
-        $occupiedRooms = Room::where('status', 'occupied')->count();
+        // Count rooms with active stay logs (checked in, not checked out)
+        $occupiedRooms = StayLog::whereNotNull('checked_in_at')
+            ->whereNull('checked_out_at')
+            ->distinct('room_id')
+            ->count('room_id');
         $occupancyRate = $totalRooms > 0 ? round(($occupiedRooms / $totalRooms) * 100, 1) : 0;
 
         $pendingReservations = Reservation::where('status', 'pending')->count();

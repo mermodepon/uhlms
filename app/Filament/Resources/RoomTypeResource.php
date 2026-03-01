@@ -126,7 +126,13 @@ class RoomTypeResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->disabled(fn (RoomType $record) => $record->rooms()->exists())
+                    ->tooltip(fn (RoomType $record) =>
+                        $record->rooms()->exists()
+                            ? 'This room type cannot be deleted because it is linked to rooms.'
+                            : null
+                    ),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

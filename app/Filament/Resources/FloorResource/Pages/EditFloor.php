@@ -13,7 +13,13 @@ class EditFloor extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()
+                ->disabled(fn ($record) => $record->rooms()->exists())
+                ->tooltip(fn ($record) =>
+                    $record->rooms()->exists()
+                        ? 'This floor cannot be deleted because it is linked to rooms.'
+                        : null
+                ),
         ];
     }
 
