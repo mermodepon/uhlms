@@ -63,14 +63,30 @@ class RoomResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('room_number')
+                    ->sortable()
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('roomType.name')
+                    ->label('Room Type')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('floor.name')
+                    ->label('Floor')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->sortable()
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'available'   => 'Available',
+                        'occupied'    => 'Occupied',
+                        'maintenance' => 'Under Maintenance',
+                        'inactive'    => 'Inactive',
+                        default       => ucfirst($state),
+                    })
                     ->color(fn (string $state): string => match ($state) {
-                        'available' => 'success',
-                        'occupied' => 'danger',
+                        'available'   => 'success',
+                        'occupied'    => 'danger',
                         'maintenance' => 'warning',
-                        'inactive' => 'gray',
-                        default => 'gray',
+                        'inactive'    => 'gray',
+                        default       => 'gray',
                     }),
                 Tables\Columns\IconColumn::make('is_active')
                     ->boolean()
