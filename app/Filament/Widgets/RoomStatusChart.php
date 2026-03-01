@@ -9,7 +9,7 @@ class RoomStatusChart extends ChartWidget
 {
     protected static ?string $heading = 'Room Status Overview';
 
-    protected static ?int $sort = 3;
+    protected static ?int $sort = 4;
 
     protected function getData(): array
     {

@@ -11,3 +11,4 @@ Route::get('/virtual-tours', [GuestController::class, 'virtualTours'])->name('gu
 Route::get('/reserve', [GuestController::class, 'reserveForm'])->name('guest.reserve');
 Route::post('/reserve', [GuestController::class, 'reserveSubmit'])->name('guest.reserve.submit');
 Route::get('/track', [GuestController::class, 'track'])->name('guest.track');
+

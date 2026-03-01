@@ -39,6 +39,10 @@ class AdminPanelProvider extends PanelProvider
                 // Render the view to a raw HTML string so Filament injects scripts/styles unescaped
                 fn () => view('filament.custom-theme')->render(),
             )
+            ->renderHook(
+                'panels::topbar.end',
+                fn () => view('filament.notification-center')->render(),
+            )
             ->colors([
                 'primary' => Color::hex('#00491E'),
                 'danger' => Color::Red,
@@ -58,6 +62,7 @@ class AdminPanelProvider extends PanelProvider
                     ->icon('heroicon-o-cog-6-tooth')
                     ->collapsed(),
             ])
+            ->globalSearch(false)
             ->sidebarCollapsibleOnDesktop()
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')

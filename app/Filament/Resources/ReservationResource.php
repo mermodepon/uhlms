@@ -136,6 +136,11 @@ class ReservationResource extends Resource
                 Tables\Columns\TextColumn::make('preferredRoomType.name')
                     ->label('Room Type')
                     ->sortable(),
+                Tables\Columns\TextColumn::make('roomAssignments.room.room_number')
+                    ->label('Room(s)')
+                    ->badge()
+                    ->separator(',')
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('check_in_date')
                     ->date()
                     ->sortable(),

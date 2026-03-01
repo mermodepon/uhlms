@@ -6,6 +6,7 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -72,5 +73,20 @@ class User extends Authenticatable implements FilamentUser
     public function roomAssignments(): HasMany
     {
         return $this->hasMany(RoomAssignment::class, 'assigned_by');
+    }
+
+    public function notifications(): MorphMany
+    {
+        return $this->morphMany(Notification::class, 'notifiable')->orderByDesc('created_at');
+    }
+
+    public function unreadNotifications()
+    {
+        return $this->notifications()->where('is_read', false);
+    }
+
+    public function getUnreadNotificationCountAttribute(): int
+    {
+        return $this->unreadNotifications()->count();
     }
 }
