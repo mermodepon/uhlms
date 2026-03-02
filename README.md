@@ -27,7 +27,7 @@ A Lodging Management System with Virtual Tour Integration for University Homesta
 - Recent reservations table widget
 
 ### Reservation Management
-- Auto-generated reference numbers (RES-XXXXXXXX)
+- Auto-generated reference numbers (YYYY-NNNN format, e.g., 2026-0001)
 - Reservation workflow: Pending → Approved → Checked In → Checked Out
 - Quick actions: Approve, Decline, Assign Room, Check-in, Check-out, Cancel
 - Guest information tracking (name, email, phone, organization, address)

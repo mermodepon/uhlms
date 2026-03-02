@@ -14,6 +14,7 @@ class EditRoomType extends EditRecord
     {
         return [
             Actions\DeleteAction::make()
+                ->successNotificationTitle('Room Type deleted')
                 ->disabled(fn ($record) => $record->rooms()->exists())
                 ->tooltip(fn ($record) =>
                     $record->rooms()->exists()

@@ -68,6 +68,7 @@
                     <a href="{{ route('guest.virtual-tours') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.virtual-tours') ? 'text-[#FFC600]' : '' }}">Virtual Tours</a>
                     <a href="{{ route('guest.reserve') }}" class="bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 transition {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">Reserve Now</a>
                     <a href="{{ route('guest.track') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.track') ? 'text-[#FFC600]' : '' }}">Track Status</a>
+                    <a href="{{ route('guest.messages') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.messages') ? 'text-[#FFC600]' : '' }}">Contact Us</a>
                 </div>
                 {{-- Mobile menu button --}}
                 <div class="md:hidden flex items-center">
@@ -87,6 +88,7 @@
                 <a href="{{ route('guest.virtual-tours') }}" class="block text-white hover:text-[#FFC600] py-2">Virtual Tours</a>
                 <a href="{{ route('guest.reserve') }}" class="block text-[#FFC600] font-bold py-2">Reserve Now</a>
                 <a href="{{ route('guest.track') }}" class="block text-white hover:text-[#FFC600] py-2">Track Status</a>
+                <a href="{{ route('guest.messages') }}" class="block text-white hover:text-[#FFC600] py-2">Contact Us</a>
             </div>
         </div>
     </nav>
@@ -120,6 +122,7 @@
                         <li><a href="{{ route('guest.virtual-tours') }}" class="text-gray-300 hover:text-[#FFC600] transition">Virtual Tours</a></li>
                         <li><a href="{{ route('guest.reserve') }}" class="text-gray-300 hover:text-[#FFC600] transition">Make a Reservation</a></li>
                         <li><a href="{{ route('guest.track') }}" class="text-gray-300 hover:text-[#FFC600] transition">Track Reservation</a></li>
+                        <li><a href="{{ route('guest.messages') }}" class="text-gray-300 hover:text-[#FFC600] transition">Contact Us</a></li>
                     </ul>
                 </div>
                 <div>

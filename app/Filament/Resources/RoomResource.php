@@ -67,12 +67,15 @@ class RoomResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('roomType.name')
                     ->label('Room Type')
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('floor.name')
                     ->label('Floor')
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
+                    ->searchable()
                     ->sortable()
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'available'   => 'Available',
@@ -93,6 +96,7 @@ class RoomResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
+                    ->searchable()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -119,6 +123,7 @@ class RoomResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make()
+                    ->successNotificationTitle('Room deleted')
                     ->disabled(fn (Room $record) => $record->roomAssignments()->exists() || $record->stayLogs()->exists())
                     ->tooltip(fn (Room $record) =>
                         ($record->roomAssignments()->exists() || $record->stayLogs()->exists())
@@ -128,7 +133,8 @@ class RoomResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->successNotificationTitle('Rooms deleted'),
                 ]),
             ]);
     }

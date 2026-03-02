@@ -117,6 +117,9 @@ class NotificationDropdown extends Component
             $this->isLoading = true;
             $this->refreshNotifications();
             $this->isLoading = false;
+        } else {
+            // Mark all as read when the user closes the dropdown
+            $this->markAllAsRead();
         }
     }
 

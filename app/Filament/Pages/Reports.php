@@ -20,11 +20,13 @@ class Reports extends Page
     public string $reportType = 'reservation_summary';
     public ?string $dateFrom = null;
     public ?string $dateTo = null;
+    public ?string $reservationStatus = null;
 
     public function mount(): void
     {
         $this->dateFrom = Carbon::today()->subDays(30)->format('Y-m-d');
         $this->dateTo = Carbon::today()->format('Y-m-d');
+        $this->reservationStatus = null; // All statuses
     }
 
     public function getReportDataProperty(): array
@@ -34,6 +36,7 @@ class Reports extends Page
             'occupancy' => $this->getOccupancyReport(),
             'room_utilization' => $this->getRoomUtilization(),
             'stay_logs' => $this->getStayLogs(),
+            'reservation_list' => $this->getReservationList(),
             default => [],
         };
     }
@@ -43,11 +46,25 @@ class Reports extends Page
         $from = Carbon::parse($this->dateFrom)->startOfDay();
         $to = Carbon::parse($this->dateTo)->endOfDay();
 
-        $reservations = Reservation::whereBetween('reservations.created_at', [$from, $to])->get();
+        $reservations = Reservation::where(function ($q) use ($from, $to) {
+                $q->whereBetween('check_in_date', [$from, $to])
+                  ->orWhereBetween('check_out_date', [$from, $to])
+                  ->orWhere(function ($q2) use ($from, $to) {
+                      $q2->where('check_in_date', '<=', $from)
+                         ->where('check_out_date', '>=', $to);
+                  });
+            })->get();
 
         $byStatus = $reservations->groupBy('status')->map->count();
         $byPurpose = $reservations->groupBy('purpose')->map->count();
-        $byRoomType = Reservation::whereBetween('reservations.created_at', [$from, $to])
+        $byRoomType = Reservation::where(function ($q) use ($from, $to) {
+                $q->whereBetween('check_in_date', [$from, $to])
+                  ->orWhereBetween('check_out_date', [$from, $to])
+                  ->orWhere(function ($q2) use ($from, $to) {
+                      $q2->where('check_in_date', '<=', $from)
+                         ->where('check_out_date', '>=', $to);
+                  });
+            })
             ->join('room_types', 'reservations.preferred_room_type_id', '=', 'room_types.id')
             ->select('room_types.name', DB::raw('count(*) as total'))
             ->groupBy('room_types.name')
@@ -187,6 +204,59 @@ class Reports extends Page
             'total_stays' => count($logs),
             'completed' => collect($logs)->where('checked_out', '!=', 'Still checked in')->count(),
             'ongoing' => collect($logs)->where('checked_out', 'Still checked in')->count(),
+        ];
+    }
+
+    protected function getReservationList(): array
+    {
+        $from = Carbon::parse($this->dateFrom)->startOfDay();
+        $to = Carbon::parse($this->dateTo)->endOfDay();
+
+        $query = Reservation::with(['preferredRoomType', 'roomAssignments.room.roomType'])
+            ->where(function ($q) use ($from, $to) {
+                $q->whereBetween('check_in_date', [$from, $to])
+                  ->orWhereBetween('check_out_date', [$from, $to])
+                  ->orWhere(function ($q2) use ($from, $to) {
+                      $q2->where('check_in_date', '<=', $from)
+                         ->where('check_out_date', '>=', $to);
+                  });
+            });
+
+        // Apply status filter if specified
+        if ($this->reservationStatus) {
+            $query->where('status', $this->reservationStatus);
+        }
+
+        $reservations = $query->orderBy('check_in_date', 'desc')
+            ->get()
+            ->map(function ($reservation) {
+                $assignedRooms = $reservation->roomAssignments->map(fn($assignment) => $assignment->room->room_number)->join(', ');
+                $nights = Carbon::parse($reservation->check_in_date)->diffInDays(Carbon::parse($reservation->check_out_date));
+                
+                return [
+                    'reference' => $reservation->reference_number,
+                    'guest_name' => $reservation->guest_name,
+                    'guest_email' => $reservation->guest_email,
+                    'guest_phone' => $reservation->guest_phone,
+                    'check_in_date' => Carbon::parse($reservation->check_in_date)->format('M d, Y'),
+                    'check_out_date' => Carbon::parse($reservation->check_out_date)->format('M d, Y'),
+                    'nights' => $nights,
+                    'occupants' => $reservation->number_of_occupants,
+                    'preferred_room_type' => $reservation->preferredRoomType->name ?? 'N/A',
+                    'assigned_rooms' => $assignedRooms ?: 'Not assigned',
+                    'purpose' => $reservation->purpose,
+                    'status' => $reservation->status,
+                    'created_at' => Carbon::parse($reservation->created_at)->format('M d, Y'),
+                ];
+            })->toArray();
+
+        $byStatus = collect($reservations)->groupBy('status')->map->count()->toArray();
+
+        return [
+            'type' => 'reservation_list',
+            'reservations' => $reservations,
+            'total' => count($reservations),
+            'by_status' => $byStatus,
         ];
     }
 }

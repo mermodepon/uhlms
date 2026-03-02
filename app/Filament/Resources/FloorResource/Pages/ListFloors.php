@@ -13,6 +13,11 @@ class ListFloors extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('refresh')
+                ->label('Refresh')
+                ->icon('heroicon-o-arrow-path')
+                ->color('gray')
+                ->action(fn () => $this->dispatch('$refresh')),
             Actions\CreateAction::make(),
         ];
     }

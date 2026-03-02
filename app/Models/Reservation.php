@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Str;
 
 class Reservation extends Model
 {
@@ -41,7 +40,15 @@ class Reservation extends Model
     {
         static::creating(function (self $reservation) {
             if (empty($reservation->reference_number)) {
-                $reservation->reference_number = 'RES-' . strtoupper(Str::random(8));
+                $currentYear = now()->year;
+                
+                // Get the count of reservations created this year
+                $yearlyCount = static::whereYear('created_at', $currentYear)->count();
+                
+                // Generate sequence number with leading zeros (4 digits)
+                $sequenceNumber = str_pad($yearlyCount + 1, 4, '0', STR_PAD_LEFT);
+                
+                $reservation->reference_number = $currentYear . '-' . $sequenceNumber;
             }
         });
     }

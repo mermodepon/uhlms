@@ -177,7 +177,7 @@ class DatabaseSeeder extends Seeder
 
         // 1. Checked-out reservation (completed stay)
         $res1 = Reservation::create([
-            'reference_number' => 'RES-COMP0001',
+            'reference_number' => '2026-0001',
             'guest_name' => 'Dr. Jose Rizal',
             'guest_email' => 'jose.rizal@email.com',
             'guest_phone' => '09171234567',
@@ -210,7 +210,7 @@ class DatabaseSeeder extends Seeder
 
         // 2. Currently checked in
         $res2 = Reservation::create([
-            'reference_number' => 'RES-ACTV0002',
+            'reference_number' => '2026-0002',
             'guest_name' => 'Prof. Gabriela Silang',
             'guest_email' => 'gabriela.s@email.com',
             'guest_phone' => '09191234567',
@@ -243,7 +243,7 @@ class DatabaseSeeder extends Seeder
 
         // 3. Currently checked in (standard room)
         $res3 = Reservation::create([
-            'reference_number' => 'RES-ACTV0003',
+            'reference_number' => '2026-0003',
             'guest_name' => 'Andres Bonifacio',
             'guest_email' => 'andres.b@email.com',
             'guest_phone' => '09181234567',
@@ -272,7 +272,7 @@ class DatabaseSeeder extends Seeder
 
         // 4. Approved, awaiting check-in (arriving today)
         Reservation::create([
-            'reference_number' => 'RES-APRV0004',
+            'reference_number' => '2026-0004',
             'guest_name' => 'Apolinario Mabini',
             'guest_email' => 'apolinario.m@email.com',
             'guest_phone' => '09201234567',
@@ -290,7 +290,7 @@ class DatabaseSeeder extends Seeder
 
         // 5. Approved, future arrival
         Reservation::create([
-            'reference_number' => 'RES-APRV0005',
+            'reference_number' => '2026-0005',
             'guest_name' => 'Teresa Magbanua',
             'guest_email' => 'teresa.m@email.com',
             'guest_phone' => '09231234567',
@@ -308,7 +308,7 @@ class DatabaseSeeder extends Seeder
 
         // 6. Pending review
         Reservation::create([
-            'reference_number' => 'RES-PEND0006',
+            'reference_number' => '2026-0006',
             'guest_name' => 'Melchora Aquino',
             'guest_email' => 'melchora.a@email.com',
             'guest_phone' => '09211234567',
@@ -322,7 +322,7 @@ class DatabaseSeeder extends Seeder
 
         // 7. Pending review
         Reservation::create([
-            'reference_number' => 'RES-PEND0007',
+            'reference_number' => '2026-0007',
             'guest_name' => 'Emilio Aguinaldo',
             'guest_email' => 'emilio.a@email.com',
             'guest_phone' => '09221234567',
@@ -338,7 +338,7 @@ class DatabaseSeeder extends Seeder
 
         // 8. Pending review
         Reservation::create([
-            'reference_number' => 'RES-PEND0008',
+            'reference_number' => '2026-0008',
             'guest_name' => 'Antonio Luna',
             'guest_email' => 'antonio.l@email.com',
             'preferred_room_type_id' => $dormitory->id,
@@ -352,7 +352,7 @@ class DatabaseSeeder extends Seeder
 
         // 9. Declined
         Reservation::create([
-            'reference_number' => 'RES-DECL0009',
+            'reference_number' => '2026-0009',
             'guest_name' => 'Gregorio Del Pilar',
             'guest_email' => 'gregorio.dp@email.com',
             'preferred_room_type_id' => $suite->id,
@@ -368,7 +368,7 @@ class DatabaseSeeder extends Seeder
 
         // 10. Cancelled
         Reservation::create([
-            'reference_number' => 'RES-CANC0010',
+            'reference_number' => '2026-0010',
             'guest_name' => 'Trinidad Tecson',
             'guest_email' => 'trinidad.t@email.com',
             'guest_phone' => '09261234567',

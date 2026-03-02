@@ -62,27 +62,33 @@ class StayLogResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('room.room_number')
                     ->label('Room')
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('checked_in_at')
                     ->dateTime()
+                    ->searchable()
                     ->sortable()
                     ->label('Checked In'),
                 Tables\Columns\TextColumn::make('checkedInByUser.name')
                     ->label('By')
+                    ->searchable()
                     ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('checked_out_at')
                     ->dateTime()
+                    ->searchable()
                     ->sortable()
                     ->label('Checked Out')
                     ->placeholder('Still checked in'),
                 Tables\Columns\TextColumn::make('checkedOutByUser.name')
                     ->label('By')
+                    ->searchable()
                     ->sortable()
                     ->toggleable()
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('remarks')
                     ->limit(30)
+                    ->searchable()
                     ->sortable()
                     ->toggleable(),
             ])

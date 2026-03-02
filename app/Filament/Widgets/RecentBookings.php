@@ -20,7 +20,7 @@ class RecentBookings extends BaseWidget
         return $table
             ->query(
                 Reservation::query()
-                    ->with(['preferredRoomType'])
+                    ->with(['preferredRoomType', 'roomAssignments'])
                     ->latest()
                     ->limit(10)
             )
@@ -37,19 +37,23 @@ class RecentBookings extends BaseWidget
                     ->date(),
                 Tables\Columns\TextColumn::make('status')
                         ->badge()
-                        ->formatStateUsing(fn (string $state): string => match ($state) {
-                            'checked_out' => 'Checked out',
-                            'checked_in' => 'Checked in',
+                        ->formatStateUsing(fn ($state, $record) => match ($state) {
+                            'approved' => $record->roomAssignments->isEmpty()
+                                ? 'Approved · No Room'
+                                : 'Approved · Room Assigned',
+                            'checked_out' => 'Checked Out',
+                            'checked_in'  => 'Checked In',
                             default => ucfirst(str_replace('_', ' ', $state)),
                         })
-                        ->color(fn (string $state): string => match ($state) {
-                            'pending' => 'warning',
-                            'approved' => 'info',
-                            'declined' => 'danger',
-                            'cancelled' => 'gray',
-                            'checked_in' => 'success',
-                            'checked_out' => 'gray',
-                            default => 'gray',
+                        ->color(fn ($state, $record): string => match (true) {
+                            $state === 'pending'                                          => 'warning',
+                            $state === 'approved' && $record->roomAssignments->isEmpty() => 'info',
+                            $state === 'approved'                                        => 'primary',
+                            $state === 'declined'                                        => 'danger',
+                            $state === 'cancelled'                                       => 'gray',
+                            $state === 'checked_in'                                      => 'success',
+                            $state === 'checked_out'                                     => 'gray',
+                            default                                                      => 'gray',
                         }),
             ])
             ->paginated(false);

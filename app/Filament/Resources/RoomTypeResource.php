@@ -93,17 +93,21 @@ class RoomTypeResource extends Resource
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('capacity')
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('base_rate')
                     ->money('PHP')
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('rooms.room_number')
                     ->label('Rooms')
+                    ->searchable()
                     ->badge()
                     ->separator(',')
                     ->limitList(5)
                     ->color('primary'),
                 Tables\Columns\TextColumn::make('amenities.name')
+                    ->searchable()
                     ->badge()
                     ->separator(',')
                     ->limitList(3)
@@ -117,6 +121,7 @@ class RoomTypeResource extends Resource
                     ->getStateUsing(fn ($record) => !empty($record->virtual_tour_url)),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
+                    ->searchable()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -127,6 +132,7 @@ class RoomTypeResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make()
+                    ->successNotificationTitle('Room Type deleted')
                     ->disabled(fn (RoomType $record) => $record->rooms()->exists())
                     ->tooltip(fn (RoomType $record) =>
                         $record->rooms()->exists()
@@ -136,7 +142,8 @@ class RoomTypeResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->successNotificationTitle('Room Types deleted'),
                 ]),
             ]);
     }

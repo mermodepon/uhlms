@@ -69,6 +69,7 @@ class UserResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('role')
                     ->badge()
+                    ->searchable()
                     ->sortable()
                     ->color(fn (string $state): string => match ($state) {
                         'admin' => 'danger',
@@ -77,6 +78,7 @@ class UserResource extends Resource
                     }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
+                    ->searchable()
                     ->sortable(),
             ])
             ->filters([
@@ -89,6 +91,7 @@ class UserResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make()
+                    ->successNotificationTitle('User deleted')
                     ->visible(fn (User $record) => $record->id !== auth()->id())
                     ->disabled(fn (User $record) => $record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
                     ->tooltip(fn (User $record) =>

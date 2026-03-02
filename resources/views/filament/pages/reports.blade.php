@@ -116,6 +116,7 @@
             <h2 style="font-size: 14pt; font-weight: 600; color: #333; margin: 4px 0;">
                 @switch($reportType)
                     @case('reservation_summary') Reservation Summary Report @break
+                    @case('reservation_list') Reservation List Report @break
                     @case('occupancy') Occupancy Report @break
                     @case('room_utilization') Room Utilization Report @break
                     @case('stay_logs') Stay Logs Report @break
@@ -131,11 +132,12 @@
 
         {{-- Filters & Actions --}}
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 no-print">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div class="grid grid-cols-1 md:grid-cols-{{ $reportType === 'reservation_list' ? '4' : '3' }} gap-4 items-end">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Report Type</label>
                     <select wire:model.live="reportType" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500">
                         <option value="reservation_summary">Reservation Summary</option>
+                        <option value="reservation_list">Reservation List</option>
                         <option value="occupancy">Occupancy Report</option>
                         <option value="room_utilization">Room Utilization</option>
                         <option value="stay_logs">Stay Logs</option>
@@ -149,6 +151,19 @@
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To Date</label>
                     <input type="date" wire:model.live="dateTo" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500">
                 </div>
+                @if($reportType === 'reservation_list')
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status Filter</label>
+                        <select wire:model.live="reservationStatus" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500">
+                            <option value="">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="checked_in">Checked In</option>
+                            <option value="checked_out">Checked Out</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                @endif
             </div>
             <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div class="flex items-center gap-3">
@@ -619,6 +634,91 @@
                             @empty
                                 <tr>
                                     <td colspan="7" class="py-8 text-center text-gray-500">No stay logs found for this period.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
+
+        {{-- Reservation List Report --}}
+        @if(($data['type'] ?? '') === 'reservation_list')
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
+                    <div class="text-3xl font-bold text-primary-600">{{ $data['total'] }}</div>
+                    <div class="text-sm text-gray-500 mt-1">Total Reservations</div>
+                </div>
+                @foreach($data['by_status'] ?? [] as $status => $count)
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
+                        <div class="text-2xl font-bold
+                            @switch($status)
+                                @case('pending') text-yellow-600 @break
+                                @case('approved') text-blue-600 @break
+                                @case('checked_in') text-green-600 @break
+                                @case('checked_out') text-gray-600 @break
+                                @case('cancelled') text-red-600 @break
+                                @default text-gray-600
+                            @endswitch
+                        ">{{ $count }}</div>
+                        <div class="text-sm text-gray-500 mt-1">{{ ucfirst(str_replace('_', ' ', $status)) }}</div>
+                    </div>
+                @endforeach
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Reservation Details</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-200 dark:border-gray-700">
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Reference</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Guest Name</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Contact</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Check-in</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Check-out</th>
+                                <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Nights</th>
+                                <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Occupants</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Room Type</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Assigned Rooms</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Purpose</th>
+                                <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Status</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($data['reservations'] as $reservation)
+                                <tr class="border-b border-gray-100 dark:border-gray-700/50">
+                                    <td class="py-2 px-3 font-mono text-xs text-gray-600 dark:text-gray-400">{{ $reservation['reference'] }}</td>
+                                    <td class="py-2 px-3 font-medium text-gray-700 dark:text-gray-300">{{ $reservation['guest_name'] }}</td>
+                                    <td class="py-2 px-3 text-xs text-gray-600 dark:text-gray-400">
+                                        <div>{{ $reservation['guest_email'] }}</div>
+                                        <div>{{ $reservation['guest_phone'] }}</div>
+                                    </td>
+                                    <td class="py-2 px-3 text-gray-600 dark:text-gray-400">{{ $reservation['check_in_date'] }}</td>
+                                    <td class="py-2 px-3 text-gray-600 dark:text-gray-400">{{ $reservation['check_out_date'] }}</td>
+                                    <td class="py-2 px-3 text-center font-medium text-gray-700 dark:text-gray-300">{{ $reservation['nights'] }}</td>
+                                    <td class="py-2 px-3 text-center text-gray-600 dark:text-gray-400">{{ $reservation['occupants'] }}</td>
+                                    <td class="py-2 px-3 text-gray-600 dark:text-gray-400">{{ $reservation['preferred_room_type'] }}</td>
+                                    <td class="py-2 px-3 text-gray-600 dark:text-gray-400">{{ $reservation['assigned_rooms'] }}</td>
+                                    <td class="py-2 px-3 text-gray-600 dark:text-gray-400">{{ $reservation['purpose'] }}</td>
+                                    <td class="py-2 px-3 text-center">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                                            @switch($reservation['status'])
+                                                @case('pending') bg-yellow-100 text-yellow-800 @break
+                                                @case('approved') bg-blue-100 text-blue-800 @break
+                                                @case('checked_in') bg-green-100 text-green-800 @break
+                                                @case('checked_out') bg-gray-100 text-gray-800 @break
+                                                @case('cancelled') bg-red-100 text-red-800 @break
+                                                @default bg-gray-100 text-gray-800
+                                            @endswitch
+                                        ">{{ ucfirst(str_replace('_', ' ', $reservation['status'])) }}</span>
+                                    </td>
+                                    <td class="py-2 px-3 text-xs text-gray-600 dark:text-gray-400">{{ $reservation['created_at'] }}</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="12" class="py-8 text-center text-gray-500">No reservations found for this period.</td>
                                 </tr>
                             @endforelse
                         </tbody>

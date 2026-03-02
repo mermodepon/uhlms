@@ -18,7 +18,8 @@ class EditReservation extends EditRecord
     {
         return [
             Actions\ViewAction::make(),
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()
+                ->successNotificationTitle('Reservation deleted'),
             // Assign Room action on the edit page — uses the current form state for preferred room type
             Actions\Action::make('assign_room')
                 ->icon('heroicon-o-key')

@@ -13,7 +13,8 @@ class EditSetting extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()
+                ->successNotificationTitle('Setting deleted'),
         ];
     }
 }

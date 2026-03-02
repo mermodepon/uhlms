@@ -135,6 +135,7 @@ class ReservationResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('preferredRoomType.name')
                     ->label('Room Type')
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('roomAssignments.room.room_number')
                     ->label('Room(s)')
@@ -143,25 +144,35 @@ class ReservationResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('check_in_date')
                     ->date()
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('check_out_date')
                     ->date()
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
+                    ->searchable()
                     ->sortable()
-                    ->formatStateUsing(fn ($state) => str_replace('_', ' ', ucfirst($state)))
-                    ->color(fn (string $state): string => match ($state) {
-                        'pending' => 'warning',
-                        'approved' => 'info',
-                        'declined' => 'danger',
-                        'cancelled' => 'gray',
-                        'checked_in' => 'success',
-                        'checked_out' => 'gray',
-                        default => 'gray',
+                    ->formatStateUsing(fn ($state, $record) => match ($state) {
+                        'approved' => $record->roomAssignments->isEmpty()
+                            ? 'Approved · No Room'
+                            : 'Approved · Room Assigned',
+                        default => str_replace('_', ' ', ucfirst($state)),
+                    })
+                    ->color(fn ($state, $record): string => match (true) {
+                        $state === 'pending'                                          => 'warning',
+                        $state === 'approved' && $record->roomAssignments->isEmpty() => 'info',
+                        $state === 'approved'                                        => 'primary',
+                        $state === 'declined'                                        => 'danger',
+                        $state === 'cancelled'                                       => 'gray',
+                        $state === 'checked_in'                                      => 'success',
+                        $state === 'checked_out'                                     => 'gray',
+                        default                                                      => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
+                    ->searchable()
                     ->sortable()
                     ->label('Submitted'),
             ])
@@ -351,7 +362,8 @@ class ReservationResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->successNotificationTitle('Reservations deleted'),
                 ]),
             ]);
     }
