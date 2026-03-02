@@ -37,8 +37,8 @@
         </div>
 
         {{-- Calendar --}}
-        <div class="overflow-x-auto -mx-1">
-            <div class="min-w-[600px] px-1">
+        <div class="overflow-x-auto overflow-y-visible -mx-1">
+            <div class="min-w-[600px] px-1 overflow-visible">
 
                 {{-- Day-of-week header --}}
                 <div class="grid grid-cols-7 mb-2">
@@ -52,9 +52,9 @@
                 </div>
 
                 {{-- Weeks --}}
-                <div class="grid grid-rows-auto gap-1">
+                <div class="grid grid-rows-auto gap-1" style="overflow:visible;">
                     @foreach($weeks as $week)
-                        <div class="grid grid-cols-7 gap-1">
+                        <div class="grid grid-cols-7 gap-1" style="overflow:visible;">
                             @foreach($week as $colIndex => $day)
                                 @php
                                     $dotColors = [
@@ -63,14 +63,32 @@
                                         'checked_in'  => '#16a34a',
                                         'checked_out' => '#94a3b8',
                                     ];
+                                    $totalCount = count($day['reservations']);
+                                    $isWeekend  = in_array($colIndex, [0, 6]);
+                                    $tooltipRight = $colIndex >= 5;
+
+                                    // Tooltip & dots use the same dataset: all active reservations on this day
                                     $statusCounts = [];
                                     foreach ($day['reservations'] as $res) {
                                         $statusCounts[$res['status']] = ($statusCounts[$res['status']] ?? 0) + 1;
                                     }
-                                    $totalCount = count($day['reservations']);
-                                    $isWeekend  = in_array($colIndex, [0, 6]);
+
+                                    // Dot rendering (check-in/check-out only for visual markers)
+                                    $checkinReservations  = array_filter($day['reservations'], fn($r) => $r['is_checkin']);
+                                    $checkoutReservations = array_filter($day['reservations'], fn($r) => $r['is_checkout'] && !$r['is_checkin']);
+                                    $combinedCounts = [];
+                                    foreach ($checkinReservations as $res) {
+                                        $combinedCounts[$res['status']] = ($combinedCounts[$res['status']] ?? 0) + 1;
+                                    }
+                                    foreach ($checkoutReservations as $res) {
+                                        $combinedCounts[$res['status']] = ($combinedCounts[$res['status']] ?? 0) + 1;
+                                    }
+                                    $checkinTotal = count($checkinReservations) + count($checkoutReservations);
                                 @endphp
-                                <div class="rounded-xl flex flex-col items-center py-3 px-1 min-h-[80px] transition"
+                                <div class="rounded-xl flex flex-col items-center py-3 px-1 min-h-[80px] transition relative"
+                                    x-data="{ show: false }"
+                                    @mouseenter="{{ $day['in_month'] && $checkinTotal > 0 ? 'show = true' : '' }}"
+                                    @mouseleave="show = false"
                                     @if($day['is_today'])
                                         style="background-color:#ffffff;border:1px solid #f3f4f6;"
                                     @elseif(!$day['in_month'])
@@ -81,6 +99,37 @@
                                         style="background-color:#ffffff;border:1px solid #f3f4f6;"
                                     @endif
                                 >
+                                @if($day['in_month'] && $checkinTotal > 0)
+                                <div x-show="show" x-transition
+                                    style="position:absolute;{{ $tooltipRight ? 'right' : 'left' }}:0;top:calc(100% + 6px);width:210px;background:#1e293b;color:#f8fafc;border-radius:10px;padding:12px 14px;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,0.22);pointer-events:none;">
+                                    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">
+                                        {{ $day['date']->format('F j, Y') }}
+                                    </div>
+                                    <div style="font-size:10px;color:#64748b;margin-bottom:8px;">Check-ins &amp; Check-outs</div>
+                                    <div style="display:flex;flex-direction:column;gap:5px;">
+                                        @foreach([
+                                            'pending'     => ['label' => 'Pending',     'color' => '#fbbf24'],
+                                            'approved'    => ['label' => 'Approved',    'color' => '#3b82f6'],
+                                            'checked_in'  => ['label' => 'Checked In',  'color' => '#16a34a'],
+                                            'checked_out' => ['label' => 'Checked Out', 'color' => '#94a3b8'],
+                                        ] as $st => $meta)
+                                            @if(isset($combinedCounts[$st]))
+                                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                                                <div style="display:flex;align-items:center;gap:6px;">
+                                                    <span style="width:9px;height:9px;border-radius:50%;background:{{ $meta['color'] }};flex-shrink:0;display:inline-block;"></span>
+                                                    <span style="font-size:12px;color:#e2e8f0;">{{ $meta['label'] }}</span>
+                                                </div>
+                                                <span style="font-size:13px;font-weight:700;color:#ffffff;">{{ $combinedCounts[$st] }}</span>
+                                            </div>
+                                            @endif
+                                        @endforeach
+                                        <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(148,163,184,0.25);display:flex;align-items:center;justify-content:space-between;">
+                                            <span style="font-size:12px;color:#94a3b8;font-weight:600;">Total</span>
+                                            <span style="font-size:13px;font-weight:800;color:#ffffff;">{{ $checkinTotal }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                @endif
                                     {{-- Day Number --}}
                                     <span class="text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full mb-2"
                                         @if($day['is_today'])
@@ -96,24 +145,7 @@
                                         {{ $day['date']->day }}
                                     </span>
 
-                                    {{-- Dot indicators --}}
-                                    @php
-                                        $checkinReservations = array_filter($day['reservations'], fn($r) => $r['is_checkin']);
-                                        $checkoutReservations = array_filter($day['reservations'], fn($r) => $r['is_checkout'] && !$r['is_checkin']);
-                                        $checkinStatusCounts = [];
-                                        foreach ($checkinReservations as $res) {
-                                            $checkinStatusCounts[$res['status']] = ($checkinStatusCounts[$res['status']] ?? 0) + 1;
-                                        }
-                                        $checkoutStatusCounts = [];
-                                        foreach ($checkoutReservations as $res) {
-                                            $checkoutStatusCounts[$res['status']] = ($checkoutStatusCounts[$res['status']] ?? 0) + 1;
-                                        }
-                                        $combinedCounts = $checkinStatusCounts;
-                                        foreach ($checkoutStatusCounts as $status => $count) {
-                                            $combinedCounts[$status] = ($combinedCounts[$status] ?? 0) + $count;
-                                        }
-                                        $checkinTotal = count($checkinReservations) + count($checkoutReservations);
-                                    @endphp
+                                    {{-- Dot indicators (check-in / check-out markers) --}}
                                     @if($checkinTotal > 0 && $day['in_month'])
                                         <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:3px;padding:0 2px;">
                                             @foreach($combinedCounts as $status => $count)

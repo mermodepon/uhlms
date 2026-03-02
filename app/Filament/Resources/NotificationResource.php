@@ -63,6 +63,7 @@ class NotificationResource extends Resource
                     ->limit(50)
                     ->searchable(),
                 Tables\Columns\BadgeColumn::make('type')
+                    ->searchable()
                     ->colors([
                         'info' => 'info',
                         'success' => 'success',
@@ -71,6 +72,7 @@ class NotificationResource extends Resource
                     ])
                     ->sortable(),
                 Tables\Columns\BadgeColumn::make('category')
+                    ->searchable()
                     ->colors([
                         'reservation' => 'info',
                         'room' => 'primary',
@@ -83,6 +85,7 @@ class NotificationResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime('M d, Y h:i A')
+                    ->searchable()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -107,7 +110,8 @@ class NotificationResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->successNotificationTitle('Notification deleted'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -117,7 +121,8 @@ class NotificationResource extends Resource
                     Tables\Actions\BulkAction::make('mark_as_unread')
                         ->label('Mark as unread')
                         ->action(fn ($records) => $records->each->markAsUnread()),
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->successNotificationTitle('Notifications deleted'),
                 ]),
             ])
             ->defaultSort('created_at', 'desc');

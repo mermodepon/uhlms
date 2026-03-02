@@ -10,9 +10,16 @@ class ListReservations extends ListRecords
 {
     protected static string $resource = ReservationResource::class;
 
+    protected static ?string $pollingInterval = '10s';
+
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('refresh')
+                ->label('Refresh')
+                ->icon('heroicon-o-arrow-path')
+                ->color('gray')
+                ->action(fn () => $this->dispatch('$refresh')),
             Actions\CreateAction::make(),
         ];
     }

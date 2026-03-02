@@ -14,6 +14,7 @@ class EditFloor extends EditRecord
     {
         return [
             Actions\DeleteAction::make()
+                ->successNotificationTitle('Floor deleted')
                 ->disabled(fn ($record) => $record->rooms()->exists())
                 ->tooltip(fn ($record) =>
                     $record->rooms()->exists()

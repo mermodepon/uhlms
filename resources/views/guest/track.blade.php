@@ -15,7 +15,7 @@
         <div class="bg-white rounded-xl shadow-md p-6 mb-8">
             <form action="{{ route('guest.track') }}" method="GET" class="flex gap-4">
                 <input type="text" name="reference" value="{{ $reference }}"
-                       placeholder="Enter reference number (e.g., RES-XXXXXXXX)"
+                       placeholder="Enter reference number (e.g., 2026-0001)"
                        class="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                 <button type="submit" class="bg-[#00491E] text-white px-6 py-2 rounded-lg hover:bg-[#02681E] transition font-medium">
                     Track

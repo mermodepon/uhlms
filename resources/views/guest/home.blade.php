@@ -30,6 +30,9 @@
                     <a href="{{ route('guest.reserve') }}" class="bg-transparent border-2 border-white text-white px-8 py-3 rounded-lg font-bold text-lg hover:bg-white hover:text-[#00491E] transition">
                         Make a Reservation
                     </a>
+                    <a href="{{ route('guest.virtual-tours') }}" class="bg-transparent border-2 border-[#FFC600] text-[#FFC600] px-8 py-3 rounded-lg font-bold text-lg hover:bg-white hover:text-[#00491E] hover:border-white hover:scale-105 hover:shadow-lg transition-all duration-200 flex items-center gap-2">
+                        🎯 360° Virtual Tours
+                    </a>
                 </div>
             </div>
         </div>

@@ -51,9 +51,11 @@ class FloorResource extends Resource
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('level')
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('rooms.room_number')
                     ->label('Rooms')
+                    ->searchable()
                     ->badge()
                     ->separator(',')
                     ->limitList(5)
@@ -63,6 +65,7 @@ class FloorResource extends Resource
                     ->boolean(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
+                    ->searchable()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -73,6 +76,7 @@ class FloorResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make()
+                    ->successNotificationTitle('Floor deleted')
                     ->disabled(fn (Floor $record) => $record->rooms()->exists())
                     ->tooltip(fn (Floor $record) =>
                         $record->rooms()->exists()
@@ -82,7 +86,8 @@ class FloorResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->successNotificationTitle('Floors deleted'),
                 ]),
             ]);
     }

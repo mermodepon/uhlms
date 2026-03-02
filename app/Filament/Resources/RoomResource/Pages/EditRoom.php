@@ -14,6 +14,7 @@ class EditRoom extends EditRecord
     {
         return [
               Actions\DeleteAction::make()
+                 ->successNotificationTitle('Room deleted')
                  ->disabled(fn ($record) => $record->roomAssignments()->exists() || $record->stayLogs()->exists())
                  ->tooltip('Cannot delete: usage history exists'),
         ];

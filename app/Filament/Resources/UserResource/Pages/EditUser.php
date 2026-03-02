@@ -14,6 +14,7 @@ class EditUser extends EditRecord
     {
         return [
             Actions\DeleteAction::make()
+                ->successNotificationTitle('User deleted')
                 ->disabled(fn ($record) => $record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
                 ->tooltip(fn ($record) =>
                     ($record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
