@@ -15,4 +15,38 @@ export default defineConfig({
             ],
         }),
     ],
+
+    // ── Production build optimizations ─────────────────────────────
+    build: {
+        // Target modern browsers for smaller bundles
+        target: 'es2020',
+
+        // Enable minification with terser for better compression
+        minify: 'esbuild',
+
+        // Generate source maps only in dev
+        sourcemap: false,
+
+        // Split vendor chunks for better caching
+        rollupOptions: {
+            output: {
+                manualChunks(id) {
+                    if (id.includes('node_modules')) {
+                        return 'vendor';
+                    }
+                },
+            },
+        },
+
+        // Increase chunk size warning limit (Filament is large)
+        chunkSizeWarningLimit: 1600,
+
+        // Enable CSS code splitting
+        cssCodeSplit: true,
+    },
+
+    // Optimize dependency pre-bundling
+    optimizeDeps: {
+        include: ['axios'],
+    },
 });

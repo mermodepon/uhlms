@@ -14,8 +14,8 @@ class RoomType extends Model
     protected $fillable = [
         'name',
         'description',
-        'capacity',
         'base_rate',
+        'pricing_type',
         'images',
         'virtual_tour_url',
         'is_active',
@@ -48,5 +48,52 @@ class RoomType extends Model
     public function reservations(): HasMany
     {
         return $this->hasMany(Reservation::class, 'preferred_room_type_id');
+    }
+
+    /**
+     * Check if this room type uses per-person pricing
+     */
+    public function isPerPersonPricing(): bool
+    {
+        return $this->pricing_type === 'per_person';
+    }
+
+    /**
+     * Get the maximum capacity from rooms of this type
+     * Returns 1 if no rooms exist
+     */
+    public function getCapacityAttribute(): int
+    {
+        return $this->rooms()->max('capacity') ?? 1;
+    }
+
+    /**
+     * Get formatted pricing display
+     */
+    public function getFormattedPrice(): string
+    {
+        $price = '₱' . number_format($this->base_rate, 0);
+        
+        if ($this->isPerPersonPricing()) {
+            return $price . '/person/night';
+        }
+        
+        return $price . '/night';
+    }
+
+    /**
+     * Calculate total rate based on pricing type
+     * 
+     * @param int $nights Number of nights
+     * @param int $guests Number of guests (only used for per-person pricing)
+     * @return float
+     */
+    public function calculateRate(int $nights = 1, int $guests = 1): float
+    {
+        if ($this->isPerPersonPricing()) {
+            return $this->base_rate * $guests * $nights;
+        }
+        
+        return $this->base_rate * $nights;
     }
 }

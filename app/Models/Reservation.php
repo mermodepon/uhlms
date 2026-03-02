@@ -11,6 +11,9 @@ class Reservation extends Model
     protected $fillable = [
         'reference_number',
         'guest_name',
+        'guest_last_name',
+        'guest_first_name',
+        'guest_middle_initial',
         'guest_email',
         'guest_phone',
         'guest_address',
@@ -49,6 +52,17 @@ class Reservation extends Model
                 $sequenceNumber = str_pad($yearlyCount + 1, 4, '0', STR_PAD_LEFT);
                 
                 $reservation->reference_number = $currentYear . '-' . $sequenceNumber;
+            }
+        });
+
+        // Automatically populate guest_name from separate name fields
+        static::saving(function (self $reservation) {
+            if ($reservation->guest_first_name || $reservation->guest_last_name) {
+                $reservation->guest_name = trim(
+                    $reservation->guest_first_name . ' ' . 
+                    ($reservation->guest_middle_initial ?? '') . ' ' . 
+                    $reservation->guest_last_name
+                );
             }
         });
     }

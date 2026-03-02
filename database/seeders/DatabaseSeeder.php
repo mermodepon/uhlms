@@ -7,6 +7,7 @@ use App\Models\RoomType;
 use App\Models\Floor;
 use App\Models\Room;
 use App\Models\Amenity;
+use App\Models\Service;
 use App\Models\Reservation;
 use App\Models\RoomAssignment;
 use App\Models\StayLog;
@@ -42,24 +43,100 @@ class DatabaseSeeder extends Seeder
 
         // Create Amenities
         $amenities = collect([
-            ['name' => 'WiFi', 'icon' => 'wifi', 'description' => 'High-speed wireless internet'],
-            ['name' => 'Air Conditioning', 'icon' => 'air-conditioning', 'description' => 'Individual climate control'],
-            ['name' => 'Private Bathroom', 'icon' => 'bathroom', 'description' => 'En-suite bathroom with hot water'],
-            ['name' => 'Television', 'icon' => 'tv', 'description' => 'Flat-screen cable TV'],
-            ['name' => 'Mini Refrigerator', 'icon' => 'fridge', 'description' => 'Small refrigerator in room'],
-            ['name' => 'Study Desk', 'icon' => 'desk', 'description' => 'Work/study desk with lamp'],
-            ['name' => 'Closet/Wardrobe', 'icon' => 'closet', 'description' => 'Clothing storage space'],
-            ['name' => 'Hot Water', 'icon' => 'water', 'description' => 'Hot water shower'],
-            ['name' => 'Towels & Linens', 'icon' => 'towels', 'description' => 'Fresh towels and bed linens provided'],
-            ['name' => 'Fan', 'icon' => 'fan', 'description' => 'Electric fan'],
+            ['name' => 'WiFi', 'description' => 'High-speed wireless internet'],
+            ['name' => 'Air Conditioning', 'description' => 'Individual climate control'],
+            ['name' => 'Private Bathroom', 'description' => 'En-suite bathroom with hot water'],
+            ['name' => 'Television', 'description' => 'Flat-screen cable TV'],
+            ['name' => 'Mini Refrigerator', 'description' => 'Small refrigerator in room'],
+            ['name' => 'Study Desk', 'description' => 'Work/study desk with lamp'],
+            ['name' => 'Closet/Wardrobe', 'description' => 'Clothing storage space'],
+            ['name' => 'Hot Water', 'description' => 'Hot water shower'],
+            ['name' => 'Towels & Linens', 'description' => 'Fresh towels and bed linens provided'],
+            ['name' => 'Fan', 'description' => 'Electric fan'],
         ])->map(fn ($a) => Amenity::create($a));
+
+        // Create Services
+        $services = collect([
+            [
+                'name' => 'Extra Towels', 
+                'code' => 'extra_towels', 
+                'category' => 'amenity', 
+                'description' => 'Additional bath towels for the room',
+                'price' => 0.00,
+                'is_active' => true,
+                'sort_order' => 1
+            ],
+            [
+                'name' => 'Extra Bed', 
+                'code' => 'extra_bed', 
+                'category' => 'amenity', 
+                'description' => 'Additional bed/mattress for extra guest',
+                'price' => 200.00,
+                'is_active' => true,
+                'sort_order' => 2
+            ],
+            [
+                'name' => 'Iron Rental', 
+                'code' => 'iron_rental', 
+                'category' => 'equipment', 
+                'description' => 'Iron and ironing board rental',
+                'price' => 50.00,
+                'is_active' => true,
+                'sort_order' => 3
+            ],
+            [
+                'name' => 'Extra Blanket', 
+                'code' => 'extra_blanket', 
+                'category' => 'amenity', 
+                'description' => 'Additional blanket for cold weather',
+                'price' => 0.00,
+                'is_active' => true,
+                'sort_order' => 4
+            ],
+            [
+                'name' => 'Extra Pillow', 
+                'code' => 'extra_pillow', 
+                'category' => 'amenity', 
+                'description' => 'Additional pillow for comfort',
+                'price' => 0.00,
+                'is_active' => true,
+                'sort_order' => 5
+            ],
+            [
+                'name' => 'Hair Dryer', 
+                'code' => 'hair_dryer', 
+                'category' => 'equipment', 
+                'description' => 'Hair dryer rental',
+                'price' => 30.00,
+                'is_active' => true,
+                'sort_order' => 6
+            ],
+            [
+                'name' => 'Early Check-in', 
+                'code' => 'early_checkin', 
+                'category' => 'special_service', 
+                'description' => 'Check-in before standard time (additional fee)',
+                'price' => 300.00,
+                'is_active' => true,
+                'sort_order' => 7
+            ],
+            [
+                'name' => 'Late Check-out', 
+                'code' => 'late_checkout', 
+                'category' => 'special_service', 
+                'description' => 'Check-out after standard time (additional fee)',
+                'price' => 300.00,
+                'is_active' => true,
+                'sort_order' => 8
+            ],
+        ])->map(fn ($s) => Service::create($s));
 
         // Create Room Types
         $standard = RoomType::create([
             'name' => 'Standard Room',
             'description' => 'A comfortable single-occupancy room ideal for visiting scholars and solo travelers. Features basic amenities for a pleasant stay at CMU.',
-            'capacity' => 2,
             'base_rate' => 800.00,
+            'pricing_type' => 'flat_rate',
             'is_active' => true,
         ]);
         $standard->amenities()->attach([$amenities[0]->id, $amenities[5]->id, $amenities[6]->id, $amenities[7]->id, $amenities[8]->id, $amenities[9]->id]);
@@ -67,8 +144,8 @@ class DatabaseSeeder extends Seeder
         $deluxe = RoomType::create([
             'name' => 'Deluxe Room',
             'description' => 'An upgraded room with air conditioning and additional amenities. Perfect for faculty guests and visiting professionals.',
-            'capacity' => 2,
             'base_rate' => 1500.00,
+            'pricing_type' => 'flat_rate',
             'is_active' => true,
         ]);
         $deluxe->amenities()->attach([$amenities[0]->id, $amenities[1]->id, $amenities[2]->id, $amenities[3]->id, $amenities[5]->id, $amenities[6]->id, $amenities[7]->id, $amenities[8]->id]);
@@ -76,8 +153,8 @@ class DatabaseSeeder extends Seeder
         $suite = RoomType::create([
             'name' => 'Suite',
             'description' => 'A spacious suite with separate living area. Suitable for VIP guests, university officials, and longer stays.',
-            'capacity' => 4,
             'base_rate' => 2500.00,
+            'pricing_type' => 'flat_rate',
             'is_active' => true,
         ]);
         $suite->amenities()->attach($amenities->pluck('id'));
@@ -85,8 +162,8 @@ class DatabaseSeeder extends Seeder
         $family = RoomType::create([
             'name' => 'Family Room',
             'description' => 'A large room designed for families or small groups attending university events. Features multiple beds and ample space.',
-            'capacity' => 6,
             'base_rate' => 2000.00,
+            'pricing_type' => 'flat_rate',
             'is_active' => true,
         ]);
         $family->amenities()->attach([$amenities[0]->id, $amenities[1]->id, $amenities[2]->id, $amenities[3]->id, $amenities[4]->id, $amenities[6]->id, $amenities[7]->id, $amenities[8]->id]);
@@ -94,8 +171,8 @@ class DatabaseSeeder extends Seeder
         $dormitory = RoomType::create([
             'name' => 'Dormitory',
             'description' => 'Shared dormitory-style accommodation with bunk beds. Ideal for student groups and budget-conscious travelers.',
-            'capacity' => 8,
             'base_rate' => 350.00,
+            'pricing_type' => 'per_person',
             'is_active' => true,
         ]);
         $dormitory->amenities()->attach([$amenities[0]->id, $amenities[6]->id, $amenities[8]->id, $amenities[9]->id]);
@@ -178,9 +255,12 @@ class DatabaseSeeder extends Seeder
         // 1. Checked-out reservation (completed stay)
         $res1 = Reservation::create([
             'reference_number' => '2026-0001',
-            'guest_name' => 'Dr. Jose Rizal',
+            'guest_last_name' => 'Rizal',
+            'guest_first_name' => 'Jose',
+            'guest_middle_initial' => 'P.',
             'guest_email' => 'jose.rizal@email.com',
             'guest_phone' => '09171234567',
+            'guest_address' => 'Calamba, Laguna',
             'guest_organization' => 'University of the Philippines',
             'preferred_room_type_id' => $deluxe->id,
             'check_in_date' => Carbon::today()->subDays(7),
@@ -211,9 +291,12 @@ class DatabaseSeeder extends Seeder
         // 2. Currently checked in
         $res2 = Reservation::create([
             'reference_number' => '2026-0002',
-            'guest_name' => 'Prof. Gabriela Silang',
+            'guest_last_name' => 'Silang',
+            'guest_first_name' => 'Gabriela',
+            'guest_middle_initial' => 'C.',
             'guest_email' => 'gabriela.s@email.com',
             'guest_phone' => '09191234567',
+            'guest_address' => 'Ilocos Sur',
             'guest_organization' => 'DOST Region 10',
             'preferred_room_type_id' => $suite->id,
             'check_in_date' => Carbon::today()->subDays(2),
@@ -244,9 +327,12 @@ class DatabaseSeeder extends Seeder
         // 3. Currently checked in (standard room)
         $res3 = Reservation::create([
             'reference_number' => '2026-0003',
-            'guest_name' => 'Andres Bonifacio',
+            'guest_last_name' => 'Bonifacio',
+            'guest_first_name' => 'Andres',
+            'guest_middle_initial' => 'B.',
             'guest_email' => 'andres.b@email.com',
             'guest_phone' => '09181234567',
+            'guest_address' => 'Tondo, Manila',
             'preferred_room_type_id' => $standard->id,
             'check_in_date' => Carbon::today()->subDay(),
             'check_out_date' => Carbon::today()->addDays(2),
@@ -273,9 +359,12 @@ class DatabaseSeeder extends Seeder
         // 4. Approved, awaiting check-in (arriving today)
         Reservation::create([
             'reference_number' => '2026-0004',
-            'guest_name' => 'Apolinario Mabini',
+            'guest_last_name' => 'Mabini',
+            'guest_first_name' => 'Apolinario',
+            'guest_middle_initial' => 'M.',
             'guest_email' => 'apolinario.m@email.com',
             'guest_phone' => '09201234567',
+            'guest_address' => 'Tanauan, Batangas',
             'guest_organization' => 'CMU College of Agriculture',
             'preferred_room_type_id' => $deluxe->id,
             'check_in_date' => Carbon::today(),
@@ -291,9 +380,12 @@ class DatabaseSeeder extends Seeder
         // 5. Approved, future arrival
         Reservation::create([
             'reference_number' => '2026-0005',
-            'guest_name' => 'Teresa Magbanua',
+            'guest_last_name' => 'Magbanua',
+            'guest_first_name' => 'Teresa',
+            'guest_middle_initial' => 'F.',
             'guest_email' => 'teresa.m@email.com',
             'guest_phone' => '09231234567',
+            'guest_address' => 'Iloilo City',
             'guest_organization' => 'Philippine Normal University',
             'preferred_room_type_id' => $family->id,
             'check_in_date' => Carbon::today()->addDays(5),
@@ -309,9 +401,12 @@ class DatabaseSeeder extends Seeder
         // 6. Pending review
         Reservation::create([
             'reference_number' => '2026-0006',
-            'guest_name' => 'Melchora Aquino',
+            'guest_last_name' => 'Aquino',
+            'guest_first_name' => 'Melchora',
+            'guest_middle_initial' => 'D.',
             'guest_email' => 'melchora.a@email.com',
             'guest_phone' => '09211234567',
+            'guest_address' => 'Caloocan City',
             'preferred_room_type_id' => $standard->id,
             'check_in_date' => Carbon::today()->addDays(7),
             'check_out_date' => Carbon::today()->addDays(10),
@@ -323,9 +418,12 @@ class DatabaseSeeder extends Seeder
         // 7. Pending review
         Reservation::create([
             'reference_number' => '2026-0007',
-            'guest_name' => 'Emilio Aguinaldo',
+            'guest_last_name' => 'Aguinaldo',
+            'guest_first_name' => 'Emilio',
+            'guest_middle_initial' => 'F.',
             'guest_email' => 'emilio.a@email.com',
             'guest_phone' => '09221234567',
+            'guest_address' => 'Kawit, Cavite',
             'guest_organization' => 'CHED Regional Office',
             'preferred_room_type_id' => $suite->id,
             'check_in_date' => Carbon::today()->addDays(10),
@@ -339,8 +437,11 @@ class DatabaseSeeder extends Seeder
         // 8. Pending review
         Reservation::create([
             'reference_number' => '2026-0008',
-            'guest_name' => 'Antonio Luna',
+            'guest_last_name' => 'Luna',
+            'guest_first_name' => 'Antonio',
+            'guest_middle_initial' => 'N.',
             'guest_email' => 'antonio.l@email.com',
+            'guest_address' => 'Binondo, Manila',
             'preferred_room_type_id' => $dormitory->id,
             'check_in_date' => Carbon::today()->addDays(3),
             'check_out_date' => Carbon::today()->addDays(5),
@@ -353,8 +454,11 @@ class DatabaseSeeder extends Seeder
         // 9. Declined
         Reservation::create([
             'reference_number' => '2026-0009',
-            'guest_name' => 'Gregorio Del Pilar',
+            'guest_last_name' => 'Del Pilar',
+            'guest_first_name' => 'Gregorio',
+            'guest_middle_initial' => 'H.',
             'guest_email' => 'gregorio.dp@email.com',
+            'guest_address' => 'Bulacan',
             'preferred_room_type_id' => $suite->id,
             'check_in_date' => Carbon::today()->addDays(1),
             'check_out_date' => Carbon::today()->addDays(4),
@@ -369,9 +473,12 @@ class DatabaseSeeder extends Seeder
         // 10. Cancelled
         Reservation::create([
             'reference_number' => '2026-0010',
-            'guest_name' => 'Trinidad Tecson',
+            'guest_last_name' => 'Tecson',
+            'guest_first_name' => 'Trinidad',
+            'guest_middle_initial' => 'P.',
             'guest_email' => 'trinidad.t@email.com',
             'guest_phone' => '09261234567',
+            'guest_address' => 'San Miguel, Bulacan',
             'preferred_room_type_id' => $deluxe->id,
             'check_in_date' => Carbon::today()->addDays(2),
             'check_out_date' => Carbon::today()->addDays(5),

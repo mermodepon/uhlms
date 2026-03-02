@@ -64,7 +64,7 @@
                         <div class="flex justify-between items-start mb-2">
                             <h3 class="text-xl font-bold text-[#00491E]">{{ $roomType->name }}</h3>
                             <span class="bg-[#FFC600] text-[#00491E] px-3 py-1 rounded-full text-sm font-bold">
-                                ₱{{ number_format($roomType->base_rate, 0) }}/night
+                                {{ $roomType->getFormattedPrice() }}
                             </span>
                         </div>
                         <p class="text-gray-600 text-sm mb-3">{{ Str::limit($roomType->description, 100) }}</p>

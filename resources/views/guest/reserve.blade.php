@@ -19,10 +19,23 @@
                 <h2 class="text-xl font-bold text-[#00491E] mb-4">Personal Information</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label for="guest_name" class="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-                        <input type="text" name="guest_name" id="guest_name" value="{{ old('guest_name') }}" required
+                        <label for="guest_last_name" class="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                        <input type="text" name="guest_last_name" id="guest_last_name" value="{{ old('guest_last_name') }}" required
                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
-                        @error('guest_name') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                        @error('guest_last_name') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="guest_first_name" class="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                        <input type="text" name="guest_first_name" id="guest_first_name" value="{{ old('guest_first_name') }}" required
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                        @error('guest_first_name') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="guest_middle_initial" class="block text-sm font-medium text-gray-700 mb-1">Middle Initial</label>
+                        <input type="text" name="guest_middle_initial" id="guest_middle_initial" value="{{ old('guest_middle_initial') }}" 
+                               maxlength="10"
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                        @error('guest_middle_initial') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>
                         <label for="guest_email" class="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
@@ -35,13 +48,6 @@
                         <input type="tel" name="guest_phone" id="guest_phone" value="{{ old('guest_phone') }}"
                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                         @error('guest_phone') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                    </div>
-                    <div>
-                        <label for="guest_organization" class="block text-sm font-medium text-gray-700 mb-1">Organization / Department</label>
-                        <input type="text" name="guest_organization" id="guest_organization" value="{{ old('guest_organization') }}"
-                               placeholder="e.g., CMU Biology Department"
-                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
-                        @error('guest_organization') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div class="md:col-span-2">
                         <label for="guest_address" class="block text-sm font-medium text-gray-700 mb-1">Address</label>
@@ -63,7 +69,7 @@
                             <option value="">Select a room type...</option>
                             @foreach($roomTypes as $rt)
                                 <option value="{{ $rt->id }}" {{ old('preferred_room_type_id', request('room_type')) == $rt->id ? 'selected' : '' }}>
-                                    {{ $rt->name }} - ₱{{ number_format($rt->base_rate, 0) }}/night ({{ $rt->available_rooms_count }} available, Up to {{ $rt->capacity }} guests)
+                                    {{ $rt->name }} - {{ $rt->getFormattedPrice() }} ({{ $rt->available_rooms_count }} available, Up to {{ $rt->capacity }} guests)
                                 </option>
                             @endforeach
                         </select>

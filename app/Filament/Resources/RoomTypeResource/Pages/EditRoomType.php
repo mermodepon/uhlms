@@ -5,6 +5,7 @@ namespace App\Filament\Resources\RoomTypeResource\Pages;
 use App\Filament\Resources\RoomTypeResource;
 use Filament\Actions;
 use App\Filament\Pages\EditRedirectToIndex as EditRecord;
+use Filament\Notifications\Notification;
 
 class EditRoomType extends EditRecord
 {
@@ -27,5 +28,13 @@ class EditRoomType extends EditRecord
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
+    }
+
+    protected function getSavedNotification(): ?Notification
+    {
+        return Notification::make()
+            ->success()
+            ->title('Room Type updated')
+            ->body("Room Type \"{$this->record->name}\" has been updated successfully.");
     }
 }
