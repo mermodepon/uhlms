@@ -29,17 +29,27 @@ class RoomTypeResource extends Resource
                         Forms\Components\TextInput::make('name')
                             ->required()
                             ->maxLength(255),
-                        Forms\Components\TextInput::make('capacity')
-                            ->required()
-                            ->numeric()
-                            ->minValue(1)
-                            ->maxValue(20)
-                            ->default(2),
                         Forms\Components\TextInput::make('base_rate')
                             ->required()
                             ->numeric()
                             ->prefix('₱')
-                            ->minValue(0),
+                            ->minValue(0)
+                            ->label('Base Rate')
+                            ->helperText(fn ($get) => 
+                                $get('pricing_type') === 'per_person' 
+                                    ? 'Rate per person per night'
+                                    : 'Rate per night'
+                            ),
+                        Forms\Components\Select::make('pricing_type')
+                            ->label('Pricing Type')
+                            ->options([
+                                'flat_rate' => 'Flat Rate (per room)',
+                                'per_person' => 'Per Person',
+                            ])
+                            ->default('flat_rate')
+                            ->required()
+                            ->live()
+                            ->helperText('Choose how this room type is priced'),
                         Forms\Components\Toggle::make('is_active')
                             ->default(true),
                         Forms\Components\Textarea::make('description')
@@ -92,13 +102,24 @@ class RoomTypeResource extends Resource
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('capacity')
-                    ->searchable()
-                    ->sortable(),
                 Tables\Columns\TextColumn::make('base_rate')
-                    ->money('PHP')
+                    ->label('Rate')
+                    ->formatStateUsing(fn (RoomType $record) => $record->getFormattedPrice())
                     ->searchable()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('pricing_type')
+                    ->label('Pricing')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'flat_rate' => 'Flat Rate',
+                        'per_person' => 'Per Person',
+                        default => ucfirst(str_replace('_', ' ', $state)),
+                    })
+                    ->color(fn (string $state): string => match ($state) {
+                        'flat_rate' => 'primary',
+                        'per_person' => 'success',
+                        default => 'gray',
+                    }),
                 Tables\Columns\TextColumn::make('rooms.room_number')
                     ->label('Rooms')
                     ->searchable()

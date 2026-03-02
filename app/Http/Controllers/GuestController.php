@@ -54,6 +54,7 @@ class GuestController extends Controller
         $roomTypes = RoomType::where('is_active', true)
             ->whereNotNull('virtual_tour_url')
             ->where('virtual_tour_url', '!=', '')
+            ->select(['id', 'name', 'description', 'virtual_tour_url', 'images'])
             ->get();
 
         return view('guest.virtual-tours', compact('roomTypes'));
@@ -77,7 +78,9 @@ class GuestController extends Controller
     public function reserveSubmit(Request $request)
     {
         $validated = $request->validate([
-            'guest_name' => 'required|string|max:255',
+            'guest_last_name' => 'required|string|max:255',
+            'guest_first_name' => 'required|string|max:255',
+            'guest_middle_initial' => 'nullable|string|max:10',
             'guest_email' => 'required|email|max:255',
             'guest_phone' => 'nullable|string|max:20',
             'guest_address' => 'nullable|string|max:1000',
@@ -90,6 +93,13 @@ class GuestController extends Controller
             'special_requests' => 'nullable|string|max:2000',
         ]);
 
+        // Combine name fields for guest_name (backward compatibility)
+        $validated['guest_name'] = trim(
+            $validated['guest_first_name'] . ' ' . 
+            ($validated['guest_middle_initial'] ?? '') . ' ' . 
+            $validated['guest_last_name']
+        );
+        
         $validated['status'] = 'pending';
 
         $reservation = Reservation::create($validated);

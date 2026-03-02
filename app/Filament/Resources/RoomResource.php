@@ -39,7 +39,17 @@ class RoomResource extends Resource
                             ->relationship('floor', 'name')
                             ->required()
                             ->preload()
-                            ->searchable(),
+                            ->searchable()
+                            ->default(function () {
+                                return \App\Models\Floor::where('name', 'Ground Floor')->first()?->id 
+                                    ?? \App\Models\Floor::orderBy('level')->first()?->id;
+                            }),
+                        Forms\Components\TextInput::make('capacity')
+                            ->required()
+                            ->numeric()
+                            ->minValue(1)
+                            ->maxValue(20)
+                            ->default(2),
                         Forms\Components\Select::make('status')
                             ->options([
                                 'available' => 'Available',
@@ -63,6 +73,9 @@ class RoomResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('room_number')
+                    ->sortable()
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('capacity')
                     ->sortable()
                     ->searchable(),
                 Tables\Columns\TextColumn::make('roomType.name')

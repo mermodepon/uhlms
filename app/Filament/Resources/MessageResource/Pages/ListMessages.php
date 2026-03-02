@@ -10,7 +10,7 @@ class ListMessages extends ListRecords
 {
     protected static string $resource = MessageResource::class;
     
-    protected static ?string $pollingInterval = '15s';
+    protected static ?string $pollingInterval = '30s';
 
     protected function getHeaderActions(): array
     {

@@ -12,7 +12,7 @@
             </nav>
             <h1 class="text-3xl font-bold mb-2">{{ $roomType->name }}</h1>
             <div class="flex items-center gap-4 text-gray-200">
-                <span>₱{{ number_format($roomType->base_rate, 0) }}/night</span>
+                <span>{{ $roomType->getFormattedPrice() }}</span>
                 <span>•</span>
                 <span>Up to {{ $roomType->capacity }} {{ Str::plural('guest', $roomType->capacity) }}</span>
                 <span>•</span>
@@ -100,7 +100,7 @@
                 <div class="bg-white rounded-xl shadow-md p-6 sticky top-6">
                     <div class="text-center mb-6">
                         <div class="text-3xl font-bold text-[#00491E]">₱{{ number_format($roomType->base_rate, 0) }}</div>
-                        <div class="text-gray-500">per night</div>
+                        <div class="text-gray-500">{{ $roomType->isPerPersonPricing() ? 'per person per night' : 'per night' }}</div>
                     </div>
                     <div class="space-y-3 text-sm text-gray-600 mb-6">
                         <div class="flex justify-between">
