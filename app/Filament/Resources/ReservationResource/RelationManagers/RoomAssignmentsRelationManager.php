@@ -167,7 +167,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                         Tables\Actions\Action::make('close')
                             ->label('Close')
                             ->color('gray')
-                            ->action(fn () => null),
+                            ->cancelParentActions(),
                     ])
                     ->visible(fn () => $this->getOwnerRecord()->roomAssignments()->exists()),
                 Tables\Actions\CreateAction::make()
@@ -224,6 +224,143 @@ class RoomAssignmentsRelationManager extends RelationManager
             ->actions([
                 Tables\Actions\ViewAction::make()
                     ->label('View Details'),
+                Tables\Actions\EditAction::make()
+                    ->label('Edit')
+                    ->modalHeading('Edit Room Assignment')
+                    ->modalWidth('5xl')
+                    ->form([
+                        Forms\Components\Section::make('Guest Identification')
+                            ->schema([
+                                Forms\Components\TextInput::make('guest_last_name')
+                                    ->label('Last Name')
+                                    ->required()
+                                    ->maxLength(255),
+                                Forms\Components\TextInput::make('guest_first_name')
+                                    ->label('First Name')
+                                    ->required()
+                                    ->maxLength(255),
+                                Forms\Components\TextInput::make('guest_middle_initial')
+                                    ->label('Middle Initial')
+                                    ->maxLength(10),
+                                Forms\Components\Textarea::make('guest_full_address')
+                                    ->label('Complete Address')
+                                    ->rows(2)
+                                    ->columnSpanFull(),
+                                Forms\Components\TextInput::make('guest_contact_number')
+                                    ->label('Contact Number')
+                                    ->tel()
+                                    ->maxLength(20),
+                            ])->columns(3),
+
+                        Forms\Components\Section::make('Identification & Status')
+                            ->schema([
+                                Forms\Components\Select::make('id_type')
+                                    ->label('ID Type')
+                                    ->options([
+                                        'National ID'        => 'National ID',
+                                        "Driver's License"   => "Driver's License",
+                                        'Passport'           => 'Passport',
+                                        'Student ID'         => 'Student ID',
+                                        'SSS ID'             => 'SSS ID',
+                                        'UMID'               => 'UMID',
+                                        'Phil Health ID'     => 'Phil Health ID',
+                                        "Voter's ID"         => "Voter's ID",
+                                        'Senior Citizen ID'  => 'Senior Citizen ID',
+                                        'PWD ID'             => 'PWD ID',
+                                        'Other'              => 'Other',
+                                    ])
+                                    ->searchable(),
+                                Forms\Components\TextInput::make('id_number')
+                                    ->label('ID Number')
+                                    ->maxLength(100),
+                                Forms\Components\TextInput::make('nationality')
+                                    ->label('Nationality')
+                                    ->maxLength(100),
+                                Forms\Components\Toggle::make('is_student')
+                                    ->label('Student')
+                                    ->inline(false),
+                                Forms\Components\Toggle::make('is_senior_citizen')
+                                    ->label('Senior Citizen')
+                                    ->inline(false),
+                                Forms\Components\Toggle::make('is_pwd')
+                                    ->label('PWD')
+                                    ->inline(false),
+                            ])->columns(3),
+
+                        Forms\Components\Section::make('Stay Details')
+                            ->schema([
+                                Forms\Components\Select::make('purpose_of_stay')
+                                    ->label('Purpose of Stay')
+                                    ->options([
+                                        'Academic'          => 'Academic',
+                                        'Official Business' => 'Official Business',
+                                        'Personal'          => 'Personal',
+                                        'Event/Conference'  => 'Event/Conference',
+                                        'Training'          => 'Training',
+                                        'Research'          => 'Research',
+                                        'Other'             => 'Other',
+                                    ]),
+                                Forms\Components\DateTimePicker::make('detailed_checkin_datetime')
+                                    ->label('Check-in Date & Time')
+                                    ->native(false)
+                                    ->seconds(false),
+                                Forms\Components\DateTimePicker::make('detailed_checkout_datetime')
+                                    ->label('Check-out Date & Time')
+                                    ->native(false)
+                                    ->seconds(false)
+                                    ->after('detailed_checkin_datetime'),
+                            ])->columns(3),
+
+                        Forms\Components\Section::make('Additional Services & Payment')
+                            ->schema([
+                                Forms\Components\CheckboxList::make('additional_requests')
+                                    ->label('Additional Services')
+                                    ->options(function () {
+                                        return Service::active()
+                                            ->ordered()
+                                            ->get()
+                                            ->mapWithKeys(fn (Service $service) => [
+                                                $service->code => $service->name .
+                                                    ($service->price > 0 ? " ({$service->formatted_price})" : ' (Free)'),
+                                            ]);
+                                    })
+                                    ->columns(3)
+                                    ->columnSpanFull(),
+                                Forms\Components\Select::make('payment_mode')
+                                    ->label('Mode of Payment')
+                                    ->options([
+                                        'cash'          => 'Cash',
+                                        'bank_transfer' => 'Bank Transfer',
+                                        'gcash'         => 'GCash',
+                                        'check'         => 'Check',
+                                        'others'        => 'Others',
+                                    ])
+                                    ->live()
+                                    ->required(),
+                                Forms\Components\TextInput::make('payment_mode_other')
+                                    ->label('Specify Payment Mode')
+                                    ->visible(fn ($get) => $get('payment_mode') === 'others')
+                                    ->maxLength(100),
+                                Forms\Components\TextInput::make('payment_amount')
+                                    ->label('Total Payment Amount')
+                                    ->numeric()
+                                    ->prefix('₱')
+                                    ->minValue(0)
+                                    ->required(),
+                                Forms\Components\TextInput::make('payment_or_number')
+                                    ->label('Official Receipt Number')
+                                    ->maxLength(100),
+                            ])->columns(2),
+
+                        Forms\Components\Section::make('Notes')
+                            ->schema([
+                                Forms\Components\Textarea::make('notes')
+                                    ->label('Notes')
+                                    ->rows(3)
+                                    ->columnSpanFull(),
+                            ]),
+                    ])
+                    ->successNotificationTitle('Room assignment updated successfully'),
                 Tables\Actions\DeleteAction::make()
                     ->label('Unassign')
                     ->modalHeading('Unassign Room')
@@ -313,13 +450,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                         Infolists\Components\TextEntry::make('guest_contact_number')
                             ->label('Contact Number'),
                         Infolists\Components\TextEntry::make('reservation.guest_gender')
-                            ->label('Gender')
-                            ->badge()
-                            ->color(fn (?string $state): string => match ($state) {
-                                'Male' => 'info',
-                                'Female' => 'warning',
-                                default => 'gray',
-                            }),
+                            ->label('Gender'),
                         Infolists\Components\TextEntry::make('nationality')
                             ->label('Nationality'),
                     ])->columns(3),

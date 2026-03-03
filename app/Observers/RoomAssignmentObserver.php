@@ -58,6 +58,15 @@ class RoomAssignmentObserver
 
     public function deleted(RoomAssignment $assignment): void
     {
+        // Free the room when unassigned (only if not currently checked in)
+        if ($assignment->room && in_array($assignment->room->status, ['occupied'])) {
+            $reservation = $assignment->reservation;
+            // Only mark available if the reservation is not actively checked in
+            if (!$reservation || $reservation->status !== 'checked_in') {
+                $assignment->room->update(['status' => 'available']);
+            }
+        }
+
         $staff = User::whereIn('role', ['admin', 'staff'])->get();
         foreach ($staff as $user) {
             Notification::createNotification(

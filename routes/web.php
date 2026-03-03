@@ -14,4 +14,5 @@ Route::post('/reserve', [GuestController::class, 'reserveSubmit'])->name('guest.
 Route::get('/track', [GuestController::class, 'track'])->name('guest.track');
 Route::get('/messages', [MessageController::class, 'index'])->name('guest.messages');
 Route::post('/messages', [MessageController::class, 'store'])->name('guest.messages.store');
+Route::post('/contact', [MessageController::class, 'storeInquiry'])->name('guest.contact.store');
 

@@ -35,16 +35,31 @@ class ReservationObserver
             $newStatus = $changes['status'];
             $oldStatus = $reservation->getOriginal('status');
 
-            // Close any open stay logs if reservation is cancelled, declined, or checked out
+            // Close any open stay logs and free rooms if reservation is cancelled, declined, or checked out
             if (in_array($newStatus, ['cancelled', 'declined', 'checked_out'])) {
-                StayLog::where('reservation_id', $reservation->id)
+                $openLogs = StayLog::where('reservation_id', $reservation->id)
                     ->whereNotNull('checked_in_at')
                     ->whereNull('checked_out_at')
-                    ->update([
+                    ->get();
+
+                foreach ($openLogs as $log) {
+                    $log->update([
                         'checked_out_at' => now(),
                         'checked_out_by' => auth()->id(),
                         'remarks' => 'Auto-closed: reservation status changed to ' . $newStatus,
                     ]);
+                    // Free the room
+                    if ($log->room) {
+                        $log->room->update(['status' => 'available']);
+                    }
+                }
+
+                // Also free any rooms on assignments directly (covers cases with no stay log)
+                foreach ($reservation->roomAssignments as $assignment) {
+                    if ($assignment->room && $assignment->room->status === 'occupied') {
+                        $assignment->room->update(['status' => 'available']);
+                    }
+                }
             }
 
             // Notify all admins of status change

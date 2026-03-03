@@ -12,6 +12,7 @@ class Message extends Model
         'sender_id',
         'sender_name',
         'sender_email',
+        'subject',
         'sender_type',
         'message',
         'is_read',

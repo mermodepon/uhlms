@@ -18,7 +18,7 @@ class SettingObserver
                 "A new site setting \"{$setting->key}\" has been configured.",
                 'info',
                 'setting',
-                '/admin/settings',
+                '/admin/site-settings',
                 auth()->id()
             );
         }
@@ -42,7 +42,7 @@ class SettingObserver
                 "The site setting \"{$label}\" has been updated.",
                 'info',
                 'setting',
-                '/admin/settings',
+                '/admin/site-settings',
                 auth()->id()
             );
         }
@@ -60,7 +60,7 @@ class SettingObserver
                 "The site setting \"{$label}\" has been removed.",
                 'danger',
                 'setting',
-                '/admin/settings',
+                '/admin/site-settings',
                 auth()->id()
             );
         }

@@ -4,33 +4,33 @@
 
 @section('content')
     {{-- Hero Section --}}
+    @php
+        use App\Models\Setting;
+        $heroBanner = Setting::get('hero_banner');
+        $heroSrc = $heroBanner ? asset('storage/' . $heroBanner) : asset('images/uh_banner.png');
+        $welcomeMessage = Setting::get('welcome_message', 'Comfortable and affordable lodging for visiting scholars, faculty, students, and guests of Central Mindanao University.');
+        $siteTitle = Setting::get('site_title', 'University Homestay');
+    @endphp
     <section class="relative bg-gradient-to-br from-[#00491E] via-[#02681E] to-[#00491E] text-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
             <div class="flex justify-center mb-8">
-                @php
-                    $bannerPath = \App\Models\Setting::get('guest_page_banner');
-                    $imageSrc = $bannerPath ? asset('storage/' . $bannerPath) : asset('images/uh_banner.png');
-                @endphp
-                <img src="{{ $imageSrc }}" alt="UH Lodging Banner" class="w-full max-w-4xl rounded-xl shadow-lg object-cover" />
+                <img src="{{ $heroSrc }}" alt="Hero Banner" class="w-full max-w-4xl rounded-xl shadow-lg object-cover" />
             </div>
             <div class="text-center">
-                <div class="inline-block bg-[#FFC600] text-[#00491E] px-4 py-1 rounded-full text-sm font-bold mb-6">
-                    Central Mindanao University
-                </div>
                 <h1 class="text-4xl md:text-6xl font-bold mb-6">
-                    University <span class="text-[#FFC600]">Homestay</span>
+                    {{ $siteTitle }}
                 </h1>
                 <p class="text-xl md:text-2xl text-gray-200 mb-8 max-w-3xl mx-auto">
-                    Comfortable and affordable lodging for visiting scholars, faculty, students, and guests of Central Mindanao University.
+                    {{ $welcomeMessage }}
                 </p>
                 <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    <a href="{{ route('guest.rooms') }}" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg hover:bg-yellow-400 transition shadow-lg">
+                    <a href="{{ route('guest.rooms') }}" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg shadow-lg transition-all duration-200 hover:bg-[#00491E] hover:text-[#FFC600] hover:shadow-2xl hover:scale-105 active:scale-95">
                         Browse Rooms
                     </a>
-                    <a href="{{ route('guest.reserve') }}" class="bg-transparent border-2 border-white text-white px-8 py-3 rounded-lg font-bold text-lg hover:bg-white hover:text-[#00491E] transition">
+                    <a href="{{ route('guest.reserve') }}" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg shadow-lg transition-all duration-200 hover:bg-[#00491E] hover:text-[#FFC600] hover:shadow-2xl hover:scale-105 active:scale-95">
                         Make a Reservation
                     </a>
-                    <a href="{{ route('guest.virtual-tours') }}" class="bg-transparent border-2 border-[#FFC600] text-[#FFC600] px-8 py-3 rounded-lg font-bold text-lg hover:bg-white hover:text-[#00491E] hover:border-white hover:scale-105 hover:shadow-lg transition-all duration-200 flex items-center gap-2">
+                    <a href="{{ route('guest.virtual-tours') }}" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg shadow-lg transition-all duration-200 hover:bg-[#00491E] hover:text-[#FFC600] hover:shadow-2xl hover:scale-105 active:scale-95 flex items-center gap-2">
                         🎯 360° Virtual Tours
                     </a>
                 </div>
@@ -39,6 +39,37 @@
         <div class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-gray-50 to-transparent"></div>
     </section>
 
+    {{-- About & Amenities --}}
+    @php
+        $aboutText = Setting::get('about_text');
+        $showAmenities = Setting::get('show_amenities');
+        $amenities = json_decode(Setting::get('amenities', '[]'), true) ?? [];
+    @endphp
+    @if($aboutText)
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="text-center mb-8">
+            <h2 class="text-3xl font-bold text-[#00491E] mb-4">About Us</h2>
+            <p class="text-gray-700 max-w-2xl mx-auto">{{ $aboutText }}</p>
+        </div>
+    </section>
+    @endif
+    @if($showAmenities && is_array($amenities) && count($amenities))
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="text-center mb-8">
+            <h2 class="text-2xl font-bold text-[#00491E] mb-4">Amenities</h2>
+            <div class="flex flex-wrap justify-center gap-6">
+                @foreach($amenities as $amenity)
+                    <div class="bg-white rounded-lg shadow p-4 flex flex-col items-center w-40">
+                        @if(!empty($amenity['image']))
+                            <img src="{{ asset('storage/' . $amenity['image']) }}" alt="{{ $amenity['name'] }}" class="h-16 w-16 object-cover rounded mb-2" />
+                        @endif
+                        <span class="font-semibold text-[#00491E]">{{ $amenity['name'] }}</span>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </section>
+    @endif
     {{-- Room Types Preview --}}
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div class="text-center mb-12">
@@ -99,7 +130,34 @@
         </div>
     </section>
 
-    {{-- How It Works --}}
+    {{-- Booking Policy & FAQ --}}
+    @php
+        $bookingPolicy = Setting::get('booking_policy');
+        $faq = json_decode(Setting::get('faq', '[]'), true) ?? [];
+    @endphp
+    @if($bookingPolicy)
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="text-center mb-8">
+            <h2 class="text-2xl font-bold text-[#00491E] mb-4">Booking Policy & Terms</h2>
+            <p class="text-gray-700 max-w-2xl mx-auto">{{ $bookingPolicy }}</p>
+        </div>
+    </section>
+    @endif
+    @if(is_array($faq) && count($faq))
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="text-center mb-8">
+            <h2 class="text-2xl font-bold text-[#00491E] mb-4">Frequently Asked Questions</h2>
+            <div class="max-w-2xl mx-auto text-left">
+                @foreach($faq as $item)
+                    <div class="mb-6">
+                        <div class="font-semibold text-[#00491E]">Q: {{ $item['question'] }}</div>
+                        <div class="text-gray-700 ml-2">A: {{ $item['answer'] }}</div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </section>
+    @endif
     <section class="bg-[#00491E]/5 py-16">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-12">

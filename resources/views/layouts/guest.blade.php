@@ -3,17 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'CMU University Homestay') - Lodging Management System</title>
-    <link rel="icon" type="image/png" href="{{ asset('images/uh_logo.jpg') }}">
-    <link rel="apple-touch-icon" href="{{ asset('images/uh_logo.jpg') }}">
+    @php
+        use App\Models\Setting;
+        $siteTitle = Setting::get('site_title', 'CMU University Homestay');
+            $maintenanceMode = Setting::get('maintenance_mode');
+            $maintenanceMessage = Setting::get('maintenance_message');
+            $highContrast = Setting::get('accessibility_high_contrast');
+            $largeText = Setting::get('accessibility_large_text');
+        $siteTagline = Setting::get('site_tagline', 'Lodging Management System');
+        $siteLogo = Setting::get('site_logo');
+        $logoSrc = $siteLogo ? asset('storage/' . $siteLogo) : asset('images/uh_logo.jpg');
+        $themeColor = Setting::get('theme_color', '#FFC600');
+        $themeFont = Setting::get('theme_font', 'sans');
+    @endphp
+    <title>@yield('title', $siteTitle) - {{ $siteTagline }}</title>
+    <link rel="icon" type="image/png" href="{{ $logoSrc }}">
+    <link rel="apple-touch-icon" href="{{ $logoSrc }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         :root {
-            --cmu-yellow: #FFC600;
+            --cmu-yellow: {{ $themeColor }};
             --cmu-green: #00491E;
             --cmu-green-alt1: #02681E;
             --cmu-green-alt2: #919F02;
+        }
+        body {
+            font-family: {{ $themeFont == 'serif' ? 'Georgia, Times, serif' : ($themeFont == 'mono' ? 'Menlo, Monaco, monospace' : 'Inter, Arial, sans-serif') }};
         }
         /* Improve form input visibility */
         input[type="text"],
@@ -48,25 +64,63 @@
         textarea::placeholder {
             color: #9ca3af !important;
         }
+        /* Accessibility: High Contrast */
+        @if($highContrast)
+        body {
+            background: #000 !important;
+            color: #fff !important;
+        }
+        body a,
+        body .text-\[\#00491E\],
+        body .text-gray-300,
+        body .text-gray-400,
+        body .text-gray-600,
+        body .text-gray-700 {
+            color: #FFD700 !important;
+        }
+        @endif
+        /* Accessibility: Large Text */
+        @if($largeText)
+        body { font-size: 1.25em !important; }
+        @endif
     </style>
     @stack('styles')
 </head>
 <body class="min-h-screen bg-gray-50 flex flex-col">
+    {{-- Announcement Bar --}}
+    @php
+        $showAnnouncement = Setting::get('show_announcement');
+        $announcementText = Setting::get('announcement_text');
+    @endphp
+        @if($maintenanceMode && $maintenanceMessage)
+            <div class="w-full bg-red-600 text-white py-2 px-4 text-center font-bold text-base shadow-md">
+                <span class="inline-block align-middle"><i class="fas fa-tools mr-2"></i>{{ $maintenanceMessage }}</span>
+            </div>
+        @endif
+    @if($showAnnouncement && $announcementText)
+        <div class="w-full bg-[var(--cmu-yellow)] text-[#00491E] py-2 px-4 text-center font-bold text-base shadow-md">
+            {{ $announcementText }}
+        </div>
+    @endif
     {{-- Navigation --}}
     <nav class="bg-[#00491E] shadow-lg">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
-                    <a href="{{ route('guest.home') }}" class="flex items-center space-x-3">
-                        <img src="{{ asset('images/uh_logo.jpg') }}" alt="UH Lodging Management System" class="h-8 w-auto rounded" />
-                        <span class="text-[#FFC600] font-bold text-lg hidden sm:block drop-shadow">UH Lodging Management System</span>
+                    <a href="{{ route('guest.home') }}" class="flex items-center gap-3 group">
+                        <div class="flex-shrink-0 bg-white rounded-lg p-1 shadow ring-2 ring-[#FFC600]/60 group-hover:ring-[#FFC600] transition">
+                            <img src="{{ $logoSrc }}" alt="{{ $siteTitle }}" class="h-9 w-9 object-cover rounded" />
+                        </div>
+                        <div class="hidden sm:flex flex-col leading-tight">
+                            <span class="text-[#FFC600] font-extrabold text-lg tracking-wide group-hover:text-yellow-300 transition drop-shadow">{{ $siteTitle }}</span>
+                        </div>
                     </a>
                 </div>
                 <div class="hidden md:flex items-center space-x-8">
                     <a href="{{ route('guest.home') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.home') ? 'text-[#FFC600]' : '' }}">Home</a>
                     <a href="{{ route('guest.rooms') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.rooms') ? 'text-[#FFC600]' : '' }}">Rooms</a>
                     <a href="{{ route('guest.virtual-tours') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.virtual-tours') ? 'text-[#FFC600]' : '' }}">Virtual Tours</a>
-                    <a href="{{ route('guest.reserve') }}" class="bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 transition {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">Reserve Now</a>
+                    <a href="{{ route('guest.reserve') }}" class="bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold transition-all duration-200 hover:bg-white hover:text-[#00491E] hover:scale-105 active:scale-95 {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">Reserve Now</a>
                     <a href="{{ route('guest.track') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.track') ? 'text-[#FFC600]' : '' }}">Track Status</a>
                     <a href="{{ route('guest.messages') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.messages') ? 'text-[#FFC600]' : '' }}">Contact Us</a>
                 </div>
@@ -112,8 +166,32 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div>
-                    <h3 class="text-[#FFC600] font-bold text-lg mb-3">CMU University Homestay</h3>
-                    <p class="text-gray-300 text-sm">Central Mindanao University<br>Musuan, Maramag, Bukidnon<br>Philippines</p>
+                    <h3 class="text-[var(--cmu-yellow)] font-bold text-lg mb-3">{{ $siteTitle }}</h3>
+                    <p class="text-gray-300 text-sm">
+                        {!! nl2br(e(Setting::get('contact_address', 'Central Mindanao University
+Musuan, Maramag, Bukidnon
+Philippines'))) !!}
+                    </p>
+                    <p class="text-gray-300 text-sm mt-2">
+                        <span class="font-semibold">Phone:</span> {{ Setting::get('contact_phone', '') }}<br>
+                        <span class="font-semibold">Email:</span> {{ Setting::get('contact_email', '') }}
+                    </p>
+                    @if(Setting::get('contact_map_embed'))
+                        <div class="mt-2">
+                            <iframe src="{{ Setting::get('contact_map_embed') }}" width="100%" height="80" style="border:0;" allowfullscreen="" loading="lazy"></iframe>
+                        </div>
+                    @endif
+                    <div class="flex gap-2 mt-3">
+                        @if(Setting::get('social_facebook'))
+                            <a href="{{ Setting::get('social_facebook') }}" target="_blank" class="text-[#FFC600] hover:text-white"><i class="fab fa-facebook"></i> Facebook</a>
+                        @endif
+                        @if(Setting::get('social_instagram'))
+                            <a href="{{ Setting::get('social_instagram') }}" target="_blank" class="text-[#FFC600] hover:text-white"><i class="fab fa-instagram"></i> Instagram</a>
+                        @endif
+                        @if(Setting::get('social_twitter'))
+                            <a href="{{ Setting::get('social_twitter') }}" target="_blank" class="text-[#FFC600] hover:text-white"><i class="fab fa-twitter"></i> Twitter</a>
+                        @endif
+                    </div>
                 </div>
                 <div>
                     <h3 class="text-[#FFC600] font-bold text-lg mb-3">Quick Links</h3>
