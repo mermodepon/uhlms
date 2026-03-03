@@ -63,18 +63,7 @@ class MessageController extends Controller
             'message' => $request->message,
         ]);
         
-        // Notify staff about new guest message
-        $staffUsers = \App\Models\User::whereIn('role', ['admin', 'staff'])->get();
-        foreach ($staffUsers as $user) {
-            \App\Models\Notification::createNotification(
-                $user,
-                'New Guest Message',
-                'Guest ' . $request->sender_name . ' sent a message regarding reservation ' . $request->reference_number,
-                'info',
-                'message',
-                '/admin/messages'
-            );
-        }
+        // Notification is automatically handled by MessageObserver
         
         return back()->with('success', 'Your message has been sent successfully!');
     }

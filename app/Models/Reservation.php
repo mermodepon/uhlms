@@ -14,6 +14,7 @@ class Reservation extends Model
         'guest_last_name',
         'guest_first_name',
         'guest_middle_initial',
+        'guest_gender',
         'guest_email',
         'guest_phone',
         'guest_address',
@@ -22,6 +23,8 @@ class Reservation extends Model
         'check_in_date',
         'check_out_date',
         'number_of_occupants',
+        'num_male_guests',
+        'num_female_guests',
         'purpose',
         'special_requests',
         'status',
@@ -45,11 +48,20 @@ class Reservation extends Model
             if (empty($reservation->reference_number)) {
                 $currentYear = now()->year;
                 
-                // Get the count of reservations created this year
-                $yearlyCount = static::whereYear('created_at', $currentYear)->count();
+                // Get the highest sequence number used this year to prevent recycling
+                $latestReservation = static::where('reference_number', 'LIKE', $currentYear . '-%')
+                    ->orderByRaw('CAST(SUBSTRING(reference_number, ' . (strlen($currentYear) + 2) . ') AS UNSIGNED) DESC')
+                    ->first();
+                
+                $nextSequence = 1;
+                if ($latestReservation) {
+                    // Extract numeric part after the year and dash (e.g., "2026-0005" -> "0005")
+                    $lastSequence = (int) substr($latestReservation->reference_number, strlen($currentYear) + 1);
+                    $nextSequence = $lastSequence + 1;
+                }
                 
                 // Generate sequence number with leading zeros (4 digits)
-                $sequenceNumber = str_pad($yearlyCount + 1, 4, '0', STR_PAD_LEFT);
+                $sequenceNumber = str_pad($nextSequence, 4, '0', STR_PAD_LEFT);
                 
                 $reservation->reference_number = $currentYear . '-' . $sequenceNumber;
             }
@@ -85,6 +97,16 @@ class Reservation extends Model
     public function stayLogs(): HasMany
     {
         return $this->hasMany(StayLog::class);
+    }
+
+    public function messages(): HasMany
+    {
+        return $this->hasMany(Message::class);
+    }
+
+    public function guests(): HasMany
+    {
+        return $this->hasMany(Guest::class);
     }
 
     public function getNightsAttribute(): int

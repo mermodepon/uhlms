@@ -19,6 +19,17 @@ class NotificationDropdown extends Component
         $this->refreshNotifications();
     }
 
+    public function checkForNewNotifications()
+    {
+        // This method is called by wire:poll to check for new notifications
+        $this->loadNotificationCounts();
+        
+        // If dropdown is open, refresh the notifications list too
+        if ($this->showDropdown) {
+            $this->refreshNotifications();
+        }
+    }
+
     public function loadNotificationCounts()
     {
         $user = auth()->user();

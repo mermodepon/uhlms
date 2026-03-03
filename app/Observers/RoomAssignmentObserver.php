@@ -8,6 +8,16 @@ use App\Models\User;
 
 class RoomAssignmentObserver
 {
+    public function creating(RoomAssignment $assignment): void
+    {
+        // Enforce only one room assignment per reservation
+        $existingAssignmentCount = RoomAssignment::where('reservation_id', $assignment->reservation_id)->count();
+        
+        if ($existingAssignmentCount > 0) {
+            throw new \Exception('Only one room assignment is allowed per reservation.');
+        }
+    }
+
     public function created(RoomAssignment $assignment): void
     {
         $staff = User::whereIn('role', ['admin', 'staff'])->get();

@@ -118,10 +118,17 @@
                                 <dd>{{ $reservation->guest_phone }}</dd>
                             </div>
                         @endif
-                        @if($reservation->guest_organization)
+                        @if($reservation->guest_gender)
                             <div class="flex justify-between">
-                                <dt class="text-gray-500">Organization</dt>
-                                <dd>{{ $reservation->guest_organization }}</dd>
+                                <dt class="text-gray-500">Gender</dt>
+                                <dd>
+                                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                                        {{ $reservation->guest_gender === 'Male' ? 'bg-blue-100 text-blue-800' : '' }}
+                                        {{ $reservation->guest_gender === 'Female' ? 'bg-pink-100 text-pink-800' : '' }}
+                                        {{ $reservation->guest_gender === 'Other' ? 'bg-gray-100 text-gray-800' : '' }}">
+                                        {{ $reservation->guest_gender }}
+                                    </span>
+                                </dd>
                             </div>
                         @endif
                     </dl>
