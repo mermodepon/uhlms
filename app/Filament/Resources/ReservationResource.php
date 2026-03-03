@@ -454,8 +454,10 @@ class ReservationResource extends Resource
                                         ->maxLength(100),
                                     Forms\Components\Placeholder::make('declared_occupants')
                                         ->label('Declared Number of Guests')
-                                        ->content(fn (Reservation $record) => $record->number_of_occupants . ' guest' . ($record->number_of_occupants > 1 ? 's' : ''))
-                                        ->columnSpanFull(),
+                                        ->content(fn (Reservation $record) => $record->number_of_occupants . ' guest' . ($record->number_of_occupants > 1 ? 's' : '')),
+                                    Forms\Components\Placeholder::make('declared_days')
+                                        ->label('Declared Number of Days')
+                                        ->content(fn (Reservation $record) => ($d = max(1, $record->check_in_date->diffInDays($record->check_out_date))) . ' day' . ($d > 1 ? 's' : '')),
                                     Forms\Components\TextInput::make('payment_amount')
                                         ->label('Total Payment Amount')
                                         ->numeric()
@@ -770,8 +772,10 @@ class ReservationResource extends Resource
                                         ->maxLength(100),
                                     Forms\Components\Placeholder::make('declared_occupants')
                                         ->label('Declared Number of Guests')
-                                        ->content(fn (Reservation $record) => $record->number_of_occupants . ' guest' . ($record->number_of_occupants > 1 ? 's' : ''))
-                                        ->columnSpanFull(),
+                                        ->content(fn (Reservation $record) => $record->number_of_occupants . ' guest' . ($record->number_of_occupants > 1 ? 's' : '')),
+                                    Forms\Components\Placeholder::make('declared_days')
+                                        ->label('Declared Number of Days')
+                                        ->content(fn (Reservation $record) => ($d = max(1, $record->check_in_date->diffInDays($record->check_out_date))) . ' day' . ($d > 1 ? 's' : '')),
                                     Forms\Components\TextInput::make('payment_amount')
                                         ->label('Total Payment Amount')
                                         ->numeric()
@@ -936,8 +940,7 @@ class ReservationResource extends Resource
                                 ->rows(2),
                         ])
                         ->action(function (Reservation $record, array $data) {
-                            $record->update(['status' => 'checked_out']);
-
+                            // Free rooms BEFORE updating reservation status (observer auto-closes stay logs on status change)
                             foreach ($record->stayLogs()->whereNull('checked_out_at')->get() as $log) {
                                 $log->update([
                                     'checked_out_at' => now(),
@@ -946,6 +949,8 @@ class ReservationResource extends Resource
                                 ]);
                                 $log->room->update(['status' => 'available']);
                             }
+
+                            $record->update(['status' => 'checked_out']);
                         }),
 
                     // Cancel action

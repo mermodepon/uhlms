@@ -38,17 +38,14 @@ class RecentBookings extends BaseWidget
                 Tables\Columns\TextColumn::make('status')
                         ->badge()
                         ->formatStateUsing(fn ($state, $record) => match ($state) {
-                            'approved' => $record->roomAssignments->isEmpty()
-                                ? 'Approved · No Room'
-                                : 'Approved · Room Assigned',
+                            'approved'    => 'Approved',
                             'checked_out' => 'Checked Out',
                             'checked_in'  => 'Checked In',
                             default => ucfirst(str_replace('_', ' ', $state)),
                         })
                         ->color(fn ($state, $record): string => match (true) {
-                            $state === 'pending'                                          => 'warning',
-                            $state === 'approved' && $record->roomAssignments->isEmpty() => 'info',
-                            $state === 'approved'                                        => 'primary',
+                            $state === 'pending'   => 'warning',
+                            $state === 'approved'  => 'primary',
                             $state === 'declined'                                        => 'danger',
                             $state === 'cancelled'                                       => 'gray',
                             $state === 'checked_in'                                      => 'success',

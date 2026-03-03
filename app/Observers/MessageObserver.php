@@ -16,29 +16,37 @@ class MessageObserver
         // Eager load relationships to avoid lazy loading violations
         $message->loadMissing(['sender', 'reservation']);
 
-        // Get reservation reference for context
-        $reservationRef = $message->reservation 
-            ? "Reservation #{$message->reservation->reference_number}" 
-            : "Message";
+        // Determine context for notification text
+        $isGeneralInquiry = is_null($message->reservation_id);
+
+        if ($isGeneralInquiry) {
+            $notificationTitle = 'New General Inquiry';
+            $contextLine      = $message->subject ? "Subject: {$message->subject}" : 'No subject';
+            $actionUrl        = '/admin/inquiries';
+        } else {
+            $notificationTitle = 'New Message from Guest';
+            $contextLine       = $message->reservation
+                ? "Reservation #{$message->reservation->reference_number}"
+                : 'Reservation';
+            $actionUrl         = "/admin/conversations/{$message->reservation_id}";
+        }
 
         // If message is from a guest, notify all staff/admin users
         if ($message->sender_type === 'guest') {
             $staffUsers = User::whereIn('role', ['admin', 'staff'])->get();
-            
-            $messagePreview = strlen($message->message) > 60 
-                ? substr($message->message, 0, 60) . '...' 
+
+            $messagePreview = strlen($message->message) > 60
+                ? substr($message->message, 0, 60) . '...'
                 : $message->message;
 
             foreach ($staffUsers as $user) {
                 Notification::createNotification(
                     notifiable: $user,
-                    title: "New Message from Guest",
-                    message: "{$reservationRef}: {$messagePreview}",
+                    title: $notificationTitle,
+                    message: "{$contextLine}: {$messagePreview}",
                     type: 'info',
                     category: 'message',
-                    actionUrl: $message->reservation_id 
-                        ? "/admin/conversations/{$message->reservation_id}" 
-                        : null,
+                    actionUrl: $actionUrl,
                     createdBy: $message->sender_id
                 );
             }
@@ -56,13 +64,17 @@ class MessageObserver
                     ? substr($message->message, 0, 60) . '...' 
                     : $message->message;
 
+                $resRef = $message->reservation
+                    ? "Reservation #{$message->reservation->reference_number}"
+                    : 'Your inquiry';
+
                 Notification::createNotification(
                     notifiable: $guestUser,
                     title: "New Reply from {$senderName}",
-                    message: "{$reservationRef}: {$messagePreview}",
+                    message: "{$resRef}: {$messagePreview}",
                     type: 'info',
                     category: 'message',
-                    actionUrl: "/guest/messages",
+                    actionUrl: '/guest/messages',
                     createdBy: $message->sender_id
                 );
             }
@@ -104,11 +116,15 @@ class MessageObserver
      */
     public function deleted(Message $message): void
     {
-        // Optional: Clean up related notifications when message is deleted
-        // This prevents orphaned notifications pointing to deleted messages
-        Notification::where('category', 'message')
-            ->where('action_url', 'like', "%/conversations/{$message->reservation_id}%")
-            ->delete();
+        // Clean up related notifications when message is deleted
+        if ($message->reservation_id) {
+            Notification::where('category', 'message')
+                ->where('action_url', 'like', "%/conversations/{$message->reservation_id}%")
+                ->delete();
+        } else {
+            // General inquiry — clean up inquiry notifications linking to /admin/inquiries
+            // (no per-message URL, so we leave the general ones intact)
+        }
     }
 
     /**

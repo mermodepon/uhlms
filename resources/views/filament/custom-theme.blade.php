@@ -42,46 +42,63 @@
 /* Sidebar group header */
 .fi-sidebar-group-button {
     color: rgba(255, 255, 255, 0.5) !important;
+    padding-inline: 1rem !important;
+    margin-top: 0.5rem !important;
 }
 
 .fi-sidebar-group-label {
-    color: rgba(255, 255, 255, 0.55) !important;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.68rem !important;
-    letter-spacing: 0.06em;
+    color: rgba(255, 198, 0, 0.7) !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    font-size: 0.65rem !important;
+    letter-spacing: 0.1em !important;
 }
 
 .fi-sidebar-group-icon {
-    color: rgba(255, 255, 255, 0.4) !important;
+    color: rgba(255, 198, 0, 0.55) !important;
 }
 
 .fi-sidebar-group-collapse-button {
-    color: rgba(255, 255, 255, 0.4) !important;
+    color: rgba(255, 255, 255, 0.35) !important;
+}
+
+/* Divider between groups */
+.fi-sidebar-group + .fi-sidebar-group {
+    border-top: 1px solid rgba(255, 255, 255, 0.07) !important;
+    padding-top: 0.25rem !important;
 }
 
 /* Sidebar nav item link */
 .fi-sidebar-item-button {
     color: rgba(255, 255, 255, 0.9) !important;
+    border-radius: 0.5rem !important;
+    padding-left: 0.875rem !important;
+    margin-inline: 0.5rem !important;
+    position: relative !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease !important;
+    border-left: 3px solid transparent !important;
 }
 
 .fi-sidebar-item-label {
-    color: rgba(255, 255, 255, 0.9) !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+    font-size: 0.875rem !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.01em !important;
 }
 
 .fi-sidebar-item-icon {
-    color: rgba(255, 255, 255, 0.6) !important;
+    color: rgba(255, 255, 255, 0.5) !important;
 }
 
-/* Sidebar grouped item dot/border */
+/* Hide the old dot/vertical-line connector — replaced by left-border accent */
 .fi-sidebar-item-grouped-border {
-    border-color: rgba(255, 255, 255, 0.2) !important;
-    background-color: rgba(255, 255, 255, 0.2) !important;
+    display: none !important;
 }
 
 /* Sidebar item hover */
 .fi-sidebar-item-button:hover {
-    background-color: rgba(255, 255, 255, 0.08) !important;
+    background-color: rgba(255, 255, 255, 0.07) !important;
+    border-left-color: rgba(255, 198, 0, 0.5) !important;
 }
 
 .fi-sidebar-item-button:hover .fi-sidebar-item-label {
@@ -95,20 +112,16 @@
 /* Sidebar active item */
 .fi-sidebar-item.fi-active .fi-sidebar-item-button {
     background-color: rgba(255, 198, 0, 0.12) !important;
+    border-left-color: #FFC600 !important;
 }
 
 .fi-sidebar-item.fi-active .fi-sidebar-item-label {
     color: #FFC600 !important;
-    font-weight: 600;
+    font-weight: 600 !important;
 }
 
 .fi-sidebar-item.fi-active .fi-sidebar-item-icon {
     color: #FFC600 !important;
-}
-
-.fi-sidebar-item.fi-active .fi-sidebar-item-grouped-border {
-    border-color: #FFC600 !important;
-    background-color: #FFC600 !important;
 }
 
 /* Sidebar collapse/toggle buttons */

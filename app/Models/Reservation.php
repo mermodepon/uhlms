@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Reservation extends Model
 {
@@ -47,22 +48,21 @@ class Reservation extends Model
         static::creating(function (self $reservation) {
             if (empty($reservation->reference_number)) {
                 $currentYear = now()->year;
-                
-                // Get the highest sequence number used this year to prevent recycling
-                $latestReservation = static::where('reference_number', 'LIKE', $currentYear . '-%')
-                    ->orderByRaw('CAST(SUBSTRING(reference_number, ' . (strlen($currentYear) + 2) . ') AS UNSIGNED) DESC')
-                    ->first();
-                
-                $nextSequence = 1;
-                if ($latestReservation) {
-                    // Extract numeric part after the year and dash (e.g., "2026-0005" -> "0005")
-                    $lastSequence = (int) substr($latestReservation->reference_number, strlen($currentYear) + 1);
-                    $nextSequence = $lastSequence + 1;
-                }
-                
-                // Generate sequence number with leading zeros (4 digits)
+
+                // Atomically increment the permanent counter for this year.
+                // This ensures deleted reservations never recycle their numbers.
+                DB::table('reservation_sequences')->upsert(
+                    ['year' => $currentYear, 'last_sequence' => 1],
+                    ['year'],
+                    ['last_sequence' => DB::raw('last_sequence + 1')]
+                );
+
+                $nextSequence = DB::table('reservation_sequences')
+                    ->where('year', $currentYear)
+                    ->value('last_sequence');
+
                 $sequenceNumber = str_pad($nextSequence, 4, '0', STR_PAD_LEFT);
-                
+
                 $reservation->reference_number = $currentYear . '-' . $sequenceNumber;
             }
         });

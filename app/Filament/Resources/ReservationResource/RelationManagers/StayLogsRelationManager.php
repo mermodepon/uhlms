@@ -97,8 +97,7 @@ class StayLogsRelationManager extends RelationManager
                     ->dateTime()
                     ->label('Checked Out')
                     ->sortable()
-                    ->placeholder('—')
-                    ->default('—'),
+                    ->placeholder('—'),
                 Tables\Columns\TextColumn::make('checkedOutByUser.name')
                     ->label('By')
                     ->sortable()
