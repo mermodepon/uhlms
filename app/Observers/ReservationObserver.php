@@ -42,6 +42,7 @@ class ReservationObserver
                     ->whereNull('checked_out_at')
                     ->update([
                         'checked_out_at' => now(),
+                        'checked_out_by' => auth()->id(),
                         'remarks' => 'Auto-closed: reservation status changed to ' . $newStatus,
                     ]);
             }
@@ -70,6 +71,7 @@ class ReservationObserver
             ->whereNull('checked_out_at')
             ->update([
                 'checked_out_at' => now(),
+                'checked_out_by' => auth()->id(),
                 'remarks' => 'Auto-closed: reservation was deleted',
             ]);
 

@@ -49,6 +49,17 @@
                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                         @error('guest_phone') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
+                    <div>
+                        <label for="guest_gender" class="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
+                        <select name="guest_gender" id="guest_gender" required
+                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                            <option value="">Select gender...</option>
+                            <option value="Male" {{ old('guest_gender') == 'Male' ? 'selected' : '' }}>Male</option>
+                            <option value="Female" {{ old('guest_gender') == 'Female' ? 'selected' : '' }}>Female</option>
+                            <option value="Other" {{ old('guest_gender') == 'Other' ? 'selected' : '' }}>Other</option>
+                        </select>
+                        @error('guest_gender') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
                     <div class="md:col-span-2">
                         <label for="guest_address" class="block text-sm font-medium text-gray-700 mb-1">Address</label>
                         <textarea name="guest_address" id="guest_address" rows="2"

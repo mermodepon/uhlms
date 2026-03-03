@@ -3,12 +3,14 @@
 namespace App\Providers;
 
 use App\Models\Amenity;
+use App\Models\Message;
 use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
 use App\Models\Setting;
 use App\Observers\AmenityObserver;
+use App\Observers\MessageObserver;
 use App\Observers\ReservationObserver;
 use App\Observers\RoomObserver;
 use App\Observers\RoomAssignmentObserver;
@@ -53,6 +55,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Register model observers for notification system
         Amenity::observe(AmenityObserver::class);
+        Message::observe(MessageObserver::class);
         Reservation::observe(ReservationObserver::class);
         Room::observe(RoomObserver::class);
         RoomAssignment::observe(RoomAssignmentObserver::class);

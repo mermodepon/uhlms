@@ -20,7 +20,10 @@ class MessageResource extends Resource
 
     protected static ?string $navigationGroup = 'Communication';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 2;
+    
+    // Hide from navigation - use Conversations instead
+    protected static bool $shouldRegisterNavigation = false;
 
     public static function getNavigationBadge(): ?string
     {
@@ -160,6 +163,12 @@ class MessageResource extends Resource
                         ->successNotificationTitle('Messages deleted'),
                 ]),
             ]);
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->with(['sender', 'reservation']);
     }
 
     public static function getRelations(): array

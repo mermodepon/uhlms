@@ -81,6 +81,7 @@ class GuestController extends Controller
             'guest_last_name' => 'required|string|max:255',
             'guest_first_name' => 'required|string|max:255',
             'guest_middle_initial' => 'nullable|string|max:10',
+            'guest_gender' => 'required|in:Male,Female,Other',
             'guest_email' => 'required|email|max:255',
             'guest_phone' => 'nullable|string|max:20',
             'guest_address' => 'nullable|string|max:1000',
