@@ -19,7 +19,6 @@ class Reservation extends Model
         'guest_email',
         'guest_phone',
         'guest_address',
-        'guest_organization',
         'preferred_room_type_id',
         'check_in_date',
         'check_out_date',
@@ -30,6 +29,10 @@ class Reservation extends Model
         'special_requests',
         'status',
         'admin_notes',
+        'checkin_hold_payload',
+        'checkin_hold_started_at',
+        'checkin_hold_expires_at',
+        'checkin_hold_by',
         'reviewed_by',
         'reviewed_at',
     ];
@@ -39,6 +42,9 @@ class Reservation extends Model
         return [
             'check_in_date' => 'date',
             'check_out_date' => 'date',
+            'checkin_hold_payload' => 'array',
+            'checkin_hold_started_at' => 'datetime',
+            'checkin_hold_expires_at' => 'datetime',
             'reviewed_at' => 'datetime',
         ];
     }
@@ -94,11 +100,6 @@ class Reservation extends Model
         return $this->hasMany(RoomAssignment::class);
     }
 
-    public function stayLogs(): HasMany
-    {
-        return $this->hasMany(StayLog::class);
-    }
-
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class);
@@ -119,6 +120,7 @@ class Reservation extends Model
         return match ($this->status) {
             'pending' => 'warning',
             'approved' => 'info',
+            'pending_payment' => 'warning',
             'declined' => 'danger',
             'cancelled' => 'gray',
             'checked_in' => 'success',

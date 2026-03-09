@@ -79,8 +79,15 @@
                                 class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                             <option value="">Select a room type...</option>
                             @foreach($roomTypes as $rt)
+                                @php
+                                    $availabilityText = $rt->room_sharing_type === 'public' 
+                                        ? "{$rt->available_beds} beds available"
+                                        : "{$rt->available_rooms_count} rooms available";
+                                    
+                                    $displayText = "{$rt->name} - {$rt->getFormattedPrice()} ({$availabilityText}, Up to {$rt->capacity} guests)";
+                                @endphp
                                 <option value="{{ $rt->id }}" {{ old('preferred_room_type_id', request('room_type')) == $rt->id ? 'selected' : '' }}>
-                                    {{ $rt->name }} - {{ $rt->getFormattedPrice() }} ({{ $rt->available_rooms_count }} available, Up to {{ $rt->capacity }} guests)
+                                    {{ $displayText }}
                                 </option>
                             @endforeach
                         </select>

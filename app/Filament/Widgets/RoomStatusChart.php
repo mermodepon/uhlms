@@ -3,7 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Room;
-use App\Models\StayLog;
+use App\Models\RoomAssignment;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +27,7 @@ class RoomStatusChart extends ChartWidget
                     DB::raw("SUM(CASE WHEN status = 'inactive' OR is_active = 0 THEN 1 ELSE 0 END) as inactive")
                 )->first();
 
-            $occupied = StayLog::whereNotNull('checked_in_at')
+            $occupied = RoomAssignment::whereNotNull('checked_in_at')
                 ->whereNull('checked_out_at')
                 ->distinct('room_id')
                 ->count('room_id');

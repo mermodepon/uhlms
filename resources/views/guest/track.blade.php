@@ -39,6 +39,7 @@
                         $statusColors = [
                             'pending' => 'bg-yellow-100 text-yellow-800 border-yellow-300',
                             'approved' => 'bg-blue-100 text-blue-800 border-blue-300',
+                            'pending_payment' => 'bg-amber-100 text-amber-800 border-amber-300',
                             'declined' => 'bg-red-100 text-red-800 border-red-300',
                             'cancelled' => 'bg-gray-100 text-gray-800 border-gray-300',
                             'checked_in' => 'bg-green-100 text-green-800 border-green-300',
@@ -47,6 +48,7 @@
                         $statusLabels = [
                             'pending' => 'Pending Review',
                             'approved' => 'Approved',
+                            'pending_payment' => 'Pending Payment',
                             'declined' => 'Declined',
                             'cancelled' => 'Cancelled',
                             'checked_in' => 'Checked In',
@@ -60,7 +62,7 @@
 
                 {{-- Progress Bar --}}
                 @php
-                    $steps = ['pending', 'approved', 'checked_in', 'checked_out'];
+                    $steps = ['pending', 'approved', 'pending_payment', 'checked_in', 'checked_out'];
                     $currentIndex = array_search($reservation->status, $steps);
                     if ($reservation->status === 'declined' || $reservation->status === 'cancelled') {
                         $currentIndex = -1;
@@ -167,47 +169,106 @@
                 </div>
             </div>
 
-            {{-- Room Assignment --}}
+            {{-- Room Assignment - Improved Table View --}}
             @if($reservation->roomAssignments->isNotEmpty())
                 <div class="bg-white rounded-xl shadow-md p-6 mt-8">
-                    <h3 class="font-bold text-[#00491E] mb-4">Assigned Room(s)</h3>
-                    <div class="space-y-3">
-                        @foreach($reservation->roomAssignments as $assignment)
-                            <div class="flex items-center justify-between bg-[#00491E]/5 rounded-lg p-3">
-                                <div>
-                                    <span class="font-bold text-[#00491E]">Room {{ $assignment->room->room_number }}</span>
-                                    <span class="text-gray-500 text-sm ml-2">{{ $assignment->room->roomType->name ?? '' }}</span>
-                                </div>
-                                <span class="text-sm text-gray-500">Assigned {{ $assignment->assigned_at->format('M d, Y') }}</span>
-                            </div>
-                        @endforeach
+                    <h3 class="font-bold text-[#00491E] mb-4">Guest Room Assignments</h3>
+                    
+                    {{-- Summary Card --}}
+                    <div class="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p class="text-sm text-blue-800">
+                            <span class="font-semibold">{{ $reservation->roomAssignments->count() }}</span> room assignment(s) 
+                            for <span class="font-semibold">{{ $reservation->number_of_occupants }}</span> guest(s)
+                            @if($reservation->roomAssignments->count() > $reservation->number_of_occupants)
+                                <br><span class="text-orange-600">⚠️ Note: More room assignments than expected. Please contact staff if this is incorrect.</span>
+                            @endif
+                        </p>
+                    </div>
+
+                    {{-- Table View --}}
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-200 bg-gray-50">
+                                    <th class="text-left py-3 px-4 font-semibold text-gray-700">Guest Name</th>
+                                    <th class="text-left py-3 px-4 font-semibold text-gray-700">{{ $reservation->preferredRoomType?->isPrivate() ? 'Room' : 'Room & Bed' }}</th>
+                                    <th class="text-left py-3 px-4 font-semibold text-gray-700">Check-in Status</th>
+                                    <th class="text-left py-3 px-4 font-semibold text-gray-700">Assigned Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($reservation->roomAssignments as $assignment)
+                                    <tr class="border-b border-gray-100 hover:bg-gray-50 transition">
+                                        <td class="py-3 px-4">
+                                            <span class="font-medium text-[#00491E]">
+                                                {{ trim($assignment->guest_first_name . ' ' . $assignment->guest_last_name) ?: $reservation->guest_name }}
+                                            </span>
+                                        </td>
+                                        <td class="py-3 px-4">
+                                            <div>
+                                                <span class="font-semibold">Room {{ $assignment->room->room_number }}</span>
+                                                <span class="text-gray-500 text-xs ml-1">({{ $assignment->room->roomType->name ?? 'Unknown' }})</span>
+                                            </div>
+                                            @if($assignment->bed_id && $assignment->bed)
+                                                <span class="text-gray-600 text-xs">Bed: {{ $assignment->bed->bed_number ?? 'N/A' }}</span>
+                                            @endif
+                                        </td>
+                                        <td class="py-3 px-4">
+                                            @if($assignment->checked_out_at || $assignment->status === 'checked_out')
+                                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                                    ✓ Checked out
+                                                </span>
+                                                <div class="text-xs text-gray-600 mt-1">
+                                                    {{ optional($assignment->checked_out_at)->format('M d, g:i A') ?? 'Completed' }}
+                                                </div>
+                                            @elseif($assignment->checked_in_at)
+                                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                    ✓ Checked in
+                                                </span>
+                                                <div class="text-xs text-gray-600 mt-1">
+                                                    {{ $assignment->checked_in_at->format('M d, g:i A') }}
+                                                </div>
+                                            @else
+                                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                                    ⏱ Pending
+                                                </span>
+                                            @endif
+                                        </td>
+                                        <td class="py-3 px-4 text-gray-600">
+                                            {{ $assignment->assigned_at->format('M d, Y') }}
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             @endif
 
-            {{-- Stay Logs --}}
-            @if($reservation->stayLogs->isNotEmpty())
+            {{-- Additional Notes --}}
+            @php
+                $remarksGrouped = $reservation->roomAssignments
+                    ->where('remarks')
+                    ->groupBy('room_id')
+                    ->map(fn($group) => [
+                        'room' => $group->first()->room,
+                        'remarks' => $group->first()->remarks,
+                        'guests' => $group->map(fn($a) => trim($a->guest_first_name . ' ' . $a->guest_last_name))->filter()->all()
+                    ]);
+            @endphp
+            @if($remarksGrouped->isNotEmpty())
                 <div class="bg-white rounded-xl shadow-md p-6 mt-8">
-                    <h3 class="font-bold text-[#00491E] mb-4">Stay Log</h3>
+                    <h3 class="font-bold text-[#00491E] mb-4">Assignment Notes</h3>
                     <div class="space-y-3">
-                        @foreach($reservation->stayLogs as $log)
-                            <div class="border rounded-lg p-3 text-sm">
-                                <div class="flex justify-between">
-                                    <span class="font-medium">Room {{ $log->room->room_number }}</span>
-                                </div>
-                                <div class="grid grid-cols-2 gap-2 mt-2 text-gray-600">
-                                    <div>
-                                        <span class="text-gray-400">Checked In:</span>
-                                        {{ $log->checked_in_at ? $log->checked_in_at->format('M d, Y g:i A') : '—' }}
-                                    </div>
-                                    <div>
-                                        <span class="text-gray-400">Checked Out:</span>
-                                        {{ $log->checked_out_at ? $log->checked_out_at->format('M d, Y g:i A') : 'Still checked in' }}
-                                    </div>
-                                </div>
-                                @if($log->remarks)
-                                    <p class="text-gray-500 mt-2 text-xs">{{ $log->remarks }}</p>
-                                @endif
+                        @foreach($remarksGrouped as $note)
+                            <div class="border-l-4 border-[#00491E] bg-blue-50 p-4 rounded">
+                                <p class="text-sm font-medium text-[#00491E]">
+                                    Room {{ $note['room']->room_number }}
+                                    @if(!empty($note['guests']))
+                                        <span class="text-gray-600 font-normal text-xs ml-2">({{ implode(', ', $note['guests']) }})</span>
+                                    @endif
+                                </p>
+                                <p class="text-sm text-gray-700 mt-1">{{ $note['remarks'] }}</p>
                             </div>
                         @endforeach
                     </div>

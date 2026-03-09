@@ -93,12 +93,12 @@
         $announcementText = Setting::get('announcement_text');
     @endphp
         @if($maintenanceMode && $maintenanceMessage)
-            <div class="w-full bg-red-600 text-white py-2 px-4 text-center font-bold text-base shadow-md">
+            <div class="w-full bg-red-700 py-2 px-4 text-center font-bold text-base shadow-md" style="color:#FFC600; text-shadow: 0 1px 2px rgba(0,0,0,0.6);">
                 <span class="inline-block align-middle"><i class="fas fa-tools mr-2"></i>{{ $maintenanceMessage }}</span>
             </div>
         @endif
     @if($showAnnouncement && $announcementText)
-        <div class="w-full bg-[var(--cmu-yellow)] text-[#00491E] py-2 px-4 text-center font-bold text-base shadow-md">
+        <div class="w-full py-2 px-4 text-center font-bold text-base shadow-md" style="background-color: var(--cmu-yellow); color: #1a1a1a; text-shadow: 0 1px 1px rgba(255,255,255,0.4);">
             {{ $announcementText }}
         </div>
     @endif

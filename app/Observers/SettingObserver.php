@@ -5,23 +5,20 @@ namespace App\Observers;
 use App\Models\Notification;
 use App\Models\Setting;
 use App\Models\User;
+use App\Notifications\NotificationHelper;
 
 class SettingObserver
 {
     public function created(Setting $setting): void
     {
-        $staff = User::whereIn('role', ['admin', 'staff'])->get();
-        foreach ($staff as $user) {
-            Notification::createNotification(
-                $user,
-                'Site Setting Added',
-                "A new site setting \"{$setting->key}\" has been configured.",
-                'info',
-                'setting',
-                '/admin/site-settings',
-                auth()->id()
-            );
-        }
+        NotificationHelper::notifyAllStaff(
+            'Site Setting Added',
+            "A new site setting \"{$setting->key}\" has been configured.",
+            'info',
+            'setting',
+            '/admin/site-settings',
+            auth()->id()
+        );
     }
 
     public function updated(Setting $setting): void
@@ -34,36 +31,28 @@ class SettingObserver
 
         $label = $this->getSettingLabel($setting->key);
 
-        $staff = User::whereIn('role', ['admin', 'staff'])->get();
-        foreach ($staff as $user) {
-            Notification::createNotification(
-                $user,
-                'Site Setting Updated',
-                "The site setting \"{$label}\" has been updated.",
-                'info',
-                'setting',
-                '/admin/site-settings',
-                auth()->id()
-            );
-        }
+        NotificationHelper::notifyAllStaff(
+            'Site Setting Updated',
+            "The site setting \"{$label}\" has been updated.",
+            'info',
+            'setting',
+            '/admin/site-settings',
+            auth()->id()
+        );
     }
 
     public function deleted(Setting $setting): void
     {
         $label = $this->getSettingLabel($setting->key);
 
-        $staff = User::whereIn('role', ['admin', 'staff'])->get();
-        foreach ($staff as $user) {
-            Notification::createNotification(
-                $user,
-                'Site Setting Deleted',
-                "The site setting \"{$label}\" has been removed.",
-                'danger',
-                'setting',
-                '/admin/site-settings',
-                auth()->id()
-            );
-        }
+        NotificationHelper::notifyAllStaff(
+            'Site Setting Deleted',
+            "The site setting \"{$label}\" has been removed.",
+            'danger',
+            'setting',
+            '/admin/site-settings',
+            auth()->id()
+        );
     }
 
     private function getSettingLabel(string $key): string

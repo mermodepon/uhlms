@@ -5,6 +5,7 @@ namespace App\Observers;
 use App\Models\Message;
 use App\Models\Notification;
 use App\Models\User;
+use App\Notifications\NotificationHelper;
 
 class MessageObserver
 {
@@ -33,23 +34,18 @@ class MessageObserver
 
         // If message is from a guest, notify all staff/admin users
         if ($message->sender_type === 'guest') {
-            $staffUsers = User::whereIn('role', ['admin', 'staff'])->get();
-
             $messagePreview = strlen($message->message) > 60
                 ? substr($message->message, 0, 60) . '...'
                 : $message->message;
 
-            foreach ($staffUsers as $user) {
-                Notification::createNotification(
-                    notifiable: $user,
-                    title: $notificationTitle,
-                    message: "{$contextLine}: {$messagePreview}",
-                    type: 'info',
-                    category: 'message',
-                    actionUrl: $actionUrl,
-                    createdBy: $message->sender_id
-                );
-            }
+            NotificationHelper::notifyAllStaff(
+                $notificationTitle,
+                "{$contextLine}: {$messagePreview}",
+                'info',
+                'message',
+                $actionUrl,
+                $message->sender_id
+            );
         } 
         // If message is from staff/admin, notify the guest (if authenticated)
         elseif (in_array($message->sender_type, ['staff', 'admin']) && $message->reservation) {

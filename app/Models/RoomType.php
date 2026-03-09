@@ -16,6 +16,7 @@ class RoomType extends Model
         'description',
         'base_rate',
         'pricing_type',
+        'room_sharing_type',
         'images',
         'virtual_tour_url',
         'is_active',
@@ -56,6 +57,24 @@ class RoomType extends Model
     public function isPerPersonPricing(): bool
     {
         return $this->pricing_type === 'per_person';
+    }
+
+    /**
+     * Private rooms are exclusive to a single reservation;
+     * once any bed is occupied the entire room is locked for that reservation.
+     */
+    public function isPrivate(): bool
+    {
+        return $this->room_sharing_type === 'private';
+    }
+
+    /**
+     * Public rooms follow dormitory-style sharing:
+     * multiple guests can occupy the same room up to full capacity.
+     */
+    public function isPublic(): bool
+    {
+        return $this->room_sharing_type !== 'private';
     }
 
     /**

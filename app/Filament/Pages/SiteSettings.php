@@ -61,8 +61,10 @@ class SiteSettings extends Page implements HasForms
             'social_twitter'    => Setting::get('social_twitter'),
 
             // Hero & Welcome
-            'hero_banner'     => Setting::get('hero_banner'),
-            'welcome_message' => Setting::get('welcome_message'),
+            'hero_banner'             => Setting::get('hero_banner'),
+            'hero_banner_embed'       => Setting::get('hero_banner_embed'),
+            'hero_banner_embed_enabled' => (bool) Setting::get('hero_banner_embed_enabled', 0),
+            'welcome_message'         => Setting::get('welcome_message'),
 
             // About & Amenities
             'about_text'    => Setting::get('about_text'),
@@ -132,7 +134,6 @@ class SiteSettings extends Page implements HasForms
                         Forms\Components\TextInput::make('contact_phone')
                             ->label('Phone')
                             ->maxLength(30)
-                            ->tel()
                             ->columnSpan(1),
                         Forms\Components\TextInput::make('contact_email')
                             ->label('Email')
@@ -178,6 +179,16 @@ class SiteSettings extends Page implements HasForms
                             ->directory('images')
                             ->visibility('public')
                             ->imagePreviewHeight('160'),
+                        Forms\Components\Toggle::make('hero_banner_embed_enabled')
+                            ->label('Use Embed for Hero')
+                            ->helperText('Enable to render the embed URL instead of the hero image.')
+                            ->columnSpanFull(),
+                        Forms\Components\TextInput::make('hero_banner_embed')
+                            ->label('Hero Banner Embed URL')
+                            ->url()
+                            ->placeholder('https://tour.panoee.net/...')
+                            ->helperText('Paste a Panoee or other virtual-tour URL to embed in the hero. If set, this will be used instead of the static hero image.')
+                            ->columnSpanFull(),
                         Forms\Components\Textarea::make('welcome_message')
                             ->label('Welcome Message')
                             ->rows(3)
@@ -294,7 +305,7 @@ class SiteSettings extends Page implements HasForms
         $sectionKeys = [
             'Site Branding'              => ['site_title', 'site_tagline', 'site_logo', 'theme_font'],
             'Contact & Social'           => ['contact_phone', 'contact_email', 'contact_address', 'contact_map_embed', 'social_facebook', 'social_instagram', 'social_twitter'],
-            'Hero & Welcome'             => ['hero_banner', 'welcome_message'],
+            'Hero & Welcome'             => ['hero_banner', 'hero_banner_embed', 'hero_banner_embed_enabled', 'welcome_message'],
             'About & Amenities'          => ['about_text', 'show_amenities', 'amenities'],
             'Booking Policy & FAQ'       => ['booking_policy', 'faq'],
             'Announcement Bar'           => ['show_announcement', 'announcement_text'],
@@ -302,7 +313,7 @@ class SiteSettings extends Page implements HasForms
         ];
 
         $jsonFields = ['amenities', 'faq'];
-        $boolFields = ['show_amenities', 'show_announcement', 'maintenance_mode', 'accessibility_high_contrast', 'accessibility_large_text'];
+        $boolFields = ['show_amenities', 'show_announcement', 'maintenance_mode', 'accessibility_high_contrast', 'accessibility_large_text', 'hero_banner_embed_enabled'];
 
         // Capture current values before saving so we can detect what changed
         $changedSections = [];
