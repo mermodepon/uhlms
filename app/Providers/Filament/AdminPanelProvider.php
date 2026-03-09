@@ -43,6 +43,23 @@ class AdminPanelProvider extends PanelProvider
                 'panels::topbar.end',
                 fn () => view('filament.notification-center')->render(),
             )
+            ->renderHook(
+                'panels::body.end',
+                fn (): string => <<<'HTML'
+                <script>
+                    document.addEventListener('livewire:init', () => {
+                        Livewire.hook('request', ({ fail }) => {
+                            fail(({ status, preventDefault }) => {
+                                if (status === 419) {
+                                    preventDefault();
+                                    window.location.href = '/admin/login';
+                                }
+                            });
+                        });
+                    });
+                </script>
+                HTML,
+            )
             ->colors([
                 'primary' => Color::hex('#00491E'),
                 'danger' => Color::Red,

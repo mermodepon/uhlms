@@ -17,7 +17,6 @@ return new class extends Migration
             $table->string('guest_email');
             $table->string('guest_phone')->nullable();
             $table->text('guest_address')->nullable();
-            $table->string('guest_organization')->nullable(); // e.g., CMU department, visiting institution
 
             // Reservation details
             $table->foreignId('preferred_room_type_id')->constrained('room_types')->restrictOnDelete();

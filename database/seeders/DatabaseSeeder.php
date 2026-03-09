@@ -10,7 +10,6 @@ use App\Models\Amenity;
 use App\Models\Service;
 use App\Models\Reservation;
 use App\Models\RoomAssignment;
-use App\Models\StayLog;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
@@ -261,7 +260,6 @@ class DatabaseSeeder extends Seeder
             'guest_email' => 'jose.rizal@email.com',
             'guest_phone' => '09171234567',
             'guest_address' => 'Calamba, Laguna',
-            'guest_organization' => 'University of the Philippines',
             'preferred_room_type_id' => $deluxe->id,
             'check_in_date' => Carbon::today()->subDays(7),
             'check_out_date' => Carbon::today()->subDays(4),
@@ -277,10 +275,6 @@ class DatabaseSeeder extends Seeder
             'room_id' => $rooms[7]->id, // Room 201
             'assigned_by' => $staff1->id,
             'assigned_at' => Carbon::today()->subDays(8),
-        ]);
-        StayLog::create([
-            'reservation_id' => $res1->id,
-            'room_id' => $rooms[7]->id,
             'checked_in_at' => Carbon::today()->subDays(7)->setTime(14, 0),
             'checked_in_by' => $staff1->id,
             'checked_out_at' => Carbon::today()->subDays(4)->setTime(10, 30),
@@ -297,7 +291,6 @@ class DatabaseSeeder extends Seeder
             'guest_email' => 'gabriela.s@email.com',
             'guest_phone' => '09191234567',
             'guest_address' => 'Ilocos Sur',
-            'guest_organization' => 'DOST Region 10',
             'preferred_room_type_id' => $suite->id,
             'check_in_date' => Carbon::today()->subDays(2),
             'check_out_date' => Carbon::today()->addDays(3),
@@ -314,15 +307,11 @@ class DatabaseSeeder extends Seeder
             'room_id' => $rooms[12]->id, // Room 301
             'assigned_by' => $admin->id,
             'assigned_at' => Carbon::today()->subDays(3),
-        ]);
-        $rooms[12]->update(['status' => 'occupied']);
-        StayLog::create([
-            'reservation_id' => $res2->id,
-            'room_id' => $rooms[12]->id,
             'checked_in_at' => Carbon::today()->subDays(2)->setTime(15, 0),
             'checked_in_by' => $staff1->id,
             'remarks' => 'Guest arrived with 2 occupants, extra pillows provided.',
         ]);
+        $rooms[12]->update(['status' => 'occupied']);
 
         // 3. Currently checked in (standard room)
         $res3 = Reservation::create([
@@ -347,14 +336,10 @@ class DatabaseSeeder extends Seeder
             'room_id' => $rooms[0]->id, // Room 101
             'assigned_by' => $staff2->id,
             'assigned_at' => Carbon::today()->subDays(2),
-        ]);
-        $rooms[0]->update(['status' => 'occupied']);
-        StayLog::create([
-            'reservation_id' => $res3->id,
-            'room_id' => $rooms[0]->id,
             'checked_in_at' => Carbon::today()->subDay()->setTime(13, 30),
             'checked_in_by' => $staff2->id,
         ]);
+        $rooms[0]->update(['status' => 'occupied']);
 
         // 4. Approved, awaiting check-in (arriving today)
         Reservation::create([
@@ -365,7 +350,6 @@ class DatabaseSeeder extends Seeder
             'guest_email' => 'apolinario.m@email.com',
             'guest_phone' => '09201234567',
             'guest_address' => 'Tanauan, Batangas',
-            'guest_organization' => 'CMU College of Agriculture',
             'preferred_room_type_id' => $deluxe->id,
             'check_in_date' => Carbon::today(),
             'check_out_date' => Carbon::today()->addDays(3),
@@ -386,7 +370,6 @@ class DatabaseSeeder extends Seeder
             'guest_email' => 'teresa.m@email.com',
             'guest_phone' => '09231234567',
             'guest_address' => 'Iloilo City',
-            'guest_organization' => 'Philippine Normal University',
             'preferred_room_type_id' => $family->id,
             'check_in_date' => Carbon::today()->addDays(5),
             'check_out_date' => Carbon::today()->addDays(8),
@@ -424,7 +407,6 @@ class DatabaseSeeder extends Seeder
             'guest_email' => 'emilio.a@email.com',
             'guest_phone' => '09221234567',
             'guest_address' => 'Kawit, Cavite',
-            'guest_organization' => 'CHED Regional Office',
             'preferred_room_type_id' => $suite->id,
             'check_in_date' => Carbon::today()->addDays(10),
             'check_out_date' => Carbon::today()->addDays(12),

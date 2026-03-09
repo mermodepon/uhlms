@@ -58,6 +58,15 @@ class SettingResource extends Resource
                     ->description('Homepage hero image and welcome message')
                     ->schema([
                         Forms\Components\FileUpload::make('hero_banner')->label('Hero Banner')->image()->disk('public')->directory('images')->visibility('public'),
+                        Forms\Components\Toggle::make('hero_banner_embed_enabled')
+                            ->label('Use Embed for Hero')
+                            ->helperText('When enabled, the hero will render the embed URL instead of the hero image.'),
+                        Forms\Components\TextInput::make('hero_banner_embed')
+                            ->label('Hero Banner Embed URL')
+                            ->url()
+                            ->placeholder('https://tour.panoee.net/...')
+                            ->helperText('Paste a Panoee or other virtual-tour URL to embed in the hero. If set, this will be used instead of the static hero image.')
+                            ->maxLength(255),
                         Forms\Components\Textarea::make('welcome_message')->label('Welcome Message')->maxLength(300),
                     ]),
 

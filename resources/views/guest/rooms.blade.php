@@ -13,7 +13,7 @@
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             @forelse($roomTypes as $roomType)
-                <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition">
+                <div role="link" tabindex="0" class="block cursor-pointer bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition group" onclick="window.location.href='{{ route('guest.room-detail', $roomType) }}'" onkeydown="if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); window.location.href='{{ route('guest.room-detail', $roomType) }}'; }">
                     <div class="md:flex">
                         @if($roomType->images && count($roomType->images))
                             <div class="md:w-1/3 h-48 md:h-auto bg-gray-200">
@@ -56,14 +56,14 @@
                             @endif
 
                             <div class="flex gap-3">
-                                <a href="{{ route('guest.room-detail', $roomType) }}" class="text-[#02681E] font-semibold hover:text-[#00491E] transition text-sm">
+                                <span class="relative z-10 text-[#02681E] font-semibold group-hover:text-[#00491E] transition text-sm">
                                     View Details &rarr;
-                                </a>
+                                </span>
                                 @if($roomType->virtual_tour_url)
                                     <span class="text-gray-300">|</span>
-                                    <a href="{{ route('guest.room-detail', $roomType) }}#virtual-tour" class="text-[#919F02] font-semibold hover:text-[#02681E] transition text-sm">
+                                    <button type="button" class="relative z-10 text-[#919F02] font-semibold hover:text-[#02681E] transition text-sm bg-transparent p-0" onclick="event.stopPropagation(); window.location.href='{{ route('guest.room-detail', $roomType) }}#virtual-tour'">
                                         🎯 Virtual Tour
-                                    </a>
+                                    </button>
                                 @endif
                             </div>
                         </div>

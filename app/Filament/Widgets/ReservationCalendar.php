@@ -5,6 +5,7 @@ namespace App\Filament\Widgets;
 use App\Models\Reservation;
 use Carbon\Carbon;
 use Filament\Widgets\Widget;
+use Illuminate\Support\Facades\Cache;
 
 class ReservationCalendar extends Widget
 {
@@ -39,6 +40,9 @@ class ReservationCalendar extends Widget
 
     public function getCalendarData(): array
     {
+        $cacheKey = "dashboard.calendar.{$this->currentYear}.{$this->currentMonth}";
+
+        return Cache::remember($cacheKey, 300, function () {
         $start = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->startOfMonth();
         $end   = $start->copy()->endOfMonth();
 
@@ -106,6 +110,7 @@ class ReservationCalendar extends Widget
             'weeks'       => $weeks,
             'monthLabel'  => Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->format('F Y'),
         ];
+        }); // end Cache::remember
     }
 
     protected function getViewData(): array

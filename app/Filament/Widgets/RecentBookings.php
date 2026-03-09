@@ -20,7 +20,7 @@ class RecentBookings extends BaseWidget
         return $table
             ->query(
                 Reservation::query()
-                    ->with(['preferredRoomType', 'roomAssignments'])
+                    ->with('preferredRoomType')
                     ->latest()
                     ->limit(10)
             )
@@ -39,6 +39,7 @@ class RecentBookings extends BaseWidget
                         ->badge()
                         ->formatStateUsing(fn ($state, $record) => match ($state) {
                             'approved'    => 'Approved',
+                            'pending_payment' => 'Pending Payment',
                             'checked_out' => 'Checked Out',
                             'checked_in'  => 'Checked In',
                             default => ucfirst(str_replace('_', ' ', $state)),
@@ -46,6 +47,7 @@ class RecentBookings extends BaseWidget
                         ->color(fn ($state, $record): string => match (true) {
                             $state === 'pending'   => 'warning',
                             $state === 'approved'  => 'primary',
+                            $state === 'pending_payment'  => 'warning',
                             $state === 'declined'                                        => 'danger',
                             $state === 'cancelled'                                       => 'gray',
                             $state === 'checked_in'                                      => 'success',

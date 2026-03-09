@@ -8,12 +8,15 @@ use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\Service;
-use App\Models\StayLog;
+use App\Services\CheckInService;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\HtmlString;
 use Illuminate\Database\Eloquent\Builder;
 
 class ReservationResource extends Resource
@@ -60,8 +63,7 @@ class ReservationResource extends Resource
                             ->required()
                             ->maxLength(255),
                         Forms\Components\TextInput::make('guest_phone')
-                            ->tel()
-                            ->maxLength(20),
+                            ->maxLength(30),
                         Forms\Components\Select::make('guest_gender')
                             ->label('Gender')
                             ->options([
@@ -100,8 +102,7 @@ class ReservationResource extends Resource
                             ->minValue(1)
                             ->maxValue(20)
                             ->default(1)
-                            ->disabled(fn ($record) => $record && $record->guests()->exists())
-                            ->dehydrated(fn ($record) => !$record || !$record->guests()->exists()),
+                            ->visibleOn('create'),
                         Forms\Components\Select::make('purpose')
                             ->options([
                                 'academic' => 'Academic',
@@ -121,6 +122,7 @@ class ReservationResource extends Resource
                             ->options([
                                 'pending' => 'Pending',
                                 'approved' => 'Approved',
+                                'pending_payment' => 'Pending Payment',
                                 'declined' => 'Declined',
                                 'cancelled' => 'Cancelled',
                                 'checked_in' => 'Checked In',
@@ -155,10 +157,24 @@ class ReservationResource extends Resource
                     ->label('Room Type')
                     ->searchable()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('roomAssignments.room.room_number')
+                Tables\Columns\TextColumn::make('room_display')
                     ->label('Room')
                     ->badge()
-                    ->searchable(),
+                    ->getStateUsing(function ($record) {
+                        $rooms = $record->roomAssignments
+                            ->pluck('room.room_number')
+                            ->filter()
+                            ->unique()
+                            ->values()
+                            ->toArray();
+
+                        return empty($rooms) ? null : (count($rooms) === 1 ? $rooms[0] : $rooms);
+                    })
+                    ->searchable(query: function ($query, string $search) {
+                        $query->whereHas('roomAssignments.room', fn ($q) =>
+                            $q->where('room_number', 'like', "%{$search}%")
+                        );
+                    }),
                 Tables\Columns\TextColumn::make('check_in_date')
                     ->date()
                     ->searchable()
@@ -176,6 +192,7 @@ class ReservationResource extends Resource
                         $state === 'pending'                                          => 'warning',
                         $state === 'approved' && $record->roomAssignments->isEmpty() => 'info',
                         $state === 'approved'                                        => 'primary',
+                        $state === 'pending_payment'                                 => 'warning',
                         $state === 'declined'                                        => 'danger',
                         $state === 'cancelled'                                       => 'gray',
                         $state === 'checked_in'                                      => 'success',
@@ -189,11 +206,13 @@ class ReservationResource extends Resource
                     ->label('Submitted'),
             ])
             ->defaultSort('created_at', 'desc')
+            ->modifyQueryUsing(fn ($query) => $query->with(['roomAssignments.room', 'preferredRoomType']))
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->options([
                         'pending' => 'Pending',
                         'approved' => 'Approved',
+                        'pending_payment' => 'Pending Payment',
                         'declined' => 'Declined',
                         'cancelled' => 'Cancelled',
                         'checked_in' => 'Checked In',
@@ -263,346 +282,236 @@ class ReservationResource extends Resource
                             ]);
                         }),
 
-                    // Assign Room action (DISABLED - now handled by check_in)
-                    Tables\Actions\Action::make('assign_room')
-                        ->icon('heroicon-o-key')
-                        ->color('info')
-                        ->modalHeading('Assign Room & Collect Guest Information')
-                        ->modalWidth('7xl')
-                        ->visible(fn (Reservation $record) => false) // Disabled - room assignment now happens during check-in
-                        ->form([
-                            Forms\Components\Section::make(fn (Reservation $record) => "Room Assignment - {$record->preferredRoomType->name}")
-                                ->schema([
-                                    Forms\Components\Select::make('room_id')
-                                        ->label(fn (Reservation $record) => "Select Room for {$record->preferredRoomType->name}")
-                                        ->options(function (Reservation $record) {
-                                            return Room::where('status', 'available')
-                                                ->where('is_active', true)
-                                                ->where('room_type_id', $record->preferred_room_type_id)
-                                                ->with('floor')
-                                                ->get()
-                                                ->mapWithKeys(fn ($room) => [
-                                                    $room->id => "Room {$room->room_number} ({$room->floor->name})",
-                                                ]);
-                                        })
-                                        ->required()
-                                        ->searchable(),
-                                ])->columns(1),
-
-                            Forms\Components\Section::make('Guest Identification')
-                                ->schema([
-                                    Forms\Components\TextInput::make('guest_last_name')
-                                        ->label('Last Name')
-                                        ->default(fn (Reservation $record) => $record->guest_last_name)
-                                        ->required()
-                                        ->maxLength(255),
-                                    Forms\Components\TextInput::make('guest_first_name')
-                                        ->label('First Name')
-                                        ->default(fn (Reservation $record) => $record->guest_first_name)
-                                        ->required()
-                                        ->maxLength(255),
-                                    Forms\Components\TextInput::make('guest_middle_initial')
-                                        ->label('Middle Initial')
-                                        ->default(fn (Reservation $record) => $record->guest_middle_initial)
-                                        ->maxLength(10),
-                                    Forms\Components\Textarea::make('guest_full_address')
-                                        ->label('Complete Address')
-                                        ->default(fn (Reservation $record) => $record->guest_address)
-                                        ->rows(2)
-                                        ->columnSpanFull(),
-                                    Forms\Components\TextInput::make('guest_contact_number')
-                                        ->label('Contact Number')
-                                        ->tel()
-                                        ->default(fn (Reservation $record) => $record->guest_phone)
-                                        ->required()
-                                        ->maxLength(20),
-                                ])->columns(3),
-
-                            Forms\Components\Section::make('Identification & Status')
-                                ->schema([
-                                    Forms\Components\Select::make('id_type')
-                                        ->label('ID Type')
-                                        ->required()
-                                        ->options([
-                                            'National ID' => 'National ID',
-                                            'Driver\'s License' => 'Driver\'s License',
-                                            'Passport' => 'Passport',
-                                            'Student ID' => 'Student ID',
-                                            'SSS ID' => 'SSS ID',
-                                            'UMID' => 'UMID',
-                                            'Phil Health ID' => 'Phil Health ID',
-                                            'Voter\'s ID' => 'Voter\'s ID',
-                                            'Senior Citizen ID' => 'Senior Citizen ID',
-                                            'PWD ID' => 'PWD ID',
-                                            'Other' => 'Other',
-                                        ])
-                                        ->searchable(),
-                                    Forms\Components\TextInput::make('id_number')
-                                        ->label('ID Number')
-                                        ->required()
-                                        ->maxLength(100),
-                                    Forms\Components\TextInput::make('nationality')
-                                        ->label('Nationality')
-                                        ->default('Filipino')
-                                        ->required()
-                                        ->maxLength(100),
-                                    Forms\Components\Toggle::make('is_student')
-                                        ->label('Student')
-                                        ->inline(false),
-                                    Forms\Components\Toggle::make('is_senior_citizen')
-                                        ->label('Senior Citizen')
-                                        ->inline(false),
-                                    Forms\Components\Toggle::make('is_pwd')
-                                        ->label('PWD')
-                                        ->inline(false),
-                                ])->columns(3),
-
-                            Forms\Components\Section::make('Stay Details')
-                                ->schema([
-                                    Forms\Components\Select::make('purpose_of_stay')
-                                        ->label('Purpose of Stay')
-                                        ->default(fn (Reservation $record) => ucwords(str_replace('_', ' ', $record->purpose ?? 'personal')))
-                                        ->required()
-                                        ->options([
-                                            'Academic' => 'Academic',
-                                            'Official Business' => 'Official Business',
-                                            'Personal' => 'Personal',
-                                            'Event/Conference' => 'Event/Conference',
-                                            'Training' => 'Training',
-                                            'Research' => 'Research',
-                                            'Other' => 'Other',
-                                        ]),
-                                    Forms\Components\TextInput::make('num_male_guests')
-                                        ->label('Number of Male Guests')
-                                        ->numeric()
-                                        ->default(0)
-                                        ->minValue(0)
-                                        ->required(),
-                                    Forms\Components\TextInput::make('num_female_guests')
-                                        ->label('Number of Female Guests')
-                                        ->numeric()
-                                        ->default(0)
-                                        ->minValue(0)
-                                        ->required(),
-                                ])->columns(3),
-
-                            Forms\Components\Section::make('Check-in/Check-out Schedule')
-                                ->schema([
-                                    Forms\Components\DateTimePicker::make('detailed_checkin_datetime')
-                                        ->label('Check-in Date & Time')
-                                        ->default(fn (Reservation $record) => $record->check_in_date)
-                                        ->required()
-                                        ->native(false)
-                                        ->seconds(false),
-                                    Forms\Components\DateTimePicker::make('detailed_checkout_datetime')
-                                        ->label('Check-out Date & Time')
-                                        ->default(fn (Reservation $record) => $record->check_out_date)
-                                        ->required()
-                                        ->native(false)
-                                        ->seconds(false)
-                                        ->after('detailed_checkin_datetime'),
-                                ])->columns(2),
-
-                            Forms\Components\Section::make('Additional Services & Payment')
-                                ->schema([
-                                    Forms\Components\CheckboxList::make('additional_requests')
-                                        ->label('Additional Services')
-                                        ->options(function () {
-                                            return Service::active()
-                                                ->ordered()
-                                                ->get()
-                                                ->mapWithKeys(fn (Service $service) => [
-                                                    $service->code => $service->name . 
-                                                        ($service->price > 0 ? " ({$service->formatted_price})" : ' (Free)'),
-                                                ]);
-                                        })
-                                        ->columns(3)
-                                        ->helperText('Select any additional services needed during the stay. Paid services will be added to the total amount.')
-                                        ->live()
-                                        ->afterStateUpdated(function ($state, $set, Reservation $record) {
-                                            // Calculate base room rate
-                                            $roomType = $record->preferredRoomType;
-                                            $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                            
-                                            $baseRate = $roomType->calculateRate($nights, $record->number_of_occupants);
-                                            
-                                            // Calculate service charges
-                                            $serviceCharges = 0;
-                                            if (!empty($state)) {
-                                                $services = Service::whereIn('code', $state)->get();
-                                                $serviceCharges = $services->sum('price');
-                                            }
-                                            
-                                            // Update payment amount with total
-                                            $set('payment_amount', $baseRate + $serviceCharges);
-                                        }),
-                                    Forms\Components\Select::make('payment_mode')
-                                        ->label('Mode of Payment')
-                                        ->default('cash')
-                                        ->options([
-                                            'cash' => 'Cash',
-                                            'bank_transfer' => 'Bank Transfer',
-                                            'gcash' => 'GCash',
-                                            'check' => 'Check',
-                                            'others' => 'Others',
-                                        ])
-                                        ->live()
-                                        ->required(),
-                                    Forms\Components\TextInput::make('payment_mode_other')
-                                        ->label('Specify Payment Mode')
-                                        ->visible(fn ($get) => $get('payment_mode') === 'others')
-                                        ->maxLength(100),
-                                    Forms\Components\Placeholder::make('declared_occupants')
-                                        ->label('Declared Number of Guests')
-                                        ->content(fn (Reservation $record) => $record->number_of_occupants . ' guest' . ($record->number_of_occupants > 1 ? 's' : '')),
-                                    Forms\Components\Placeholder::make('declared_days')
-                                        ->label('Declared Number of Days')
-                                        ->content(fn (Reservation $record) => ($d = max(1, $record->check_in_date->diffInDays($record->check_out_date))) . ' day' . ($d > 1 ? 's' : '')),
-                                    Forms\Components\TextInput::make('payment_amount')
-                                        ->label('Total Payment Amount')
-                                        ->numeric()
-                                        ->prefix('₱')
-                                        ->minValue(0)
-                                        ->required()
-                                        ->helperText(function (Reservation $record) {
-                                            $roomType = $record->preferredRoomType;
-                                            $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                            $total = $roomType->calculateRate($nights, $record->number_of_occupants);
-                                            
-                                            if ($roomType->isPerPersonPricing()) {
-                                                return sprintf(
-                                                    'Room rate: ₱%s/person/night × %d guest%s × %d night%s = ₱%s. Additional services will be added to this amount.',
-                                                    number_format($roomType->base_rate, 2),
-                                                    $record->number_of_occupants,
-                                                    $record->number_of_occupants > 1 ? 's' : '',
-                                                    $nights,
-                                                    $nights > 1 ? 's' : '',
-                                                    number_format($total, 2)
-                                                );
-                                            }
-                                            
-                                            return sprintf(
-                                                'Room rate: ₱%s/night × %d night%s = ₱%s. Additional services will be added to this amount.',
-                                                number_format($roomType->base_rate, 2),
-                                                $nights,
-                                                $nights > 1 ? 's' : '',
-                                                number_format($total, 2)
-                                            );
-                                        })
-                                        ->default(function (Reservation $record) {
-                                            $roomType = $record->preferredRoomType;
-                                            $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                            
-                                            // Calculate base room rate using room type's pricing method
-                                            return $roomType->calculateRate($nights, $record->number_of_occupants);
-                                        }),
-                                    Forms\Components\TextInput::make('payment_or_number')
-                                        ->label('Official Receipt Number')
-                                        ->maxLength(100)
-                                        ->required(),
-                                    Forms\Components\Textarea::make('notes')
-                                        ->label('Assignment Notes')
-                                        ->rows(2)
-                                        ->columnSpanFull(),
-                                ])->columns(2),
-                        ])
-                        ->action(function (Reservation $record, array $data) {
-                            // payment_amount already includes service charges (calculated reactively)
-                            RoomAssignment::create([
-                                'reservation_id' => $record->id,
-                                'room_id' => $data['room_id'],
-                                'assigned_by' => auth()->id(),
-                                'assigned_at' => now(),
-                                'notes' => $data['notes'] ?? null,
-                                // Guest details
-                                'guest_last_name' => $data['guest_last_name'],
-                                'guest_first_name' => $data['guest_first_name'],
-                                'guest_middle_initial' => $data['guest_middle_initial'] ?? null,
-                                'guest_full_address' => $data['guest_full_address'] ?? null,
-                                'guest_contact_number' => $data['guest_contact_number'],
-                                'id_type' => $data['id_type'],
-                                'id_number' => $data['id_number'],
-                                'is_student' => $data['is_student'] ?? false,
-                                'is_senior_citizen' => $data['is_senior_citizen'] ?? false,
-                                'is_pwd' => $data['is_pwd'] ?? false,
-                                'purpose_of_stay' => $data['purpose_of_stay'],
-                                'nationality' => $data['nationality'],
-                                'num_male_guests' => $data['num_male_guests'],
-                                'num_female_guests' => $data['num_female_guests'],
-                                'detailed_checkin_datetime' => $data['detailed_checkin_datetime'],
-                                'detailed_checkout_datetime' => $data['detailed_checkout_datetime'],
-                                'additional_requests' => $data['additional_requests'] ?? null,
-                                'payment_mode' => $data['payment_mode'],
-                                'payment_mode_other' => $data['payment_mode_other'] ?? null,
-                                'payment_amount' => $data['payment_amount'], // Total with service charges included
-                                'payment_or_number' => $data['payment_or_number'] ?? null,
-                            ]);
-                        }),
-
-                    // Check In action (includes room assignment & guest details collection)
-                    Tables\Actions\Action::make('check_in')
-                        ->icon('heroicon-o-arrow-right-on-rectangle')
+                    // Prepare Check-in action (locks room/bed while payment is processed)
+                    Tables\Actions\Action::make('prepare_check_in')
+                        ->label('Prepare Check-in')
+                        ->icon('heroicon-o-lock-closed')
                         ->color('success')
-                        ->modalHeading('Check In Guest - Assign Room & Collect Details')
+                        ->modalHeading('Prepare Check-in (Pending Payment)')
                         ->modalWidth('7xl')
                         ->visible(fn (Reservation $record) => $record->status === 'approved')
                         ->form([
-                            Forms\Components\Section::make(fn (Reservation $record) => "Room Assignment - {$record->preferredRoomType->name}")
-                                ->schema([
-                                    Forms\Components\Select::make('room_id')
-                                        ->label(fn (Reservation $record) => "Select Room for {$record->preferredRoomType->name}")
-                                        ->options(function (Reservation $record) {
-                                            return Room::where('status', 'available')
-                                                ->where('is_active', true)
-                                                ->where('room_type_id', $record->preferred_room_type_id)
-                                                ->with('floor')
-                                                ->get()
-                                                ->mapWithKeys(fn ($room) => [
-                                                    $room->id => "Room {$room->room_number} ({$room->floor->name})",
-                                                ]);
-                                        })
-                                        ->required()
-                                        ->searchable(),
-                                ])->columns(1),
-
-                            Forms\Components\Section::make('Guest Identification')
+                            Forms\Components\Section::make('Primary Guest Identification')
                                 ->schema([
                                     Forms\Components\TextInput::make('guest_last_name')
                                         ->label('Last Name')
                                         ->default(fn (Reservation $record) => $record->guest_last_name)
                                         ->required()
-                                        ->maxLength(255),
+                                        ->maxLength(255)
+                                        ->live()
+                                        ->dehydrated(),
                                     Forms\Components\TextInput::make('guest_first_name')
                                         ->label('First Name')
                                         ->default(fn (Reservation $record) => $record->guest_first_name)
                                         ->required()
-                                        ->maxLength(255),
+                                        ->maxLength(255)
+                                        ->live()
+                                        ->dehydrated(),
                                     Forms\Components\TextInput::make('guest_middle_initial')
                                         ->label('Middle Initial')
                                         ->default(fn (Reservation $record) => $record->guest_middle_initial)
-                                        ->maxLength(10),
-                                    Forms\Components\Textarea::make('guest_full_address')
-                                        ->label('Complete Address')
-                                        ->default(fn (Reservation $record) => $record->guest_address)
-                                        ->rows(2)
-                                        ->columnSpanFull(),
-                                    Forms\Components\TextInput::make('guest_contact_number')
-                                        ->label('Contact Number')
-                                        ->tel()
-                                        ->default(fn (Reservation $record) => $record->guest_phone)
-                                        ->required()
-                                        ->maxLength(20),
+                                        ->maxLength(10)
+                                        ->live()
+                                        ->dehydrated(),
                                     Forms\Components\Select::make('guest_gender')
                                         ->label('Gender')
                                         ->required()
                                         ->default(fn (Reservation $record) => $record->guest_gender)
                                         ->options([
-                                            'Male' => 'Male',
+                                            'Male'   => 'Male',
                                             'Female' => 'Female',
-                                            'Other' => 'Other',
+                                            'Other'  => 'Other',
                                         ])
-                                        ->native(false),
+                                        ->native(false)
+                                        ->live()
+                                        ->afterStateUpdated(function ($set) {
+                                            $set('room_id', null);
+                                            $set('bed_ids', []);
+                                        }),
+                                    Forms\Components\Textarea::make('guest_full_address')
+                                        ->label('Complete Address')
+                                        ->default(fn (Reservation $record) => $record->guest_address)
+                                        ->rows(2)
+                                        ->columnSpanFull(),
+                                    Forms\Components\TextInput::make('guest_contact_number')
+                                        ->label('Contact Number')
+                                        ->default(fn (Reservation $record) => $record->guest_phone)
+                                        ->required()
+                                        ->maxLength(30),
                                 ])->columns(3),
+
+                            Forms\Components\Section::make('Room Entries')
+                                ->description(fn (Reservation $record) => $record->preferredRoomType->isPrivate()
+                                    ? 'Add one row per room involved in this check-in. Private reservations are room-level only (no bed assignment).'
+                                    : 'Add one row per room involved in this check-in. Use PRIVATE for whole-room assignment or DORM for per-bed assignment.')
+                                ->schema([
+                                    Forms\Components\Repeater::make('reservation_rooms')
+                                        ->schema([
+                                            Forms\Components\Select::make('room_mode')
+                                                ->label('Room Mode')
+                                                ->required()
+                                                ->options([
+                                                    'private' => 'Private (occupies whole room)',
+                                                    'dorm' => 'Dorm (per-bed assignment)',
+                                                ])
+                                                ->placeholder('Select an option')
+                                                ->dehydrated()
+                                                ->native(false)
+                                                ->live()
+                                                ->afterStateUpdated(function ($state, $old, $set) {
+                                                    // Only reset conflicting room allocation selectors when mode changes.
+                                                    // Keep typed guest rows intact to avoid accidental data loss.
+                                                    if ($state === $old) {
+                                                        return;
+                                                    }
+
+                                                    $set('room_id', null);
+                                                    $set('includes_primary_guest', false);
+                                                })
+                                                ->helperText('Choose how to allocate this room to guests'),
+                                            Forms\Components\Select::make('room_id')
+                                                ->label('Room')
+                                                ->required()
+                                                ->searchable()
+                                                ->preload()
+                                                ->options(function ($get, Reservation $record) {
+                                                    app(CheckInService::class)->releaseExpiredHolds();
+
+                                                    $mode = $get('room_mode');
+                                                    if (! in_array($mode, ['private', 'dorm'], true)) {
+                                                        return [];
+                                                    }
+
+                                                    $preferredTypeId = $record->preferred_room_type_id;
+                                                    $preferredTypeName = $record->preferredRoomType->name;
+                                                    
+                                                    $query = Room::query()
+                                                        ->with('roomType', 'beds')
+                                                        ->where('is_active', true);
+
+                                                    // Dorm mode: must have available beds
+                                                    // Private mode: room must be available
+                                                    if ($mode === 'dorm') {
+                                                        $query->whereHas('beds', fn ($q) => $q->where('status', 'available'));
+                                                    } else {
+                                                        $query->where('status', 'available');
+                                                    }
+
+                                                    $rooms = $query->get();
+                                                    if ($rooms->isEmpty()) {
+                                                        return ['' => '(No available rooms)'];
+                                                    }
+
+                                                    // Group by room type with preferred first
+                                                    $grouped = $rooms->groupBy('room_type_id')->sortBy(function ($group, $typeId) use ($preferredTypeId) {
+                                                        return $typeId == $preferredTypeId ? 0 : 1;
+                                                    });
+                                                    
+                                                    $options = [];
+                                                    foreach ($grouped as $typeId => $roomsInType) {
+                                                        $typeName = $roomsInType->first()->roomType->name;
+                                                        $isPreferred = $typeId == $preferredTypeId;
+                                                        $groupLabel = $isPreferred ? "⭐ {$typeName} (Preferred)" : $typeName;
+                                                        
+                                                        $options[$groupLabel] = $roomsInType->mapWithKeys(fn ($room) => [
+                                                            $room->id => "Room {$room->room_number} | {$room->getGenderLabel()}",
+                                                        ])->toArray();
+                                                    }
+                                                    
+                                                    return $options;
+                                                })
+                                                ->helperText(fn ($get) => filled($get('room_mode') ?? null)
+                                                    ? 'Preferred room type shown first'
+                                                    : 'Select room mode first'),
+                                            Forms\Components\Toggle::make('includes_primary_guest')
+                                                ->label('Include primary guest in this room')
+                                                ->helperText('Primary guest details above are auto-included when enabled.')
+                                                ->default(false)
+                                                ->inline(false)
+                                                ->visible(fn ($get) => filled($get('room_mode') ?? null) && filled($get('room_id') ?? null))
+                                                ->live()
+                                                ->afterStateUpdated(function ($state, $get, $set, $component) {
+                                                    // Only enforce exclusivity when a room is explicitly toggled ON.
+                                                    // Avoid auto-corrections on OFF updates to prevent toggle flicker.
+                                                    if ($state !== true) {
+                                                        return;
+                                                    }
+
+                                                    $entries = $get('../../reservation_rooms') ?? [];
+                                                    if (! is_array($entries) || empty($entries)) {
+                                                        return;
+                                                    }
+
+                                                    $statePath = method_exists($component, 'getStatePath')
+                                                        ? (string) $component->getStatePath()
+                                                        : '';
+                                                    $pathParts = $statePath !== '' ? explode('.', $statePath) : [];
+                                                    $itemKey = count($pathParts) >= 2 ? $pathParts[count($pathParts) - 2] : null;
+
+                                                    if ($state === true && $itemKey !== null) {
+                                                        foreach ($entries as $key => $entry) {
+                                                            $set(
+                                                                '../../reservation_rooms.' . $key . '.includes_primary_guest',
+                                                                ((string) $key === (string) $itemKey)
+                                                            );
+                                                        }
+
+                                                        return;
+                                                    }
+                                                }),
+                                            Forms\Components\Repeater::make('guests')
+                                                ->label(function ($get) {
+                                                    $roomId = $get('room_id');
+                                                    if ($roomId) {
+                                                        $room = \App\Models\Room::find($roomId);
+                                                        return $room ? "Guests for Room {$room->room_number}" : 'Guests for selected room';
+                                                    }
+                                                    return 'Guests for selected room';
+                                                })
+                                                ->schema([
+                                                    Forms\Components\TextInput::make('last_name')
+                                                        ->label('Last Name')
+                                                        ->required()
+                                                        ->maxLength(255)
+                                                        ->live(onBlur: true),
+                                                    Forms\Components\TextInput::make('first_name')
+                                                        ->label('First Name')
+                                                        ->required()
+                                                        ->maxLength(255)
+                                                        ->live(onBlur: true),
+                                                    Forms\Components\TextInput::make('middle_initial')
+                                                        ->label('M.I.')
+                                                        ->maxLength(10)
+                                                        ->live(onBlur: true),
+                                                    Forms\Components\Select::make('gender')
+                                                        ->label('Gender')
+                                                        ->required()
+                                                        ->options([
+                                                            'Male' => 'Male',
+                                                            'Female' => 'Female',
+                                                            'Other' => 'Other',
+                                                        ])
+                                                        ->native(false)
+                                                        ->live(),
+                                                ])
+                                                ->columns(4)
+                                                ->minItems(0)
+                                                ->defaultItems(0)
+                                                ->addActionLabel('➕ Add Another Guest')
+                                                ->helperText('Add companion guests only. Primary guest is auto-included when enabled above.')
+                                                ->visible(fn ($get) => filled($get('room_mode') ?? null) && filled($get('room_id') ?? null))
+                                                ->reorderable(false),
+                                        ])
+                                        ->defaultItems(1)
+                                        ->minItems(1)
+                                        ->reorderable(false)
+                                        ->afterStateUpdated(function ($state, $get, $set, Reservation $record) {
+                                            // No direct payment field mutation here to avoid reactive state races.
+                                        })
+                                        ->columnSpanFull()
+                                        ->addActionLabel('➕ Add Another Room')
+                                        ->live(),
+                                ]),
 
                             Forms\Components\Section::make('Identification & Status')
                                 ->schema([
@@ -610,17 +519,17 @@ class ReservationResource extends Resource
                                         ->label('ID Type')
                                         ->required()
                                         ->options([
-                                            'National ID' => 'National ID',
-                                            'Driver\'s License' => 'Driver\'s License',
-                                            'Passport' => 'Passport',
-                                            'Student ID' => 'Student ID',
-                                            'SSS ID' => 'SSS ID',
-                                            'UMID' => 'UMID',
-                                            'Phil Health ID' => 'Phil Health ID',
-                                            'Voter\'s ID' => 'Voter\'s ID',
+                                            'National ID'       => 'National ID',
+                                            "Driver's License"  => "Driver's License",
+                                            'Passport'          => 'Passport',
+                                            'Student ID'        => 'Student ID',
+                                            'SSS ID'            => 'SSS ID',
+                                            'UMID'              => 'UMID',
+                                            'Phil Health ID'    => 'Phil Health ID',
+                                            "Voter's ID"        => "Voter's ID",
                                             'Senior Citizen ID' => 'Senior Citizen ID',
-                                            'PWD ID' => 'PWD ID',
-                                            'Other' => 'Other',
+                                            'PWD ID'            => 'PWD ID',
+                                            'Other'             => 'Other',
                                         ])
                                         ->searchable(),
                                     Forms\Components\TextInput::make('id_number')
@@ -650,75 +559,35 @@ class ReservationResource extends Resource
                                         ->default(fn (Reservation $record) => ucwords(str_replace('_', ' ', $record->purpose ?? 'personal')))
                                         ->required()
                                         ->options([
-                                            'Academic' => 'Academic',
+                                            'Academic'          => 'Academic',
                                             'Official Business' => 'Official Business',
-                                            'Personal' => 'Personal',
-                                            'Event/Conference' => 'Event/Conference',
-                                            'Training' => 'Training',
-                                            'Research' => 'Research',
-                                            'Other' => 'Other',
+                                            'Personal'          => 'Personal',
+                                            'Event/Conference'  => 'Event/Conference',
+                                            'Training'          => 'Training',
+                                            'Research'          => 'Research',
+                                            'Other'             => 'Other',
                                         ]),
-                                    Forms\Components\Hidden::make('num_male_guests')
-                                        ->default(0),
-                                    Forms\Components\Hidden::make('num_female_guests')
-                                        ->default(0),
-                                ])->columns(3),
+                                    Forms\Components\Hidden::make('num_male_guests')->default(0),
+                                    Forms\Components\Hidden::make('num_female_guests')->default(0),
+                                ])->columns(1),
 
-                            Forms\Components\Section::make('Additional Guests')
-                                ->description('Add other guests who will be staying (requesting guest is already included)')
-                                ->collapsible()
-                                ->schema([
-                                    Forms\Components\Repeater::make('guests')
-                                        ->label('Other Guests')
-                                        ->schema([
-                                            Forms\Components\TextInput::make('last_name')
-                                                ->label('Last Name')
-                                                ->required()
-                                                ->maxLength(255),
-                                            Forms\Components\TextInput::make('first_name')
-                                                ->label('First Name')
-                                                ->required()
-                                                ->maxLength(255),
-                                            Forms\Components\TextInput::make('middle_initial')
-                                                ->label('M.I.')
-                                                ->maxLength(10),
-                                            Forms\Components\Select::make('gender')
-                                                ->label('Gender')
-                                                ->required()
-                                                ->options([
-                                                    'Male' => 'Male',
-                                                    'Female' => 'Female',
-                                                    'Other' => 'Other',
-                                                ]),
-                                        ])
-                                        ->columns(4)
-                                        ->defaultItems(0)
-                                        ->addActionLabel('+ Add Guest')
-                                        ->reorderable()
-                                        ->collapsible()
-                                        ->itemLabel(fn (array $state): ?string => 
-                                            isset($state['first_name']) && isset($state['last_name']) 
-                                                ? $state['first_name'] . ' ' . $state['last_name']
-                                                : null
-                                        )
-                                        ->columnSpanFull(),
-                                ]),
-
-                            Forms\Components\Section::make('Check-in/Check-out Schedule')
+                            Forms\Components\Section::make('Check-in / Check-out Schedule')
                                 ->schema([
                                     Forms\Components\DateTimePicker::make('detailed_checkin_datetime')
                                         ->label('Check-in Date & Time')
                                         ->default(fn (Reservation $record) => $record->check_in_date)
                                         ->required()
                                         ->native(false)
-                                        ->seconds(false),
+                                        ->seconds(false)
+                                        ->live(),
                                     Forms\Components\DateTimePicker::make('detailed_checkout_datetime')
                                         ->label('Check-out Date & Time')
                                         ->default(fn (Reservation $record) => $record->check_out_date)
                                         ->required()
                                         ->native(false)
                                         ->seconds(false)
-                                        ->after('detailed_checkin_datetime'),
+                                        ->after('detailed_checkin_datetime')
+                                        ->live(),
                                 ])->columns(2),
 
                             Forms\Components\Section::make('Additional Services & Payment')
@@ -730,39 +599,22 @@ class ReservationResource extends Resource
                                                 ->ordered()
                                                 ->get()
                                                 ->mapWithKeys(fn (Service $service) => [
-                                                    $service->code => $service->name . 
+                                                    $service->code => $service->name .
                                                         ($service->price > 0 ? " ({$service->formatted_price})" : ' (Free)'),
                                                 ]);
                                         })
                                         ->columns(3)
-                                        ->helperText('Select any additional services needed during the stay. Paid services will be added to the total amount.')
-                                        ->live()
-                                        ->afterStateUpdated(function ($state, $set, Reservation $record) {
-                                            // Calculate base room rate
-                                            $roomType = $record->preferredRoomType;
-                                            $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                            
-                                            $baseRate = $roomType->calculateRate($nights, $record->number_of_occupants);
-                                            
-                                            // Calculate service charges
-                                            $serviceCharges = 0;
-                                            if (!empty($state)) {
-                                                $services = Service::whereIn('code', $state)->get();
-                                                $serviceCharges = $services->sum('price');
-                                            }
-                                            
-                                            // Update payment amount with total
-                                            $set('payment_amount', $baseRate + $serviceCharges);
-                                        }),
+                                        ->helperText('Paid services will be added to the total amount.')
+                                        ->live(),
                                     Forms\Components\Select::make('payment_mode')
                                         ->label('Mode of Payment')
                                         ->default('cash')
                                         ->options([
-                                            'cash' => 'Cash',
+                                            'cash'          => 'Cash',
                                             'bank_transfer' => 'Bank Transfer',
-                                            'gcash' => 'GCash',
-                                            'check' => 'Check',
-                                            'others' => 'Others',
+                                            'gcash'         => 'GCash',
+                                            'check'         => 'Check',
+                                            'others'        => 'Others',
                                         ])
                                         ->live()
                                         ->required(),
@@ -775,49 +627,76 @@ class ReservationResource extends Resource
                                         ->content(fn (Reservation $record) => $record->number_of_occupants . ' guest' . ($record->number_of_occupants > 1 ? 's' : '')),
                                     Forms\Components\Placeholder::make('declared_days')
                                         ->label('Declared Number of Days')
-                                        ->content(fn (Reservation $record) => ($d = max(1, $record->check_in_date->diffInDays($record->check_out_date))) . ' day' . ($d > 1 ? 's' : '')),
+                                        ->content(function ($get, Reservation $record) {
+                                            $checkIn = $get('detailed_checkin_datetime');
+                                            $checkOut = $get('detailed_checkout_datetime');
+                                            
+                                            if ($checkIn && $checkOut) {
+                                                $checkInDate = \Carbon\Carbon::parse($checkIn);
+                                                $checkOutDate = \Carbon\Carbon::parse($checkOut);
+                                                $d = max(1, $checkInDate->diffInDays($checkOutDate));
+                                            } else {
+                                                $d = max(1, $record->check_in_date->diffInDays($record->check_out_date));
+                                            }
+                                            
+                                            return $d . ' day' . ($d > 1 ? 's' : '');
+                                        }),
                                     Forms\Components\TextInput::make('payment_amount')
                                         ->label('Total Payment Amount')
                                         ->numeric()
                                         ->prefix('₱')
                                         ->minValue(0)
                                         ->required()
-                                        ->helperText(function (Reservation $record) {
-                                            $roomType = $record->preferredRoomType;
-                                            $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                            $total = $roomType->calculateRate($nights, $record->number_of_occupants);
-                                            
-                                            if ($roomType->isPerPersonPricing()) {
-                                                return sprintf(
-                                                    'Room rate: ₱%s/person/night × %d guest%s × %d night%s = ₱%s. Additional services will be added to this amount.',
-                                                    number_format($roomType->base_rate, 2),
-                                                    $record->number_of_occupants,
-                                                    $record->number_of_occupants > 1 ? 's' : '',
-                                                    $nights,
-                                                    $nights > 1 ? 's' : '',
-                                                    number_format($total, 2)
+                                        ->default(function (Reservation $record) {
+                                            $pricing = self::computeCheckInPricing(
+                                                $record,
+                                                [],
+                                                null,
+                                                null,
+                                                []
+                                            );
+
+                                            return $pricing['grand_total'];
+                                        }),
+                                    Forms\Components\Placeholder::make('live_checkin_pricing_breakdown')
+                                        ->label('Current Updated Price (Actual Check-in Data)')
+                                        ->content(function ($get, Reservation $record) {
+                                            $pricing = self::computeCheckInPricing(
+                                                $record,
+                                                $get('reservation_rooms') ?? [],
+                                                $get('detailed_checkin_datetime'),
+                                                $get('detailed_checkout_datetime'),
+                                                $get('additional_requests') ?? []
+                                            );
+
+                                            $rows = [];
+                                            foreach ($pricing['rooms'] as $line) {
+                                                $rows[] = sprintf(
+                                                    '<li>%s: %s</li>',
+                                                    e($line['label']),
+                                                    e($line['formula'])
                                                 );
                                             }
-                                            
-                                            return sprintf(
-                                                'Room rate: ₱%s/night × %d night%s = ₱%s. Additional services will be added to this amount.',
-                                                number_format($roomType->base_rate, 2),
-                                                $nights,
-                                                $nights > 1 ? 's' : '',
-                                                number_format($total, 2)
-                                            );
+
+                                            if (empty($rows)) {
+                                                $rows[] = '<li>Select room(s) and guest(s) to preview real-time computation.</li>';
+                                            }
+
+                                            $html = '<div class="text-sm space-y-2">';
+                                            $html .= '<div><strong>Nights:</strong> ' . $pricing['nights'] . '</div>';
+                                            $html .= '<ul class="list-disc pl-5 space-y-1">' . implode('', $rows) . '</ul>';
+                                            $html .= '<div><strong>Room Subtotal:</strong> ₱' . number_format($pricing['room_subtotal'], 2) . '</div>';
+                                            $html .= '<div><strong>Services:</strong> ₱' . number_format($pricing['services_total'], 2) . '</div>';
+                                            $html .= '<div class="font-semibold"><strong>Updated Total:</strong> ₱' . number_format($pricing['grand_total'], 2) . '</div>';
+                                            $html .= '</div>';
+
+                                            return new HtmlString($html);
                                         })
-                                        ->default(function (Reservation $record) {
-                                            $roomType = $record->preferredRoomType;
-                                            $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                            
-                                            // Calculate base room rate using room type's pricing method
-                                            return $roomType->calculateRate($nights, $record->number_of_occupants);
-                                        }),
+                                        ->columnSpanFull(),
                                     Forms\Components\TextInput::make('payment_or_number')
                                         ->label('Official Receipt Number')
                                         ->maxLength(100)
-                                        ->required(),
+                                        ->helperText('Optional for now. You can finalize this after payment is made.'),
                                     Forms\Components\Textarea::make('remarks')
                                         ->label('Check-in Remarks')
                                         ->rows(2)
@@ -825,106 +704,134 @@ class ReservationResource extends Resource
                                 ])->columns(2),
                         ])
                         ->action(function (Reservation $record, array $data) {
-                            // Create room assignment
-                            $assignment = RoomAssignment::create([
-                                'reservation_id' => $record->id,
-                                'room_id' => $data['room_id'],
-                                'assigned_by' => auth()->id(),
-                                'assigned_at' => now(),
-                                'notes' => $data['remarks'] ?? null,
-                                // Guest details
-                                'guest_last_name' => $data['guest_last_name'],
-                                'guest_first_name' => $data['guest_first_name'],
-                                'guest_middle_initial' => $data['guest_middle_initial'] ?? null,
-                                'guest_full_address' => $data['guest_full_address'] ?? null,
-                                'guest_contact_number' => $data['guest_contact_number'],
-                                'id_type' => $data['id_type'],
-                                'id_number' => $data['id_number'],
-                                'is_student' => $data['is_student'] ?? false,
-                                'is_senior_citizen' => $data['is_senior_citizen'] ?? false,
-                                'is_pwd' => $data['is_pwd'] ?? false,
-                                'purpose_of_stay' => $data['purpose_of_stay'],
-                                'nationality' => $data['nationality'],
-                                'num_male_guests' => $data['num_male_guests'],
-                                'num_female_guests' => $data['num_female_guests'],
-                                'detailed_checkin_datetime' => $data['detailed_checkin_datetime'],
-                                'detailed_checkout_datetime' => $data['detailed_checkout_datetime'],
-                                'additional_requests' => $data['additional_requests'] ?? null,
-                                'payment_mode' => $data['payment_mode'],
-                                'payment_mode_other' => $data['payment_mode_other'] ?? null,
-                                'payment_amount' => $data['payment_amount'],
-                                'payment_or_number' => $data['payment_or_number'] ?? null,
-                            ]);
+                            try {
+                                $pricing = self::computeCheckInPricing(
+                                    $record,
+                                    $data['reservation_rooms'] ?? [],
+                                    $data['detailed_checkin_datetime'] ?? null,
+                                    $data['detailed_checkout_datetime'] ?? null,
+                                    $data['additional_requests'] ?? []
+                                );
+                                $data['payment_amount'] = $pricing['grand_total'];
 
-                            // Create stay log
-                            StayLog::create([
-                                'reservation_id' => $record->id,
-                                'room_id' => $data['room_id'],
-                                'checked_in_at' => now(),
-                                'checked_in_by' => auth()->id(),
-                                'remarks' => $data['remarks'] ?? null,
-                            ]);
+                                $result = app(CheckInService::class)->preparePendingPayment($record, $data);
 
-                            // Update room status to occupied
-                            $assignment->room->update(['status' => 'occupied']);
-
-                            // Update reservation status to checked_in and save gender
-                            $record->update([
-                                'status' => 'checked_in',
-                                'guest_gender' => $data['guest_gender'] ?? null,
-                            ]);
-
-                            // Save requesting guest
-                            $requestingGuestFullName = trim(
-                                $record->guest_first_name . ' ' .
-                                ($record->guest_middle_initial ? $record->guest_middle_initial . ' ' : '') .
-                                $record->guest_last_name
-                            );
-                            
-                            Guest::create([
-                                'reservation_id' => $record->id,
-                                'full_name' => $requestingGuestFullName,
-                                'first_name' => $record->guest_first_name,
-                                'last_name' => $record->guest_last_name,
-                                'middle_initial' => $record->guest_middle_initial,
-                                'gender' => $data['guest_gender'] ?? null,
-                            ]);
-
-                            // Save additional guests from the form
-                            if (!empty($data['guests'])) {
-                                foreach ($data['guests'] as $guestData) {
-                                    $fullName = trim(
-                                        ($guestData['first_name'] ?? '') . ' ' .
-                                        ($guestData['middle_initial'] ? $guestData['middle_initial'] . ' ' : '') .
-                                        ($guestData['last_name'] ?? '')
-                                    );
-                                    
-                                    Guest::create([
-                                        'reservation_id' => $record->id,
-                                        'full_name' => $fullName,
-                                        'first_name' => $guestData['first_name'] ?? null,
-                                        'last_name' => $guestData['last_name'] ?? null,
-                                        'middle_initial' => $guestData['middle_initial'] ?? null,
-                                        'gender' => $guestData['gender'] ?? null,
-                                    ]);
-                                }
+                                Notification::make()
+                                    ->success()
+                                    ->title('Check-in Prepared')
+                                    ->body('Hold created for ' . $result['held_guest_count'] . ' guest(s). Expires at ' . optional($result['hold_expires_at'])?->format('M d, Y h:i A') . '.')
+                                    ->send();
+                            } catch (\Throwable $e) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Unable to Prepare Check-in')
+                                    ->body($e->getMessage())
+                                    ->persistent()
+                                    ->send();
                             }
+                        }),
 
-                            // Recalculate counts based on actual guest records
-                            $totalGuests = $record->guests()->count();
-                            $maleCount = $record->guests()->where('gender', 'Male')->count();
-                            $femaleCount = $record->guests()->where('gender', 'Female')->count();
-                            
-                            $record->update([
-                                'number_of_occupants' => $totalGuests,
-                                'num_male_guests' => $maleCount,
-                                'num_female_guests' => $femaleCount,
-                            ]);
-                            
-                            $assignment->update([
-                                'num_male_guests' => $maleCount,
-                                'num_female_guests' => $femaleCount,
-                            ]);
+                    Tables\Actions\Action::make('finalize_check_in')
+                        ->label('Finalize Check-in')
+                        ->icon('heroicon-o-credit-card')
+                        ->color('warning')
+                        ->modalHeading('Finalize Check-in After Payment')
+                        ->visible(fn (Reservation $record) => $record->status === 'pending_payment')
+                        ->form([
+                            Forms\Components\Placeholder::make('hold_expiry_notice')
+                                ->label('Hold Status')
+                                ->content(fn (Reservation $record) => $record->checkin_hold_expires_at
+                                    ? 'Hold expires on ' . $record->checkin_hold_expires_at->format('M d, Y h:i A')
+                                    : 'No hold expiry recorded.'),
+                            Forms\Components\Placeholder::make('payable_amount_notice')
+                                ->label('Payable Amount')
+                                ->content(function (Reservation $record) {
+                                    $payable = (float) (data_get($record->checkin_hold_payload, 'payload.payment_amount') ?? 0);
+
+                                    return $payable > 0
+                                        ? '₱' . number_format($payable, 2)
+                                        : 'No payable amount recorded in hold payload.';
+                                }),
+                            Forms\Components\Select::make('payment_mode')
+                                ->label('Mode of Payment')
+                                ->default(fn (Reservation $record) => data_get($record->checkin_hold_payload, 'payload.payment_mode') ?? 'cash')
+                                ->options([
+                                    'cash'          => 'Cash',
+                                    'bank_transfer' => 'Bank Transfer',
+                                    'gcash'         => 'GCash',
+                                    'check'         => 'Check',
+                                    'others'        => 'Others',
+                                ])
+                                ->live()
+                                ->required(),
+                            Forms\Components\TextInput::make('payment_mode_other')
+                                ->label('Specify Payment Mode')
+                                ->visible(fn ($get) => $get('payment_mode') === 'others')
+                                ->maxLength(100),
+                            Forms\Components\TextInput::make('payment_amount')
+                                ->label('Paid Amount')
+                                ->numeric()
+                                ->prefix('₱')
+                                ->default(fn (Reservation $record) => (float) (data_get($record->checkin_hold_payload, 'payload.payment_amount') ?? 0))
+                                ->required(),
+                            Forms\Components\TextInput::make('payment_or_number')
+                                ->label('Official Receipt Number')
+                                ->required()
+                                ->maxLength(100),
+                            Forms\Components\Textarea::make('remarks')
+                                ->label('Final Check-in Remarks')
+                                ->rows(2),
+                        ])
+                        ->action(function (Reservation $record, array $data) {
+                            try {
+                                $result = app(CheckInService::class)->finalizePendingPayment($record, $data);
+
+                                if (($result['all_succeeded'] ?? false) === true) {
+                                    Notification::make()
+                                        ->success()
+                                        ->title('Reservation Checked In')
+                                        ->body("Checked in {$result['checked_in_count']} guest(s) successfully.")
+                                        ->send();
+
+                                    return;
+                                }
+
+                                $messages = array_merge(
+                                    $result['room_errors'] ?? [],
+                                    $result['failed_guests'] ?? []
+                                );
+
+                                Notification::make()
+                                    ->warning()
+                                    ->title('Finalization Completed With Issues')
+                                    ->body(implode(' ', array_slice($messages, 0, 5)))
+                                    ->persistent()
+                                    ->send();
+                            } catch (\Throwable $e) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Unable to Finalize Check-in')
+                                    ->body($e->getMessage())
+                                    ->persistent()
+                                    ->send();
+                            }
+                        }),
+
+                    Tables\Actions\Action::make('cancel_payment_hold')
+                        ->label('Cancel Payment Hold')
+                        ->icon('heroicon-o-lock-open')
+                        ->color('gray')
+                        ->requiresConfirmation()
+                        ->modalHeading('Release Hold and Return to Approved')
+                        ->visible(fn (Reservation $record) => $record->status === 'pending_payment')
+                        ->action(function (Reservation $record) {
+                            app(CheckInService::class)->releasePendingPaymentHold($record, true);
+
+                            Notification::make()
+                                ->success()
+                                ->title('Hold Released')
+                                ->body('Room/bed locks were released and reservation is back to Approved.')
+                                ->send();
                         }),
 
                     // Check Out action
@@ -933,24 +840,41 @@ class ReservationResource extends Resource
                         ->color('warning')
                         ->requiresConfirmation()
                         ->modalHeading('Check Out Guest')
-                        ->visible(fn (Reservation $record) => $record->status === 'checked_in')
+                        ->visible(fn (Reservation $record) => in_array($record->status, ['checked_in', 'checked_out'], true))
                         ->form([
                             Forms\Components\Textarea::make('remarks')
                                 ->label('Check-out Remarks')
                                 ->rows(2),
                         ])
                         ->action(function (Reservation $record, array $data) {
-                            // Free rooms BEFORE updating reservation status (observer auto-closes stay logs on status change)
-                            foreach ($record->stayLogs()->whereNull('checked_out_at')->get() as $log) {
-                                $log->update([
+                            // Close ALL room assignments without a checkout timestamp
+                            RoomAssignment::where('reservation_id', $record->id)
+                                ->whereNull('checked_out_at')
+                                ->update([
+                                    'status' => 'checked_out',
                                     'checked_out_at' => now(),
                                     'checked_out_by' => auth()->id(),
-                                    'remarks' => $data['remarks'] ? ($log->remarks ? $log->remarks . ' | ' . $data['remarks'] : $data['remarks']) : $log->remarks,
                                 ]);
-                                $log->room->update(['status' => 'available']);
+
+                            // Add remarks if provided to all assignments
+                            if ($data['remarks']) {
+                                RoomAssignment::where('reservation_id', $record->id)
+                                    ->each(function ($assignment) use ($data) {
+                                        $assignment->update([
+                                            'remarks' => $assignment->remarks
+                                                ? $assignment->remarks . ' | ' . $data['remarks']
+                                                : $data['remarks'],
+                                        ]);
+                                    });
                             }
 
                             $record->update(['status' => 'checked_out']);
+
+                            Notification::make()
+                                ->success()
+                                ->title('Checked Out')
+                                ->body('All guests have been checked out successfully.')
+                                ->send();
                         }),
 
                     // Cancel action
@@ -958,7 +882,7 @@ class ReservationResource extends Resource
                         ->icon('heroicon-o-no-symbol')
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->visible(fn (Reservation $record) => in_array($record->status, ['pending', 'approved']))
+                        ->visible(fn (Reservation $record) => in_array($record->status, ['pending', 'approved', 'pending_payment']))
                         ->form([
                             Forms\Components\Textarea::make('admin_notes')
                                 ->label('Cancellation reason')
@@ -966,6 +890,10 @@ class ReservationResource extends Resource
                                 ->rows(2),
                         ])
                         ->action(function (Reservation $record, array $data) {
+                            if ($record->status === 'pending_payment') {
+                                app(CheckInService::class)->releasePendingPaymentHold($record, false);
+                            }
+
                             $record->update([
                                 'status' => 'cancelled',
                                 'admin_notes' => $data['admin_notes'],
@@ -987,7 +915,135 @@ class ReservationResource extends Resource
     {
         return [
             ReservationResource\RelationManagers\RoomAssignmentsRelationManager::class,
-            ReservationResource\RelationManagers\StayLogsRelationManager::class,
+        ];
+    }
+
+    /**
+     * Apply friendly query parameters to the base Eloquent query.
+     * Supports `status` (single or comma-separated), `near_due=1`, and `overdue=1`.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+        $req = request();
+
+        if ($status = $req->query('status')) {
+            if (is_array($status)) {
+                $query->whereIn('status', $status);
+            } elseif (str_contains($status, ',')) {
+                $query->whereIn('status', array_map('trim', explode(',', $status)));
+            } else {
+                $query->where('status', $status);
+            }
+        }
+
+        if ($req->boolean('near_due')) {
+            $from = now()->toDateString();
+            $until = now()->copy()->addDay()->toDateString();
+            $query->where('status', 'checked_in')
+                  ->whereBetween('check_out_date', [$from, $until]);
+        }
+
+        if ($req->boolean('overdue')) {
+            $query->where('status', 'checked_in')
+                  ->whereDate('check_out_date', '<', now()->toDateString());
+        }
+
+        return $query;
+    }
+
+    protected static function computeCheckInPricing(
+        Reservation $record,
+        array $reservationRooms,
+        mixed $checkInState,
+        mixed $checkOutState,
+        array $serviceCodes
+    ): array {
+        $checkIn = $checkInState ? Carbon::parse($checkInState) : Carbon::parse($record->check_in_date);
+        $checkOut = $checkOutState ? Carbon::parse($checkOutState) : Carbon::parse($record->check_out_date);
+        $nights = max(1, $checkIn->diffInDays($checkOut));
+
+        $roomIds = collect($reservationRooms)
+            ->pluck('room_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $roomsById = Room::with('roomType')
+            ->whereIn('id', $roomIds)
+            ->get()
+            ->keyBy('id');
+
+        $roomLines = [];
+        $roomSubtotal = 0.0;
+
+        foreach ($reservationRooms as $entry) {
+            $roomId = $entry['room_id'] ?? null;
+            if (! $roomId || ! $roomsById->has($roomId)) {
+                continue;
+            }
+
+            $room = $roomsById->get($roomId);
+            $roomType = $room->roomType;
+            $companionCount = collect($entry['guests'] ?? [])
+                ->filter(fn ($guest) => filled($guest['first_name'] ?? null) || filled($guest['last_name'] ?? null))
+                ->count();
+            $guestCount = $companionCount + ((bool) ($entry['includes_primary_guest'] ?? false) ? 1 : 0);
+            $rate = (float) $roomType->base_rate;
+            $roomMode = $entry['room_mode'] ?? ($roomType->isPrivate() ? 'private' : 'dorm');
+
+            // Match pricing basis to selected allocation mode in the check-in form.
+            $isPerBedPricing = $roomMode === 'dorm';
+
+            if ($isPerBedPricing) {
+                $lineTotal = $rate * $guestCount * $nights;
+                $formula = sprintf(
+                    '₱%s x %d guest(s) x %d night(s) = ₱%s',
+                    number_format($rate, 2),
+                    $guestCount,
+                    $nights,
+                    number_format($lineTotal, 2)
+                );
+            } else {
+                $lineTotal = $rate * $nights;
+                $formula = sprintf(
+                    '₱%s x %d night(s) = ₱%s',
+                    number_format($rate, 2),
+                    $nights,
+                    number_format($lineTotal, 2)
+                );
+            }
+
+            $roomSubtotal += $lineTotal;
+            $roomLines[] = [
+                'label' => "Room {$room->room_number} ({$roomType->name}, " . ucfirst($roomMode) . ')',
+                'formula' => $formula,
+                'line_total' => $lineTotal,
+            ];
+        }
+
+        $servicesTotal = empty($serviceCodes)
+            ? 0.0
+            : (float) Service::whereIn('code', $serviceCodes)->sum('price');
+
+        // Fallback to declared reservation pricing when no room lines are available yet.
+        if (empty($roomLines)) {
+            $declaredBase = (float) $record->preferredRoomType->calculateRate($nights, (int) $record->number_of_occupants);
+            return [
+                'nights' => $nights,
+                'rooms' => [],
+                'room_subtotal' => $declaredBase,
+                'services_total' => $servicesTotal,
+                'grand_total' => $declaredBase + $servicesTotal,
+            ];
+        }
+
+        return [
+            'nights' => $nights,
+            'rooms' => $roomLines,
+            'room_subtotal' => $roomSubtotal,
+            'services_total' => $servicesTotal,
+            'grand_total' => $roomSubtotal + $servicesTotal,
         ];
     }
 

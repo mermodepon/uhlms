@@ -10,7 +10,7 @@ class ListReservations extends ListRecords
 {
     protected static string $resource = ReservationResource::class;
 
-    protected static ?string $pollingInterval = '30s';
+    protected static ?string $pollingInterval = null;
 
     protected function getHeaderActions(): array
     {

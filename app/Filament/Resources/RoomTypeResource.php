@@ -50,6 +50,18 @@ class RoomTypeResource extends Resource
                             ->required()
                             ->live()
                             ->helperText('Choose how this room type is priced'),
+                        Forms\Components\Select::make('room_sharing_type')
+                            ->label('Room Sharing Type')
+                            ->options([
+                                'public'  => 'Public / Shared (dormitory-style)',
+                                'private' => 'Private (exclusive to one reservation)',
+                            ])
+                            ->default('public')
+                            ->required()
+                            ->helperText(
+                                'Public: multiple guests can share the room up to capacity. '
+                              . 'Private: once a guest checks in, the room is locked exclusively for that reservation.'
+                            ),
                         Forms\Components\Toggle::make('is_active')
                             ->default(true),
                         Forms\Components\Textarea::make('description')
@@ -119,6 +131,19 @@ class RoomTypeResource extends Resource
                         'flat_rate' => 'primary',
                         'per_person' => 'success',
                         default => 'gray',
+                    }),
+                Tables\Columns\TextColumn::make('room_sharing_type')
+                    ->label('Sharing')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'private' => 'Private',
+                        'public'  => 'Public / Shared',
+                        default   => ucfirst($state),
+                    })
+                    ->color(fn (string $state): string => match ($state) {
+                        'private' => 'warning',
+                        'public'  => 'success',
+                        default   => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('rooms.room_number')
                     ->label('Rooms')

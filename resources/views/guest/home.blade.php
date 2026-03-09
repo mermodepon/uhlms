@@ -8,13 +8,21 @@
         use App\Models\Setting;
         $heroBanner = Setting::get('hero_banner');
         $heroSrc = $heroBanner ? asset('storage/' . $heroBanner) : asset('images/uh_banner.png');
+        $heroEmbed = Setting::get('hero_banner_embed');
+        $heroEmbedEnabled = Setting::get('hero_banner_embed_enabled');
         $welcomeMessage = Setting::get('welcome_message', 'Comfortable and affordable lodging for visiting scholars, faculty, students, and guests of Central Mindanao University.');
         $siteTitle = Setting::get('site_title', 'University Homestay');
     @endphp
     <section class="relative bg-gradient-to-br from-[#00491E] via-[#02681E] to-[#00491E] text-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
             <div class="flex justify-center mb-8">
-                <img src="{{ $heroSrc }}" alt="Hero Banner" class="w-full max-w-4xl rounded-xl shadow-lg object-cover" />
+                @if($heroEmbed && $heroEmbedEnabled)
+                    <div class="w-full max-w-4xl rounded-xl shadow-lg overflow-hidden" style="position: relative; padding-bottom: 56.25%; height: 0;">
+                        <iframe src="{{ $heroEmbed }}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen loading="lazy"></iframe>
+                    </div>
+                @else
+                    <img src="{{ $heroSrc }}" alt="Hero Banner" class="w-full max-w-4xl rounded-xl shadow-lg object-cover" />
+                @endif
             </div>
             <div class="text-center">
                 <h1 class="text-4xl md:text-6xl font-bold mb-6">

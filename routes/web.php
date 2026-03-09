@@ -16,3 +16,5 @@ Route::get('/messages', [MessageController::class, 'index'])->name('guest.messag
 Route::post('/messages', [MessageController::class, 'store'])->name('guest.messages.store');
 Route::post('/contact', [MessageController::class, 'storeInquiry'])->name('guest.contact.store');
 
+
+
