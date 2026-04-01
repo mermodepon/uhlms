@@ -23,7 +23,10 @@ class UserResource extends Resource
     public static function canAccess(): bool
     {
         $user = auth()->user();
-        if (!$user) return false;
+        if (! $user) {
+            return false;
+        }
+
         // Super admins and admins always have access; staff need explicit users_view permission
         return $user->isAdmin() || $user->hasPermission('users_view');
     }
@@ -54,17 +57,18 @@ class UserResource extends Resource
                                 if (auth()->user()?->isSuperAdmin()) {
                                     return [
                                         'super_admin' => 'Super Administrator',
-                                        'admin'       => 'Administrator',
-                                        'staff'       => 'Staff',
+                                        'admin' => 'Administrator',
+                                        'staff' => 'Staff',
                                     ];
                                 }
+
                                 return ['staff' => 'Staff'];
                             })
                             ->required()
                             ->default('staff')
-                            ->disabled(fn (string $operation) => $operation === 'edit' && !auth()->user()?->isSuperAdmin())
+                            ->disabled(fn (string $operation) => $operation === 'edit' && ! auth()->user()?->isSuperAdmin())
                             ->dehydrated()
-                            ->helperText(fn (string $operation) => ($operation === 'edit' && !auth()->user()?->isSuperAdmin()) ? 'Only a Super Administrator can change user roles.' : null),
+                            ->helperText(fn (string $operation) => ($operation === 'edit' && ! auth()->user()?->isSuperAdmin()) ? 'Only a Super Administrator can change user roles.' : null),
                     ])->columns(2),
 
                 Forms\Components\Section::make('Custom Permissions')
@@ -141,7 +145,7 @@ class UserResource extends Resource
                                         Forms\Components\Toggle::make('permissions.stay_logs_view')->label('View Stay Logs')->inline(false),
                                     ])->columns(1),
                             ])
-                            ->hidden(fn ($get) => !$get('use_custom_permissions')),
+                            ->hidden(fn ($get) => ! $get('use_custom_permissions')),
                     ])
                     ->visible(fn (string $operation): bool => $operation === 'edit' && (auth()->user()?->isSuperAdmin() ?? false))
                     ->collapsible(),
@@ -164,15 +168,15 @@ class UserResource extends Resource
                     ->sortable()
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'super_admin' => 'Super Admin',
-                        'admin'       => 'Administrator',
-                        'staff'       => 'Staff',
-                        default       => ucfirst($state),
+                        'admin' => 'Administrator',
+                        'staff' => 'Staff',
+                        default => ucfirst($state),
                     })
                     ->color(fn (string $state): string => match ($state) {
                         'super_admin' => 'danger',
-                        'admin'       => 'warning',
-                        'staff'       => 'info',
-                        default       => 'gray',
+                        'admin' => 'warning',
+                        'staff' => 'info',
+                        default => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
@@ -181,7 +185,7 @@ class UserResource extends Resource
             ])
             ->modifyQueryUsing(function ($query) {
                 // Regular admins only see staff accounts — not other admins or super admins
-                if (!auth()->user()?->isSuperAdmin()) {
+                if (! auth()->user()?->isSuperAdmin()) {
                     $query->where('role', 'staff');
                 }
             })
@@ -191,10 +195,11 @@ class UserResource extends Resource
                         if (auth()->user()?->isSuperAdmin()) {
                             return [
                                 'super_admin' => 'Super Admin',
-                                'admin'       => 'Administrator',
-                                'staff'       => 'Staff',
+                                'admin' => 'Administrator',
+                                'staff' => 'Staff',
                             ];
                         }
+
                         return ['staff' => 'Staff'];
                     }),
             ])
@@ -205,8 +210,7 @@ class UserResource extends Resource
                     ->successNotificationTitle('User deleted')
                     ->visible(fn (User $record) => auth()->user()?->can('delete', $record))
                     ->disabled(fn (User $record) => $record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
-                    ->tooltip(fn (User $record) =>
-                        ($record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
+                    ->tooltip(fn (User $record) => ($record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
                             ? 'This user cannot be deleted because they are linked to room assignments or reservations.'
                             : null
                     ),

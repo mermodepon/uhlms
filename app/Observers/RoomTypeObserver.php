@@ -2,9 +2,7 @@
 
 namespace App\Observers;
 
-use App\Models\Notification;
 use App\Models\RoomType;
-use App\Models\User;
 use App\Notifications\NotificationHelper;
 
 class RoomTypeObserver
@@ -17,7 +15,7 @@ class RoomTypeObserver
             "Room Type \"{$roomType->name}\" ({$sharing}) has been added to the system.",
             'success',
             'room_type',
-            '/admin/room-types/' . $roomType->id,
+            '/admin/room-types/'.$roomType->id,
             auth()->id()
         );
     }
@@ -30,11 +28,11 @@ class RoomTypeObserver
             $status = $changes['is_active'] ? 'activated' : 'deactivated';
 
             NotificationHelper::notifyAllStaff(
-                'Room Type ' . ucfirst($status),
+                'Room Type '.ucfirst($status),
                 "Room Type \"{$roomType->name}\" has been {$status}.",
                 $changes['is_active'] ? 'success' : 'warning',
                 'room_type',
-                '/admin/room-types/' . $roomType->id,
+                '/admin/room-types/'.$roomType->id,
                 auth()->id()
             );
         } elseif (array_key_exists('room_sharing_type', $changes)) {
@@ -45,7 +43,7 @@ class RoomTypeObserver
                 "Room Type \"{$roomType->name}\" sharing changed from {$old} to {$new}.",
                 'info',
                 'room_type',
-                '/admin/room-types/' . $roomType->id,
+                '/admin/room-types/'.$roomType->id,
                 auth()->id()
             );
         } elseif (count(array_diff_key($changes, ['updated_at' => null])) > 0) {
@@ -54,7 +52,7 @@ class RoomTypeObserver
                 "Room Type \"{$roomType->name}\" details have been updated.",
                 'info',
                 'room_type',
-                '/admin/room-types/' . $roomType->id,
+                '/admin/room-types/'.$roomType->id,
                 auth()->id()
             );
         }

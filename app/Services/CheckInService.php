@@ -20,7 +20,6 @@ class CheckInService
     /**
      * Execute direct-entry check-in for one reservation across multiple room entries.
      *
-     * @param  Reservation  $reservation
      * @param  array<string,mixed>  $payload
      * @return array<string,mixed>
      */
@@ -64,8 +63,8 @@ class CheckInService
             &$failedGuests,
             &$roomErrors,
             &$allSucceeded,
-            &$primaryLinked,
-            $primaryGuest
+            &$primaryLinked
+
         ): void {
             $checkInAt = $payload['detailed_checkin_datetime'] ?? now();
             $checkOutAt = $payload['detailed_checkout_datetime'] ?? $reservation->check_out_date;
@@ -85,14 +84,16 @@ class CheckInService
 
                 if (! $room) {
                     $allSucceeded = false;
-                    $roomErrors[] = "No available room for entry #" . ($entryIndex + 1) . '.';
+                    $roomErrors[] = 'No available room for entry #'.($entryIndex + 1).'.';
+
                     continue;
                 }
 
                 $entryGuests = $entry['guests'] ?? [];
                 if (empty($entryGuests)) {
                     $allSucceeded = false;
-                    $roomErrors[] = "No guests provided for room entry #" . ($entryIndex + 1) . '.';
+                    $roomErrors[] = 'No guests provided for room entry #'.($entryIndex + 1).'.';
+
                     continue;
                 }
 
@@ -139,8 +140,9 @@ class CheckInService
                     $currentOccupancy = $room->roomAssignments()->where('status', 'checked_in')->count();
                     if ($room->capacity > 0 && $currentOccupancy >= $room->capacity) {
                         $allSucceeded = false;
-                        $guestName = trim(($guest['first_name'] ?? '') . ' ' . ($guest['last_name'] ?? ''));
+                        $guestName = trim(($guest['first_name'] ?? '').' '.($guest['last_name'] ?? ''));
                         $failedGuests[] = "No available slot for guest {$guestName} in room {$room->room_number} (capacity reached).";
+
                         continue;
                     }
 
@@ -241,7 +243,7 @@ class CheckInService
                     : null;
 
                 if (! $room) {
-                    throw new \RuntimeException('No available room found for entry #' . ($entryIndex + 1) . '.');
+                    throw new \RuntimeException('No available room found for entry #'.($entryIndex + 1).'.');
                 }
 
                 if ($room->status !== 'available') {
@@ -254,7 +256,7 @@ class CheckInService
                     ->all();
 
                 if (empty($entryGuests)) {
-                    throw new \RuntimeException('No guests provided for room entry #' . ($entryIndex + 1) . '.');
+                    throw new \RuntimeException('No guests provided for room entry #'.($entryIndex + 1).'.');
                 }
 
                 if ($mode === 'private') {
@@ -279,20 +281,21 @@ class CheckInService
                         'room_id' => $room->id,
                         'guests' => $holdGuests,
                     ];
+
                     continue;
                 }
 
                 $holdGuests = [];
                 foreach ($entryGuests as $guest) {
                     $holdGuests[] = [
-                        'first_name'    => $guest['first_name'] ?? null,
-                        'last_name'     => $guest['last_name'] ?? null,
+                        'first_name' => $guest['first_name'] ?? null,
+                        'last_name' => $guest['last_name'] ?? null,
                         'middle_initial' => $guest['middle_initial'] ?? null,
-                        'gender'        => $guest['gender'] ?? null,
-                        'age'           => $guest['age'] ?? null,
-                        'full_address'  => $guest['full_address'] ?? null,
+                        'gender' => $guest['gender'] ?? null,
+                        'age' => $guest['age'] ?? null,
+                        'full_address' => $guest['full_address'] ?? null,
                         'contact_number' => $guest['contact_number'] ?? null,
-                        '_is_primary'   => (bool) ($guest['_is_primary'] ?? false),
+                        '_is_primary' => (bool) ($guest['_is_primary'] ?? false),
                     ];
                 }
 
@@ -301,8 +304,8 @@ class CheckInService
 
                 $holdEntries[] = [
                     'room_mode' => $mode,
-                    'room_id'   => $room->id,
-                    'guests'    => $holdGuests,
+                    'room_id' => $room->id,
+                    'guests' => $holdGuests,
                 ];
             }
 
@@ -324,11 +327,11 @@ class CheckInService
         ReservationLog::record(
             $reservation,
             'checkin_hold_prepared',
-            'Check-in hold prepared for ' . $heldGuestCount . ' guest(s) across ' . count($holdEntries) . ' room(s). Hold expires at ' . $expiresAt?->format('M d, Y h:i A') . '.',
+            'Check-in hold prepared for '.$heldGuestCount.' guest(s) across '.count($holdEntries).' room(s). Hold expires at '.$expiresAt?->format('M d, Y h:i A').'.',
             [
-                'held_room_count'  => count($holdEntries),
+                'held_room_count' => count($holdEntries),
                 'held_guest_count' => $heldGuestCount,
-                'expires_at'       => $expiresAt?->toDateTimeString(),
+                'expires_at' => $expiresAt?->toDateTimeString(),
             ]
         );
 
@@ -384,15 +387,15 @@ class CheckInService
             ReservationLog::record(
                 $reservation,
                 'checkin_finalized',
-                'Check-in finalized. ' . $result['checked_in_count'] . ' guest(s) checked in.'
-                    . ' Payment: PHP ' . number_format((float) ($payload['payment_amount'] ?? 0), 2)
-                    . ' via ' . strtoupper($payload['payment_mode'] ?? 'N/A')
-                    . ' (OR: ' . ($payload['payment_or_number'] ?? 'N/A') . ').',
+                'Check-in finalized. '.$result['checked_in_count'].' guest(s) checked in.'
+                    .' Payment: PHP '.number_format((float) ($payload['payment_amount'] ?? 0), 2)
+                    .' via '.strtoupper($payload['payment_mode'] ?? 'N/A')
+                    .' (OR: '.($payload['payment_or_number'] ?? 'N/A').').',
                 [
                     'checked_in_count' => $result['checked_in_count'],
-                    'payment_amount'   => $payload['payment_amount'] ?? null,
-                    'payment_mode'     => $payload['payment_mode'] ?? null,
-                    'or_number'        => $payload['payment_or_number'] ?? null,
+                    'payment_amount' => $payload['payment_amount'] ?? null,
+                    'payment_mode' => $payload['payment_mode'] ?? null,
+                    'or_number' => $payload['payment_or_number'] ?? null,
                 ]
             );
         }
@@ -471,7 +474,7 @@ class CheckInService
         }
 
         $additionalRequests = collect($payload['additional_requests'] ?? [])
-            ->filter(fn ($i) => is_array($i) && !empty($i['code'] ?? null));
+            ->filter(fn ($i) => is_array($i) && ! empty($i['code'] ?? null));
         // Backward-compat: plain array of strings
         if ($additionalRequests->isEmpty()) {
             $legacyCodes = collect($payload['additional_requests'] ?? [])->filter(fn ($v) => is_string($v) && $v !== '');
@@ -518,7 +521,7 @@ class CheckInService
         }
 
         if ($payableAmount > 0 && $paidAmount + 0.00001 < $payableAmount) {
-            throw new \RuntimeException('Paid amount cannot be less than the payable amount of PHP ' . number_format($payableAmount, 2) . '.');
+            throw new \RuntimeException('Paid amount cannot be less than the payable amount of PHP '.number_format($payableAmount, 2).'.');
         }
 
         if (blank($paymentData['payment_or_number'] ?? null)) {
@@ -606,8 +609,8 @@ class CheckInService
         bool $includePayment
     ): RoomAssignment {
         $fullName = trim(
-            ($guestData['first_name'] ?? '') . ' ' .
-            (($guestData['middle_initial'] ?? '') ? ($guestData['middle_initial'] . ' ') : '') .
+            ($guestData['first_name'] ?? '').' '.
+            (($guestData['middle_initial'] ?? '') ? ($guestData['middle_initial'].' ') : '').
             ($guestData['last_name'] ?? '')
         );
 
@@ -703,7 +706,7 @@ class CheckInService
         // this method is called, so we must NOT read from $reservation->checkin_hold_payload.
         $entries = $payload['reservation_rooms'] ?? [];
         $paymentAmount = (float) ($payload['payment_amount'] ?? 0);
-        
+
         // Calculate room charges from the reservation dates
         $nights = max(1, Carbon::parse($reservation->check_in_date)->diffInDays(Carbon::parse($reservation->check_out_date)));
 
@@ -743,7 +746,7 @@ class CheckInService
         }
 
         $additionalRequestItems = collect($payload['additional_requests'] ?? [])
-            ->filter(fn ($i) => is_array($i) && !empty($i['code'] ?? null));
+            ->filter(fn ($i) => is_array($i) && ! empty($i['code'] ?? null));
         // Backward-compat: plain array of strings
         if ($additionalRequestItems->isEmpty()) {
             $legacyCodes = collect($payload['additional_requests'] ?? [])->filter(fn ($v) => is_string($v) && $v !== '');
@@ -758,7 +761,7 @@ class CheckInService
             fn ($i) => (float) ($addonsById->get($i['code'])?->price ?? 0) * max(1, (int) ($i['qty'] ?? 1))
         );
         $subtotalBeforeDiscount = $roomChargesBeforeDiscount + $addonsTotal;
-        
+
         // Calculate discount
         $discountInfo = $this->calculateDiscount($payload, $subtotalBeforeDiscount);
         $discountAmount = $discountInfo['amount'];
@@ -774,7 +777,7 @@ class CheckInService
                 'charge_type' => 'room_rate',
                 'scope_type' => 'reservation',
                 'scope_id' => $reservation->id,
-                'description' => "Room charges ({$nights} night" . ($nights > 1 ? 's' : '') . ")",
+                'description' => "Room charges ({$nights} night".($nights > 1 ? 's' : '').')',
                 'qty' => 1,
                 'unit_price' => $roomChargesBeforeDiscount,
                 'amount' => $roomChargesBeforeDiscount,
@@ -792,7 +795,9 @@ class CheckInService
             $code = $item['code'];
             $qty = max(1, (int) ($item['qty'] ?? 1));
             $addon = $addonsById->get($code);
-            if (! $addon) continue;
+            if (! $addon) {
+                continue;
+            }
             $price = (float) $addon->price;
             $amount = $price * $qty;
             ReservationCharge::create([
@@ -800,7 +805,7 @@ class CheckInService
                 'charge_type' => 'addon',
                 'scope_type' => 'reservation',
                 'scope_id' => $reservation->id,
-                'description' => ($qty > 1 ? "{$qty}x " : '') . $addon->name,
+                'description' => ($qty > 1 ? "{$qty}x " : '').$addon->name,
                 'qty' => $qty,
                 'unit_price' => $price,
                 'amount' => $amount,
@@ -854,9 +859,9 @@ class CheckInService
 
     /**
      * Calculate discount based on guest flags and settings
-     * 
-     * @param array $payload Check-in payload with guest flags
-     * @param float $subtotal Subtotal before discount (room charges + add-ons)
+     *
+     * @param  array  $payload  Check-in payload with guest flags
+     * @param  float  $subtotal  Subtotal before discount (room charges + add-ons)
      * @return array ['amount' => float, 'percent' => float, 'types' => array, 'description' => string, 'subtotal' => float]
      */
     private function calculateDiscount(array $payload, float $subtotal): array
@@ -865,8 +870,8 @@ class CheckInService
         $isSenior = (bool) ($payload['is_senior_citizen'] ?? false);
         $isStudent = (bool) ($payload['is_student'] ?? false);
 
-        $pwdPercent     = (float) Setting::get('discount_pwd_percent', 0);
-        $seniorPercent  = (float) Setting::get('discount_senior_percent', 0);
+        $pwdPercent = (float) Setting::get('discount_pwd_percent', 0);
+        $seniorPercent = (float) Setting::get('discount_senior_percent', 0);
         $studentPercent = (float) Setting::get('discount_student_percent', 0);
 
         $applicableDiscounts = [];
@@ -894,7 +899,7 @@ class CheckInService
 
         $description = empty($applicableDiscounts)
             ? 'No discount'
-            : 'Discount: ' . implode(' + ', $applicableDiscounts);
+            : 'Discount: '.implode(' + ', $applicableDiscounts);
 
         return [
             'amount' => $discountAmount,

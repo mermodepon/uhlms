@@ -2,11 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\RoomType;
 use App\Models\Reservation;
 use App\Models\RoomAssignment;
+use App\Models\RoomType;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 class GuestController extends Controller
 {
@@ -43,18 +42,19 @@ class GuestController extends Controller
     {
         $roomType->load('amenities');
         $roomType->loadCount(['rooms', 'availableRooms']);
-        
+
         // Load rooms with slot availability
         $rooms = $roomType->rooms()
             ->withCount(['roomAssignments as checked_in_count' => fn ($q) => $q->where('status', 'checked_in')])
             ->orderBy('room_number')
             ->get()
             ->map(function ($room) {
-                $totalBeds     = $room->capacity ?? 0;
+                $totalBeds = $room->capacity ?? 0;
                 $availableBeds = max(0, $totalBeds - ($room->checked_in_count ?? 0));
-                return (object)[
-                    'room'           => $room,
-                    'total_beds'     => $totalBeds,
+
+                return (object) [
+                    'room' => $room,
+                    'total_beds' => $totalBeds,
                     'available_beds' => $availableBeds,
                     'occupancy_rate' => $totalBeds > 0 ? round((($totalBeds - $availableBeds) / $totalBeds) * 100) : 0,
                 ];
@@ -88,7 +88,7 @@ class GuestController extends Controller
             ->get()
             ->each(function ($roomType) {
                 // Calculate slot availability based on capacity vs active assignments
-                $roomType->total_beds     = $roomType->rooms->sum('capacity');
+                $roomType->total_beds = $roomType->rooms->sum('capacity');
                 $roomType->available_beds = $roomType->rooms->sum(fn ($r) => max(0, ($r->capacity ?? 0) - $r->roomAssignments()->where('status', 'checked_in')->count()));
             });
 
@@ -119,11 +119,11 @@ class GuestController extends Controller
 
         // Combine name fields for guest_name (backward compatibility)
         $validated['guest_name'] = trim(
-            $validated['guest_first_name'] . ' ' . 
-            ($validated['guest_middle_initial'] ?? '') . ' ' . 
+            $validated['guest_first_name'].' '.
+            ($validated['guest_middle_initial'] ?? '').' '.
             $validated['guest_last_name']
         );
-        
+
         $validated['status'] = 'pending';
 
         $reservation = Reservation::create($validated);
@@ -139,14 +139,14 @@ class GuestController extends Controller
     public function track(Request $request)
     {
         $reservation = null;
-        $expired     = false;
-        $reference   = $request->get('reference') ?? session('reference_number');
+        $expired = false;
+        $reference = $request->get('reference') ?? session('reference_number');
 
         // Expiry windows (in days) for terminal statuses.
         $expiryDays = [
             'checked_out' => 30,
-            'declined'    => 14,
-            'cancelled'   => 14,
+            'declined' => 14,
+            'cancelled' => 14,
         ];
 
         if ($reference) {
@@ -159,7 +159,7 @@ class GuestController extends Controller
                 if (isset($expiryDays[$reservation->status])) {
                     $daysSince = $reservation->updated_at->diffInDays(now());
                     if ($daysSince >= $expiryDays[$reservation->status]) {
-                        $expired     = true;
+                        $expired = true;
                         $reservation = null;
                     }
                 }
@@ -169,7 +169,7 @@ class GuestController extends Controller
                     RoomAssignment::where('reservation_id', $reservation->id)
                         ->whereNull('checked_out_at')
                         ->update([
-                            'status'         => 'checked_out',
+                            'status' => 'checked_out',
                             'checked_out_at' => now(),
                         ]);
 

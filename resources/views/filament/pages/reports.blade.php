@@ -163,13 +163,27 @@
             {{-- Secondary header (print) --}}
             <div style="text-align: center; margin-top: 14px; line-height: 1.8;">
                 <div style="font-size: 12pt; font-weight: bold; letter-spacing: 0.05em;">UNIVERSITY HOMESTAY</div>
-                <div style="font-size: 12pt; font-weight: bold; letter-spacing: 0.05em;">LODGING MONTHLY REPORT</div>
                 <div style="font-size: 12pt; font-weight: bold; letter-spacing: 0.05em;">
-                    FOR THE MONTH OF
-                    @if($reportType === 'monthly_or_report' && $this->monthPeriod)
-                        {{ strtoupper(\Carbon\Carbon::createFromFormat('Y-m', $this->monthPeriod)->format('F Y')) }}
+                    @switch($reportType)
+                        @case('monthly_or_report') LODGING MONTHLY REPORT @break
+                        @case('reservation_summary') RESERVATION SUMMARY REPORT @break
+                        @case('occupancy') OCCUPANCY REPORT @break
+                        @case('room_utilization') ROOM UTILIZATION REPORT @break
+                        @case('stay_logs') STAY LOGS REPORT @break
+                        @case('reservation_list') RESERVATION LIST @break
+                        @default REPORT
+                    @endswitch
+                </div>
+                <div style="font-size: 12pt; font-weight: bold; letter-spacing: 0.05em;">
+                    @if($reportType === 'monthly_or_report')
+                        FOR THE MONTH OF
+                        @if($this->monthPeriod)
+                            {{ strtoupper(\Carbon\Carbon::createFromFormat('Y-m', $this->monthPeriod)->format('F Y')) }}
+                        @else
+                            {{ strtoupper(\Carbon\Carbon::parse($dateFrom)->format('F Y')) }}
+                        @endif
                     @else
-                        {{ strtoupper(\Carbon\Carbon::parse($dateFrom)->format('F Y')) }}
+                        {{ strtoupper(\Carbon\Carbon::parse($dateFrom)->format('M d, Y')) }} &mdash; {{ strtoupper(\Carbon\Carbon::parse($dateTo)->format('M d, Y')) }}
                     @endif
                 </div>
             </div>
@@ -517,7 +531,6 @@
                                 <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Room</th>
                                 <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Type</th>
                                 <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Status</th>
-                                <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Total Stays</th>
                                 <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Days Occupied</th>
                                 <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Utilization</th>
                             </tr>
@@ -538,7 +551,6 @@
                                             {{ ucfirst($room['status']) }}
                                         </span>
                                     </td>
-                                    <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $room['total_stays'] }}</td>
                                     <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $room['days_occupied'] }}</td>
                                     <td class="py-2 px-3 text-center">
                                         <div class="flex items-center justify-center gap-2">
@@ -870,7 +882,7 @@
                                     <td colspan="5" class="py-3 px-2 text-right font-bold uppercase text-gray-900 dark:text-gray-100">
                                         Total Pax Accommodated for the month of {{ $data['month_label'] }}:
                                     </td>
-                                    <td class="py-3 px-2 text-center font-bold text-lg text-gray-900 dark:text-gray-100">
+                                    <td class="py-3 px-2 text-center font-bold text-gray-900 dark:text-gray-100">
                                         {{ $data['total_pax'] }}
                                     </td>
                                     <td class="py-3 px-2"></td>

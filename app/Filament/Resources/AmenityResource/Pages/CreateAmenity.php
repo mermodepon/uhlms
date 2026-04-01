@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\AmenityResource\Pages;
 
-use App\Filament\Resources\AmenityResource;
 use App\Filament\Pages\CreateRedirectToIndex as CreateRecord;
+use App\Filament\Resources\AmenityResource;
 
 class CreateAmenity extends CreateRecord
 {

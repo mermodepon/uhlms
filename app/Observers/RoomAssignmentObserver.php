@@ -2,8 +2,8 @@
 
 namespace App\Observers;
 
-use App\Models\Room;
 use App\Models\ReservationLog;
+use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Notifications\NotificationHelper;
 
@@ -28,20 +28,20 @@ class RoomAssignmentObserver
             'guest_checked_in',
             "Guest {$guestName} checked into Room {$room?->room_number}.",
             [
-                'room_number'  => $room?->room_number,
+                'room_number' => $room?->room_number,
                 'assignment_id' => $assignment->id,
             ]
         );
 
         $message = "Room {$room?->room_number} assigned for reservation #{$reservation->reference_number} "
-            . "({$assignment->guest_first_name} {$assignment->guest_last_name}).";
+            ."({$assignment->guest_first_name} {$assignment->guest_last_name}).";
 
         NotificationHelper::notifyAllStaff(
             'Room Assigned',
             $message,
             'info',
             'room_assignment',
-            '/admin/reservations/' . $assignment->reservation_id,
+            '/admin/reservations/'.$assignment->reservation_id,
             auth()->id()
         );
     }
@@ -67,7 +67,7 @@ class RoomAssignmentObserver
                 "Assignment for reservation #{$reservation?->reference_number} has been updated (Room {$room?->room_number}).",
                 'warning',
                 'room_assignment',
-                '/admin/reservations/' . $assignment->reservation_id,
+                '/admin/reservations/'.$assignment->reservation_id,
                 auth()->id()
             );
         }
@@ -88,7 +88,7 @@ class RoomAssignmentObserver
                 'guest_checked_out',
                 "Guest {$guestName} checked out of Room {$room?->room_number}.",
                 [
-                    'room_number'   => $room?->room_number,
+                    'room_number' => $room?->room_number,
                     'assignment_id' => $assignment->id,
                     'checked_out_at' => $assignment->checked_out_at?->toDateTimeString(),
                 ]
@@ -111,7 +111,7 @@ class RoomAssignmentObserver
             'room_assignment_removed',
             "Room assignment removed: Guest {$guestName} from Room {$room?->room_number}.",
             [
-                'room_number'   => $room?->room_number,
+                'room_number' => $room?->room_number,
                 'assignment_id' => $assignment->id,
             ]
         );
@@ -134,4 +134,3 @@ class RoomAssignmentObserver
         $room->recalculateStatus();
     }
 }
-

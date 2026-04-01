@@ -83,15 +83,37 @@ window.CMUCharts = {
         var h3 = el.querySelector('h3');
         var title = h3 ? h3.textContent.trim() : 'Chart';
         var dataUrl = canvas.toDataURL('image/png', 1.0);
+
+        // Grab the print header from the page so charts use the same CMU letterhead
+        var printHeader = document.querySelector('.print-header');
+        var headerHtml = '';
+        if (printHeader) {
+            var clone = printHeader.cloneNode(true);
+            clone.style.display = 'block';
+            headerHtml = clone.outerHTML;
+        }
+
+        // Collect page stylesheets so the header renders correctly
+        var styles = '';
+        document.querySelectorAll('link[rel="stylesheet"]').forEach(function(l) {
+            styles += '<link rel="stylesheet" href="' + l.href + '">';
+        });
+
         var win = window.open('', '_blank');
-        win.document.write('<html><head><title>' + title + '</title>');
-        win.document.write('<style>body{font-family:Arial,sans-serif;text-align:center;padding:40px;}img{max-width:90%;margin:20px auto;}</style>');
+        win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + title + '</title>');
+        win.document.write(styles);
+        win.document.write('<style>');
+        win.document.write('body{font-family:Arial,sans-serif;padding:20px 40px;color:#000;background:#fff;}');
+        win.document.write('.print-header{display:block!important;margin-bottom:12px;}');
+        win.document.write('.chart-title{text-align:center;font-size:14pt;font-weight:bold;color:#00491E;margin:18px 0 8px;}');
+        win.document.write('.chart-img{display:block;max-width:90%;margin:10px auto;}');
+        win.document.write('@page{size:A4 landscape;margin:1.5cm;}');
+        win.document.write('</style>');
         win.document.write('</head><body>');
-        win.document.write('<h1 style="color:#00491E;font-size:20pt;">Central Mindanao University - University Homestay</h1>');
-        win.document.write('<h2 style="color:#333;font-size:14pt;">' + title + '</h2>');
-        win.document.write('<p style="color:#666;font-size:10pt;">Generated: ' + new Date().toLocaleString() + '</p>');
-        win.document.write('<img src="' + dataUrl + '">');
-        win.document.write('<scr' + 'ipt>window.onload=function(){window.print();}</' + 'script>');
+        win.document.write(headerHtml);
+        win.document.write('<div class="chart-title">' + title + '</div>');
+        win.document.write('<img class="chart-img" src="' + dataUrl + '">');
+        win.document.write('<scr' + 'ipt>window.onload=function(){window.print();window.onafterprint=function(){window.close();};}' + '</' + 'script>');
         win.document.write('</body></html>');
         win.document.close();
     }

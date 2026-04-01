@@ -3,13 +3,12 @@
 namespace App\Filament\Resources\ReservationResource\Pages;
 
 use App\Filament\Resources\ReservationResource;
-use Filament\Actions;
-use Filament\Resources\Pages\EditRecord;
-use Filament\Forms;
-use Filament\Notifications\Notification;
-use App\Models\Service;
 use App\Models\ReservationCharge;
 use App\Models\ReservationPayment;
+use App\Models\Service;
+use Filament\Actions;
+use Filament\Notifications\Notification;
+use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Facades\DB;
 
 class EditReservation extends EditRecord
@@ -40,7 +39,7 @@ class EditReservation extends EditRecord
             $snapshot = $this->record->checkInSnapshots()->latest('id')->first();
             $latestPayment = $this->record->payments()->where('status', 'posted')->latest('id')->first();
             $latestAssignment = $this->record->roomAssignments()->latest('id')->first();
-            
+
             // ID & Personal Info
             $data['checkin_id_type'] = $snapshot?->id_type ?? $latestAssignment?->id_type;
             $data['checkin_id_number'] = $snapshot?->id_number ?? $latestAssignment?->id_number;
@@ -49,28 +48,28 @@ class EditReservation extends EditRecord
             $data['checkin_is_student'] = (bool) ($latestAssignment?->is_student ?? false);
             $data['checkin_is_senior_citizen'] = (bool) ($latestAssignment?->is_senior_citizen ?? false);
             $data['checkin_is_pwd'] = (bool) ($latestAssignment?->is_pwd ?? false);
-            
+
             // Schedule
             $data['checkin_detailed_checkin_datetime'] = $snapshot?->detailed_checkin_datetime ?? $latestAssignment?->detailed_checkin_datetime;
             $data['checkin_detailed_checkout_datetime'] = $snapshot?->detailed_checkout_datetime ?? $latestAssignment?->detailed_checkout_datetime;
-            
+
             // Add-ons - check ledger first, then assignment
             $charges = $this->record->charges()->where('charge_type', 'addon')->get();
             if ($charges->isNotEmpty()) {
                 $addonItems = $charges->map(fn ($charge) => [
                     'code' => data_get($charge->meta, 'service_code'),
-                    'qty'  => (int) max(1, $charge->qty ?? 1),
-                ])->filter(fn ($i) => !empty($i['code']))->values()->all();
+                    'qty' => (int) max(1, $charge->qty ?? 1),
+                ])->filter(fn ($i) => ! empty($i['code']))->values()->all();
                 $data['checkin_additional_requests'] = $addonItems;
             } else {
                 $raw = $latestAssignment?->additional_requests ?? [];
                 // Normalize legacy format (array of plain code strings)
-                if (is_array($raw) && !empty($raw) && isset($raw[0]) && is_string($raw[0])) {
+                if (is_array($raw) && ! empty($raw) && isset($raw[0]) && is_string($raw[0])) {
                     $raw = array_map(fn ($code) => ['code' => $code, 'qty' => 1], $raw);
                 }
                 $data['checkin_additional_requests'] = $raw;
             }
-            
+
             // Payment Info
             $data['checkin_payment_mode'] = $latestPayment?->payment_mode ?? $latestAssignment?->payment_mode;
             $data['checkin_payment_mode_other'] = $latestAssignment?->payment_mode_other;
@@ -142,7 +141,7 @@ class EditReservation extends EditRecord
                 }
             }
 
-            if (!empty($assignmentUpdates)) {
+            if (! empty($assignmentUpdates)) {
                 $record->roomAssignments()->update($assignmentUpdates);
             }
 
@@ -171,7 +170,7 @@ class EditReservation extends EditRecord
                     }
                 }
 
-                if (!empty($snapshotUpdates)) {
+                if (! empty($snapshotUpdates)) {
                     $snapshot->update($snapshotUpdates);
                 }
             }
@@ -179,9 +178,9 @@ class EditReservation extends EditRecord
             // Update reservation charges for add-ons if changed
             if (array_key_exists('additional_requests', $fields)) {
                 $newItems = collect($fields['additional_requests'] ?? [])
-                    ->filter(fn ($i) => !empty($i['code'] ?? null))
+                    ->filter(fn ($i) => ! empty($i['code'] ?? null))
                     ->values();
-                
+
                 // Clear existing addon charges
                 $record->charges()->where('charge_type', 'addon')->delete();
 
@@ -196,14 +195,16 @@ class EditReservation extends EditRecord
                         $code = $item['code'];
                         $qty = max(1, (int) ($item['qty'] ?? 1));
                         $addon = $addons->get($code);
-                        if (! $addon) continue;
+                        if (! $addon) {
+                            continue;
+                        }
                         $price = (float) $addon->price;
                         ReservationCharge::create([
                             'reservation_id' => $record->id,
                             'charge_type' => 'addon',
                             'scope_type' => 'reservation',
                             'scope_id' => $record->id,
-                            'description' => ($qty > 1 ? "{$qty}x " : '') . $addon->name,
+                            'description' => ($qty > 1 ? "{$qty}x " : '').$addon->name,
                             'qty' => $qty,
                             'unit_price' => $price,
                             'amount' => $price * $qty,
@@ -220,48 +221,48 @@ class EditReservation extends EditRecord
             }
 
             // Recalculate and update room charges if dates changed or if room charges need to be created
-            $datesChanged = array_key_exists('detailed_checkin_datetime', $fields) 
+            $datesChanged = array_key_exists('detailed_checkin_datetime', $fields)
                 || array_key_exists('detailed_checkout_datetime', $fields);
-            
+
             if ($datesChanged || array_key_exists('additional_requests', $fields)) {
                 // Clear existing room charges
                 $record->charges()->where('charge_type', 'room_rate')->delete();
-                
+
                 // Compute room charges from current assignment data
                 $assignments = $record->roomAssignments()->with('room.roomType')->get();
-                
+
                 // Use updated dates if provided, otherwise use reservation dates
                 $checkInDate = null;
                 $checkOutDate = null;
-                
+
                 if (array_key_exists('detailed_checkin_datetime', $fields) && $fields['detailed_checkin_datetime']) {
                     $checkInDate = \Carbon\Carbon::parse($fields['detailed_checkin_datetime']);
                 }
                 if (array_key_exists('detailed_checkout_datetime', $fields) && $fields['detailed_checkout_datetime']) {
                     $checkOutDate = \Carbon\Carbon::parse($fields['detailed_checkout_datetime']);
                 }
-                
+
                 // Fallback to snapshot or assignment dates
-                if (!$checkInDate || !$checkOutDate) {
+                if (! $checkInDate || ! $checkOutDate) {
                     $snapshot = $record->checkInSnapshots()->latest('id')->first();
                     $latestAssignment = $assignments->first();
-                    
-                    if (!$checkInDate) {
-                        $checkInDate = $snapshot?->detailed_checkin_datetime 
-                            ?? $latestAssignment?->detailed_checkin_datetime 
+
+                    if (! $checkInDate) {
+                        $checkInDate = $snapshot?->detailed_checkin_datetime
+                            ?? $latestAssignment?->detailed_checkin_datetime
                             ?? $record->check_in_date;
                     }
-                    if (!$checkOutDate) {
-                        $checkOutDate = $snapshot?->detailed_checkout_datetime 
-                            ?? $latestAssignment?->detailed_checkout_datetime 
+                    if (! $checkOutDate) {
+                        $checkOutDate = $snapshot?->detailed_checkout_datetime
+                            ?? $latestAssignment?->detailed_checkout_datetime
                             ?? $record->check_out_date;
                     }
                 }
-                
+
                 $checkInDate = \Carbon\Carbon::parse($checkInDate);
                 $checkOutDate = \Carbon\Carbon::parse($checkOutDate);
                 $nights = max(1, $checkInDate->diffInDays($checkOutDate));
-                
+
                 $totalRoomCharges = 0;
                 foreach ($assignments->unique('room_id') as $assignment) {
                     if ($assignment->room && $assignment->room->roomType) {
@@ -269,14 +270,14 @@ class EditReservation extends EditRecord
                         $totalRoomCharges += $rate * $nights;
                     }
                 }
-                
+
                 if ($totalRoomCharges > 0) {
                     ReservationCharge::create([
                         'reservation_id' => $record->id,
                         'charge_type' => 'room_rate',
                         'scope_type' => 'reservation',
                         'scope_id' => $record->id,
-                        'description' => "Room charges ({$nights} night" . ($nights > 1 ? 's' : '') . ")",
+                        'description' => "Room charges ({$nights} night".($nights > 1 ? 's' : '').')',
                         'qty' => 1,
                         'unit_price' => $totalRoomCharges,
                         'amount' => $totalRoomCharges,
@@ -299,43 +300,52 @@ class EditReservation extends EditRecord
 
             if ($datesChanged || array_key_exists('additional_requests', $fields) || $discountFlagsChanged) {
                 $latestAssignment = $record->roomAssignments()->latest('id')->first();
-                $isPwd     = (bool) ($fields['is_pwd']             ?? $latestAssignment?->is_pwd             ?? false);
-                $isSenior  = (bool) ($fields['is_senior_citizen']  ?? $latestAssignment?->is_senior_citizen  ?? false);
-                $isStudent = (bool) ($fields['is_student']         ?? $latestAssignment?->is_student         ?? false);
+                $isPwd = (bool) ($fields['is_pwd'] ?? $latestAssignment?->is_pwd ?? false);
+                $isSenior = (bool) ($fields['is_senior_citizen'] ?? $latestAssignment?->is_senior_citizen ?? false);
+                $isStudent = (bool) ($fields['is_student'] ?? $latestAssignment?->is_student ?? false);
 
-                $pwdPercent     = (float) \App\Models\Setting::get('discount_pwd_percent', 0);
-                $seniorPercent  = (float) \App\Models\Setting::get('discount_senior_percent', 0);
+                $pwdPercent = (float) \App\Models\Setting::get('discount_pwd_percent', 0);
+                $seniorPercent = (float) \App\Models\Setting::get('discount_senior_percent', 0);
                 $studentPercent = (float) \App\Models\Setting::get('discount_student_percent', 0);
 
                 $totalDiscountPercent = 0;
                 $discountTypes = [];
-                if ($isPwd     && $pwdPercent > 0)     { $totalDiscountPercent += $pwdPercent;     $discountTypes[] = "PWD ({$pwdPercent}%)"; }
-                if ($isSenior  && $seniorPercent > 0)  { $totalDiscountPercent += $seniorPercent;  $discountTypes[] = "Senior Citizen ({$seniorPercent}%)"; }
-                if ($isStudent && $studentPercent > 0) { $totalDiscountPercent += $studentPercent; $discountTypes[] = "Student ({$studentPercent}%)"; }
+                if ($isPwd && $pwdPercent > 0) {
+                    $totalDiscountPercent += $pwdPercent;
+                    $discountTypes[] = "PWD ({$pwdPercent}%)";
+                }
+                if ($isSenior && $seniorPercent > 0) {
+                    $totalDiscountPercent += $seniorPercent;
+                    $discountTypes[] = "Senior Citizen ({$seniorPercent}%)";
+                }
+                if ($isStudent && $studentPercent > 0) {
+                    $totalDiscountPercent += $studentPercent;
+                    $discountTypes[] = "Student ({$studentPercent}%)";
+                }
                 $totalDiscountPercent = min($totalDiscountPercent, 100);
 
-                $roomChargeTotal   = (float) $record->charges()->where('charge_type', 'room_rate')->sum('amount');
+                $roomChargeTotal = (float) $record->charges()->where('charge_type', 'room_rate')->sum('amount');
                 $addonsChargeTotal = (float) $record->charges()->where('charge_type', 'addon')->sum('amount');
-                $subtotal          = $roomChargeTotal + $addonsChargeTotal;
-                $discountAmount    = ($subtotal * $totalDiscountPercent) / 100;
+                $subtotal = $roomChargeTotal + $addonsChargeTotal;
+                $discountAmount = ($subtotal * $totalDiscountPercent) / 100;
 
                 // Replace existing discount charge
                 $record->charges()->where('charge_type', 'discount')->delete();
                 if ($discountAmount > 0) {
                     ReservationCharge::create([
                         'reservation_id' => $record->id,
-                        'charge_type'    => 'discount',
-                        'scope_type'     => 'reservation',
-                        'scope_id'       => $record->id,
-                        'description'    => 'Discount: ' . implode(' + ', $discountTypes),
-                        'qty'            => 1,
-                        'unit_price'     => -$discountAmount,
-                        'amount'         => -$discountAmount,
-                        'currency'       => 'PHP',
-                        'meta'           => [
-                            'source'                   => 'edit_form',
-                            'discount_types'           => $discountTypes,
-                            'discount_percent'         => $totalDiscountPercent,
+                        'charge_type' => 'discount',
+                        'scope_type' => 'reservation',
+                        'scope_id' => $record->id,
+                        'description' => 'Discount: '.implode(' + ', $discountTypes),
+                        'qty' => 1,
+                        'unit_price' => -$discountAmount,
+                        'amount' => -$discountAmount,
+                        'currency' => 'PHP',
+                        'meta' => [
+                            'source' => 'edit_form',
+                            'discount_types' => $discountTypes,
+                            'discount_percent' => $totalDiscountPercent,
                             'subtotal_before_discount' => $subtotal,
                         ],
                         'created_by' => auth()->id(),
@@ -346,7 +356,7 @@ class EditReservation extends EditRecord
             // Update payment record if payment details changed
             if (array_key_exists('payment_amount', $fields) || array_key_exists('payment_mode', $fields) || array_key_exists('payment_or_number', $fields) || array_key_exists('or_date', $fields)) {
                 $latestPayment = $record->payments()->where('status', 'posted')->latest('id')->first();
-                
+
                 if ($latestPayment) {
                     $paymentUpdates = [];
                     if (array_key_exists('payment_amount', $fields)) {
@@ -362,7 +372,7 @@ class EditReservation extends EditRecord
                         $paymentUpdates['or_date'] = $fields['or_date'];
                     }
 
-                    if (!empty($paymentUpdates)) {
+                    if (! empty($paymentUpdates)) {
                         $latestPayment->update($paymentUpdates);
                     }
                 } elseif (array_key_exists('payment_amount', $fields) && (float) $fields['payment_amount'] > 0) {

@@ -16,10 +16,10 @@ abstract class CreateRedirectToIndex extends CreateRecord
     {
         $modelName = $this->getModel();
         $entityName = class_basename($modelName);
-        
+
         return Notification::make()
             ->success()
-            ->title($entityName . ' created')
-            ->body('The ' . strtolower($entityName) . ' has been created successfully.');
+            ->title($entityName.' created')
+            ->body('The '.strtolower($entityName).' has been created successfully.');
     }
 }

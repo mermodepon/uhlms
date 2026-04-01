@@ -36,9 +36,9 @@ class ReportSignatorySettings extends Page implements HasForms
     public function mount(): void
     {
         $this->form->fill([
-            'signatory_prepared_name'  => Setting::get('signatory_prepared_name',  'GENELYN ABARQUEZ – ENSOMO'),
+            'signatory_prepared_name' => Setting::get('signatory_prepared_name', 'GENELYN ABARQUEZ – ENSOMO'),
             'signatory_prepared_title' => Setting::get('signatory_prepared_title', 'LODGING SUPERVISOR'),
-            'signatory_approved_name'  => Setting::get('signatory_approved_name',  'RUBIE ANDOY - ARROYO'),
+            'signatory_approved_name' => Setting::get('signatory_approved_name', 'RUBIE ANDOY - ARROYO'),
             'signatory_approved_title' => Setting::get('signatory_approved_title', 'Director, University Homestay'),
         ]);
     }

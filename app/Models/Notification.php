@@ -48,7 +48,7 @@ class Notification extends Model
 
     public function markAsRead(): void
     {
-        if (!$this->is_read) {
+        if (! $this->is_read) {
             $this->update([
                 'is_read' => true,
                 'read_at' => now(),
@@ -69,11 +69,10 @@ class Notification extends Model
         string $title,
         string $message,
         string $type = 'info',
-        string $category = null,
-        string $actionUrl = null,
+        ?string $category = null,
+        ?string $actionUrl = null,
         ?int $createdBy = null
-    ): self
-    {
+    ): self {
         return self::create([
             'notifiable_type' => $notifiable::class,
             'notifiable_id' => $notifiable->id,

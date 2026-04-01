@@ -7,8 +7,6 @@ use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class GuestsRelationManager extends RelationManager
 {
@@ -96,10 +94,11 @@ class GuestsRelationManager extends RelationManager
                     ->mutateFormDataUsing(function (array $data): array {
                         // Auto-generate full_name from parts
                         $data['full_name'] = trim(
-                            ($data['first_name'] ?? '') . ' ' .
-                            ($data['middle_initial'] ?? '') . ' ' .
+                            ($data['first_name'] ?? '').' '.
+                            ($data['middle_initial'] ?? '').' '.
                             ($data['last_name'] ?? '')
                         );
+
                         return $data;
                     })
                     ->after(fn () => $this->recalculateGenderCounts()),
@@ -109,10 +108,11 @@ class GuestsRelationManager extends RelationManager
                     ->mutateFormDataUsing(function (array $data): array {
                         // Auto-generate full_name from parts
                         $data['full_name'] = trim(
-                            ($data['first_name'] ?? '') . ' ' .
-                            ($data['middle_initial'] ?? '') . ' ' .
+                            ($data['first_name'] ?? '').' '.
+                            ($data['middle_initial'] ?? '').' '.
                             ($data['last_name'] ?? '')
                         );
+
                         return $data;
                     })
                     ->after(fn () => $this->recalculateGenderCounts()),
@@ -136,19 +136,19 @@ class GuestsRelationManager extends RelationManager
     protected function recalculateGenderCounts(): void
     {
         $reservation = $this->getOwnerRecord();
-        
+
         // Count total guests and by gender
         $totalGuests = $reservation->guests()->count();
         $maleCount = $reservation->guests()->where('gender', 'Male')->count();
         $femaleCount = $reservation->guests()->where('gender', 'Female')->count();
-        
+
         // Update reservation with all counts
         $reservation->update([
             'number_of_occupants' => $totalGuests,
             'num_male_guests' => $maleCount,
             'num_female_guests' => $femaleCount,
         ]);
-        
+
         // If checked in, also update the room assignment
         if ($reservation->status === 'checked_in' && $reservation->roomAssignments()->exists()) {
             $reservation->roomAssignments()->update([
@@ -156,7 +156,7 @@ class GuestsRelationManager extends RelationManager
                 'num_female_guests' => $femaleCount,
             ]);
         }
-        
+
         // Notify user of the update
         \Filament\Notifications\Notification::make()
             ->title('Counts Updated')

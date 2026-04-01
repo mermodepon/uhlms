@@ -17,17 +17,15 @@ class Service extends Model
         'sort_order',
     ];
 
-    protected static function boot(): void
+    protected static function booted(): void
     {
-        parent::boot();
-
         static::creating(function (self $service) {
             if (empty($service->code)) {
                 $base = Str::slug($service->name);
                 $code = $base;
                 $i = 1;
                 while (static::where('code', $code)->exists()) {
-                    $code = $base . '-' . $i++;
+                    $code = $base.'-'.$i++;
                 }
                 $service->code = $code;
             }
@@ -66,6 +64,7 @@ class Service extends Model
         if ($this->price == 0) {
             return 'Free';
         }
-        return '₱' . number_format($this->price, 2);
+
+        return '₱'.number_format($this->price, 2);
     }
 }

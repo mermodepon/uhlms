@@ -42,5 +42,4 @@ class Setting extends Model
     {
         static::all()->each(fn ($s) => Cache::forget("setting_{$s->key}"));
     }
-
 }

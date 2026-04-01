@@ -3,7 +3,6 @@
 namespace App\Filament\Pages;
 
 use App\Models\Reservation;
-use App\Models\ReservationPayment;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
@@ -14,14 +13,21 @@ use Illuminate\Support\Facades\DB;
 class Reports extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-document-chart-bar';
+
     protected static ?string $navigationGroup = 'Reports';
+
     protected static ?int $navigationSort = 1;
+
     protected static string $view = 'filament.pages.reports';
 
     public string $reportType = 'monthly_or_report';
+
     public ?string $dateFrom = null;
+
     public ?string $dateTo = null;
+
     public ?string $reservationStatus = null;
+
     public ?string $monthPeriod = null;
 
     public function mount(): void
@@ -96,81 +102,96 @@ class Reports extends Page
                 ->with('room.roomType')
                 ->get();
 
-            if ($assignments->isEmpty()) continue;
+            if ($assignments->isEmpty()) {
+                continue;
+            }
 
             $firstAssignment = $assignments->first();
-            $orDate = $firstAssignment->or_date 
+            $orDate = $firstAssignment->or_date
                 ? Carbon::parse($firstAssignment->or_date)
                 : Carbon::parse($firstAssignment->checked_in_at);
-            
+
             $dateKey = $orDate->toDateString();
 
-            // Calculate number of nights
-            $checkIn = Carbon::parse($firstAssignment->checked_in_at ?? $reservation->check_in_date);
-            $checkOut = $firstAssignment->checked_out_at 
-                ? Carbon::parse($firstAssignment->checked_out_at)
-                : Carbon::parse($reservation->check_out_date);
-            $nights = max(1, $checkIn->diffInDays($checkOut));
+            // Calculate number of nights (by calendar date, not exact hours)
+            $checkInDate = Carbon::parse($firstAssignment->checked_in_at ?? $reservation->check_in_date)->startOfDay();
+            $checkOutDate = $firstAssignment->checked_out_at
+                ? Carbon::parse($firstAssignment->checked_out_at)->startOfDay()
+                : Carbon::parse($reservation->check_out_date)->startOfDay();
+            $nights = max(1, (int) $checkInDate->diffInDays($checkOutDate));
 
             // Guest name (lastname first)
-            $guestName = trim(($reservation->guest_last_name ?? '') . ', ' . ($reservation->guest_first_name ?? ''));
+            $guestName = trim(($reservation->guest_last_name ?? '').', '.($reservation->guest_first_name ?? ''));
             if (empty(trim($guestName, ', '))) {
                 $guestName = $reservation->guest_name ?? 'Unknown Guest';
             }
 
             // Discount / ID info
-            $snapshot        = $reservation->checkInSnapshots->sortByDesc('id')->first();
-            $discountCharge  = $reservation->charges->where('charge_type', 'discount')->sortByDesc('id')->first();
-            $hasDiscount     = $discountCharge !== null;
-            $guestIdNumber   = $hasDiscount ? ($snapshot?->id_number ?? '') : '';
+            $snapshot = $reservation->checkInSnapshots->sortByDesc('id')->first();
+            $discountCharge = $reservation->charges->where('charge_type', 'discount')->sortByDesc('id')->first();
+            $hasDiscount = $discountCharge !== null;
+            $guestIdNumber = $hasDiscount ? ($snapshot?->id_number ?? '') : '';
 
             // Common OR info for all lines of this reservation
-            $orNumber        = $firstAssignment->payment_or_number ?? '-';
+            $orNumber = $firstAssignment->payment_or_number ?? '-';
             $orDateFormatted = $orDate->format('m/d/Y');
-            $rfNumber        = $reservation->reference_number ?? '-';
+            $rfNumber = $reservation->reference_number ?? '-';
 
             // Count overall pax (for date-group subtotals and report footer)
-            $domesticMale = 0; $domesticFemale = 0;
-            $internationalMale = 0; $internationalFemale = 0;
+            $domesticMale = 0;
+            $domesticFemale = 0;
+            $internationalMale = 0;
+            $internationalFemale = 0;
             foreach ($assignments as $assignment) {
-                $gender      = $assignment->guest_gender ?? $reservation->guest_gender ?? 'Other';
+                $gender = $assignment->guest_gender ?? $reservation->guest_gender ?? 'Other';
                 $nationality = $assignment->nationality ?? 'Filipino';
-                $isDomestic  = stripos($nationality, 'filipino') !== false || stripos($nationality, 'philippine') !== false;
-                if ($isDomestic  && strtolower($gender) === 'male')   $domesticMale++;
-                elseif ($isDomestic  && strtolower($gender) === 'female') $domesticFemale++;
-                elseif (!$isDomestic && strtolower($gender) === 'male')   $internationalMale++;
-                elseif (!$isDomestic && strtolower($gender) === 'female') $internationalFemale++;
+                $isDomestic = stripos($nationality, 'filipino') !== false || stripos($nationality, 'philippine') !== false;
+                if ($isDomestic && strtolower($gender) === 'male') {
+                    $domesticMale++;
+                } elseif ($isDomestic && strtolower($gender) === 'female') {
+                    $domesticFemale++;
+                } elseif (! $isDomestic && strtolower($gender) === 'male') {
+                    $internationalMale++;
+                } elseif (! $isDomestic && strtolower($gender) === 'female') {
+                    $internationalFemale++;
+                }
             }
-            $totalDomesticMale      += $domesticMale;
-            $totalDomesticFemale    += $domesticFemale;
+            $totalDomesticMale += $domesticMale;
+            $totalDomesticFemale += $domesticFemale;
             $totalInternationalMale += $internationalMale;
             $totalInternationalFemale += $internationalFemale;
-            $maleCount   = $domesticMale   + $internationalMale;
+            $maleCount = $domesticMale + $internationalMale;
             $femaleCount = $domesticFemale + $internationalFemale;
 
             // Amount actually paid (OR total for this reservation)
-            $amountPaid  = (float) ($firstAssignment->payment_amount ?? 0);
+            $amountPaid = (float) ($firstAssignment->payment_amount ?? 0);
             $grandTotal += $amountPaid;
 
             // ---- Build per-line sub-rows ----
             $reservationLines = [];
-            $isFirstLine      = true;
+            $isFirstLine = true;
 
             // One line per unique room
             foreach ($assignments->unique('room_id') as $asgmt) {
-                $room     = $asgmt->room;
+                $room = $asgmt->room;
                 $roomType = $room?->roomType ?? null;
-                if (! $room || ! $roomType) continue;
+                if (! $room || ! $roomType) {
+                    continue;
+                }
 
                 $rate = (float) $roomType->base_rate;
 
                 // Pax in this specific room
                 $roomAsgmts = $assignments->where('room_id', $room->id);
-                $roomMale = 0; $roomFemale = 0;
+                $roomMale = 0;
+                $roomFemale = 0;
                 foreach ($roomAsgmts as $ra) {
                     $g = strtolower($ra->guest_gender ?? $reservation->guest_gender ?? '');
-                    if ($g === 'male')   $roomMale++;
-                    elseif ($g === 'female') $roomFemale++;
+                    if ($g === 'male') {
+                        $roomMale++;
+                    } elseif ($g === 'female') {
+                        $roomFemale++;
+                    }
                 }
 
                 // Line amount
@@ -182,19 +203,19 @@ class Reports extends Page
                 }
 
                 $reservationLines[] = [
-                    'guest_name'      => $isFirstLine ? $guestName : '***',
+                    'guest_name' => $isFirstLine ? $guestName : '***',
                     'guest_id_number' => $isFirstLine ? $guestIdNumber : '',
-                    'nights'          => $nights,
-                    'room_particulars'=> $roomType->name . ' #' . $room->room_number,
-                    'rate'            => number_format($rate, 2),
-                    'male_count'      => $roomMale,
-                    'female_count'    => $roomFemale,
-                    'rf_number'       => $rfNumber,
-                    'amount'          => $lineAmount,
-                    'or_number'       => $orNumber,
-                    'or_date'         => $orDateFormatted,
-                    'total'           => null,
-                    'show_total'      => false,
+                    'nights' => $nights,
+                    'room_particulars' => $roomType->name.' #'.$room->room_number,
+                    'rate' => number_format($rate, 2),
+                    'male_count' => $roomMale,
+                    'female_count' => $roomFemale,
+                    'rf_number' => $rfNumber,
+                    'amount' => $lineAmount,
+                    'or_number' => $orNumber,
+                    'or_date' => $orDateFormatted,
+                    'total' => null,
+                    'show_total' => false,
                 ];
                 $isFirstLine = false;
             }
@@ -205,52 +226,52 @@ class Reports extends Page
                 // Strip leading multiplier prefix (e.g. "3x ") so the Particulars column isn't redundant with the Qty column
                 $particulars = preg_replace('/^\d+x\s+/', '', $charge->description);
                 $reservationLines[] = [
-                    'guest_name'      => '***',
+                    'guest_name' => '***',
                     'guest_id_number' => '',
-                    'nights'          => $qty,
-                    'room_particulars'=> $particulars,
-                    'rate'            => number_format((float) $charge->unit_price, 2),
-                    'male_count'      => null,
-                    'female_count'    => null,
-                    'rf_number'       => $rfNumber,
-                    'amount'          => (float) $charge->amount,
-                    'or_number'       => $orNumber,
-                    'or_date'         => $orDateFormatted,
-                    'total'           => null,
-                    'show_total'      => false,
+                    'nights' => $qty,
+                    'room_particulars' => $particulars,
+                    'rate' => number_format((float) $charge->unit_price, 2),
+                    'male_count' => null,
+                    'female_count' => null,
+                    'rf_number' => $rfNumber,
+                    'amount' => (float) $charge->amount,
+                    'or_number' => $orNumber,
+                    'or_date' => $orDateFormatted,
+                    'total' => null,
+                    'show_total' => false,
                 ];
             }
 
             // If no lines were built (no room data), add a fallback line
             if (empty($reservationLines)) {
                 $reservationLines[] = [
-                    'guest_name'      => $guestName,
+                    'guest_name' => $guestName,
                     'guest_id_number' => $guestIdNumber,
-                    'nights'          => $nights,
-                    'room_particulars'=> '-',
-                    'rate'            => '-',
-                    'male_count'      => $maleCount,
-                    'female_count'    => $femaleCount,
-                    'rf_number'       => $rfNumber,
-                    'amount'          => $amountPaid,
-                    'or_number'       => $orNumber,
-                    'or_date'         => $orDateFormatted,
-                    'total'           => null,
-                    'show_total'      => false,
+                    'nights' => $nights,
+                    'room_particulars' => '-',
+                    'rate' => '-',
+                    'male_count' => $maleCount,
+                    'female_count' => $femaleCount,
+                    'rf_number' => $rfNumber,
+                    'amount' => $amountPaid,
+                    'or_number' => $orNumber,
+                    'or_date' => $orDateFormatted,
+                    'total' => null,
+                    'show_total' => false,
                 ];
             }
 
             // Total (payment amount) shown only on the first line
-            $reservationLines[0]['total']      = $amountPaid;
+            $reservationLines[0]['total'] = $amountPaid;
             $reservationLines[0]['show_total'] = true;
 
             // Add all lines to the date group
-            if (!isset($rowsByDate[$dateKey])) {
+            if (! isset($rowsByDate[$dateKey])) {
                 $rowsByDate[$dateKey] = [
-                    'date'         => $orDate->format('m/d/Y'),
-                    'date_sort'    => $dateKey,
-                    'rows'         => [],
-                    'total_male'   => 0,
+                    'date' => $orDate->format('m/d/Y'),
+                    'date_sort' => $dateKey,
+                    'rows' => [],
+                    'total_male' => 0,
                     'total_female' => 0,
                     'total_amount' => 0,
                 ];
@@ -260,9 +281,9 @@ class Reports extends Page
                 $rowsByDate[$dateKey]['rows'][] = $line;
             }
 
-            $rowsByDate[$dateKey]['total_male']   += $maleCount;
-            $rowsByDate[$dateKey]['total_female']  += $femaleCount;
-            $rowsByDate[$dateKey]['total_amount']  += $amountPaid;
+            $rowsByDate[$dateKey]['total_male'] += $maleCount;
+            $rowsByDate[$dateKey]['total_female'] += $femaleCount;
+            $rowsByDate[$dateKey]['total_amount'] += $amountPaid;
         }
 
         // Sort by date
@@ -294,24 +315,24 @@ class Reports extends Page
         $to = Carbon::parse($this->dateTo)->endOfDay();
 
         $reservations = Reservation::where(function ($q) use ($from, $to) {
-                $q->whereBetween('check_in_date', [$from, $to])
-                  ->orWhereBetween('check_out_date', [$from, $to])
-                  ->orWhere(function ($q2) use ($from, $to) {
-                      $q2->where('check_in_date', '<=', $from)
-                         ->where('check_out_date', '>=', $to);
-                  });
-            })->get();
+            $q->whereBetween('check_in_date', [$from, $to])
+                ->orWhereBetween('check_out_date', [$from, $to])
+                ->orWhere(function ($q2) use ($from, $to) {
+                    $q2->where('check_in_date', '<=', $from)
+                        ->where('check_out_date', '>=', $to);
+                });
+        })->get();
 
         $byStatus = $reservations->groupBy('status')->map->count();
         $byPurpose = $reservations->groupBy('purpose')->map->count();
         $byRoomType = Reservation::where(function ($q) use ($from, $to) {
-                $q->whereBetween('check_in_date', [$from, $to])
-                  ->orWhereBetween('check_out_date', [$from, $to])
-                  ->orWhere(function ($q2) use ($from, $to) {
-                      $q2->where('check_in_date', '<=', $from)
-                         ->where('check_out_date', '>=', $to);
-                  });
-            })
+            $q->whereBetween('check_in_date', [$from, $to])
+                ->orWhereBetween('check_out_date', [$from, $to])
+                ->orWhere(function ($q2) use ($from, $to) {
+                    $q2->where('check_in_date', '<=', $from)
+                        ->where('check_out_date', '>=', $to);
+                });
+        })
             ->join('room_types', 'reservations.preferred_room_type_id', '=', 'room_types.id')
             ->select('room_types.name', DB::raw('count(*) as total'))
             ->groupBy('room_types.name')
@@ -320,6 +341,7 @@ class Reports extends Page
 
         $totalNights = $reservations->whereIn('status', ['checked_in', 'checked_out'])->sum(function ($r) {
             $nights = Carbon::parse($r->check_in_date)->diffInDays(Carbon::parse($r->check_out_date));
+
             return $nights * max(1, (int) $r->number_of_occupants);
         });
 
@@ -349,7 +371,7 @@ class Reports extends Page
             $occupied = RoomAssignment::where('checked_in_at', '<=', $date->copy()->endOfDay())
                 ->where(function ($q) use ($date) {
                     $q->whereNull('checked_out_at')
-                      ->orWhere('checked_out_at', '>=', $date->copy()->startOfDay());
+                        ->orWhere('checked_out_at', '>=', $date->copy()->startOfDay());
                 })
                 ->count();
 
@@ -373,25 +395,46 @@ class Reports extends Page
 
     protected function getRoomUtilization(): array
     {
-        $rooms = Room::with(['roomType', 'roomAssignments'])->where('is_active', true)->get();
-        $from = Carbon::parse($this->dateFrom);
-        $to = Carbon::parse($this->dateTo);
-        $totalDays = $from->diffInDays($to) ?: 1;
+        $from = Carbon::parse($this->dateFrom)->startOfDay();
+        $to = Carbon::parse($this->dateTo)->endOfDay();
+        $totalDays = max(1, $from->diffInDays($to->copy()->startOfDay()) + 1); // inclusive day count
+
+        $rooms = Room::with(['roomType', 'roomAssignments' => function ($q) use ($from, $to) {
+            // Only load assignments that overlap with the selected period
+            $q->whereNotNull('checked_in_at')
+                ->where(function ($q) use ($from, $to) {
+                    $q->where('checked_in_at', '<=', $to)
+                        ->where(function ($q) use ($from) {
+                            $q->whereNull('checked_out_at')
+                                ->orWhere('checked_out_at', '>=', $from);
+                        });
+                });
+        }])->where('is_active', true)->get();
 
         $utilization = $rooms->map(function ($room) use ($from, $to, $totalDays) {
             $daysOccupied = $room->roomAssignments->sum(function ($assign) use ($from, $to) {
-                $checkIn = Carbon::parse($assign->checked_in_at);
-                $checkOut = $assign->checked_out_at ? Carbon::parse($assign->checked_out_at) : Carbon::now();
-                $start = $checkIn->max($from);
-                $end = $checkOut->min($to);
-                return max(0, $start->diffInDays($end));
+                $checkIn = Carbon::parse($assign->checked_in_at)->startOfDay();
+                // Still checked in → count through end of today
+                $checkOut = $assign->checked_out_at
+                    ? Carbon::parse($assign->checked_out_at)->startOfDay()
+                    : Carbon::today()->addDay(); // include today as an occupied day
+
+                // Clamp to the report period
+                $start = $checkIn->greaterThan($from) ? $checkIn : $from->copy();
+                $end = $checkOut->lessThan($to) ? $checkOut : $to->copy()->startOfDay()->addDay();
+
+                // No overlap → 0
+                if ($start->greaterThanOrEqualTo($end)) {
+                    return 0;
+                }
+
+                return (int) $start->diffInDays($end);
             });
 
             return [
                 'room' => $room->room_number,
                 'type' => $room->roomType->name ?? 'N/A',
                 'status' => $room->status,
-                'total_stays' => $room->roomAssignments->count(),
                 'days_occupied' => $daysOccupied,
                 'utilization_rate' => round(($daysOccupied / $totalDays) * 100, 1),
             ];
@@ -400,7 +443,7 @@ class Reports extends Page
         // By room type
         $byType = RoomType::withCount(['rooms' => function ($q) {
             $q->where('is_active', true);
-        }])->get()->map(function ($type) use ($from, $to, $totalDays) {
+        }])->get()->map(function ($type) use ($from, $to) {
             $stayCount = RoomAssignment::whereHas('room', function ($q) use ($type) {
                 $q->where('room_type_id', $type->id);
             })->whereBetween('checked_in_at', [$from, $to])->count();
@@ -441,10 +484,10 @@ class Reports extends Page
                     'checked_out' => $assign->checked_out_at ? Carbon::parse($assign->checked_out_at)->format('M d, Y') : 'Still checked in',
                     'checked_in_by' => $assign->assignedByUser->name ?? '-',
                     'checked_out_by' => optional($assign->checkedOutByUser)->name ?? '-',
-                    // Ensure nights is always an integer
+                    // Ensure nights is always an integer (date-only diff)
                     'nights' => $assign->checked_out_at
-                        ? Carbon::parse($assign->checked_in_at)->diffInDays(Carbon::parse($assign->checked_out_at))
-                        : Carbon::parse($assign->checked_in_at)->diffInDays(Carbon::now()),
+                        ? (int) Carbon::parse($assign->checked_in_at)->startOfDay()->diffInDays(Carbon::parse($assign->checked_out_at)->startOfDay())
+                        : (int) Carbon::parse($assign->checked_in_at)->startOfDay()->diffInDays(Carbon::now()->startOfDay()),
                     'remarks' => $assign->remarks ?? '-',
                 ];
             })->toArray();
@@ -466,11 +509,11 @@ class Reports extends Page
         $query = Reservation::with(['preferredRoomType', 'roomAssignments.room.roomType'])
             ->where(function ($q) use ($from, $to) {
                 $q->whereBetween('check_in_date', [$from, $to])
-                  ->orWhereBetween('check_out_date', [$from, $to])
-                  ->orWhere(function ($q2) use ($from, $to) {
-                      $q2->where('check_in_date', '<=', $from)
-                         ->where('check_out_date', '>=', $to);
-                  });
+                    ->orWhereBetween('check_out_date', [$from, $to])
+                    ->orWhere(function ($q2) use ($from, $to) {
+                        $q2->where('check_in_date', '<=', $from)
+                            ->where('check_out_date', '>=', $to);
+                    });
             });
 
         // Apply status filter if specified
@@ -481,9 +524,9 @@ class Reports extends Page
         $reservations = $query->orderBy('check_in_date', 'desc')
             ->get()
             ->map(function ($reservation) {
-                $assignedRooms = $reservation->roomAssignments->map(fn($assignment) => $assignment->room->room_number)->join(', ');
+                $assignedRooms = $reservation->roomAssignments->map(fn ($assignment) => $assignment->room->room_number)->join(', ');
                 $nights = Carbon::parse($reservation->check_in_date)->diffInDays(Carbon::parse($reservation->check_out_date));
-                
+
                 return [
                     'reference' => $reservation->reference_number,
                     'guest_name' => $reservation->guest_name,

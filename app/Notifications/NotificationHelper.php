@@ -15,7 +15,7 @@ class NotificationHelper
     protected static function getStaffUsers(): \Illuminate\Support\Collection
     {
         return Cache::remember('system.staff_users', 900, function () {
-            return User::whereIn('role', ['admin', 'staff'])
+            return User::whereIn('role', ['super_admin', 'admin', 'staff'])
                 ->select('id', 'name', 'email')
                 ->get();
         });
@@ -28,11 +28,10 @@ class NotificationHelper
         string $title,
         string $message,
         string $type = 'info',
-        string $category = null,
-        string $actionUrl = null,
+        ?string $category = null,
+        ?string $actionUrl = null,
         ?int $createdBy = null
-    ): void
-    {
+    ): void {
         $staff = self::getStaffUsers();
         foreach ($staff as $user) {
             NotificationModel::createNotification(
@@ -55,10 +54,9 @@ class NotificationHelper
         string $title,
         string $message,
         string $type = 'info',
-        string $category = null,
-        string $actionUrl = null
-    ): NotificationModel
-    {
+        ?string $category = null,
+        ?string $actionUrl = null
+    ): NotificationModel {
         return NotificationModel::createNotification(
             $user,
             $title,
@@ -77,10 +75,9 @@ class NotificationHelper
         string $title,
         string $message,
         string $type = 'info',
-        string $category = null,
-        string $actionUrl = null
-    ): void
-    {
+        ?string $category = null,
+        ?string $actionUrl = null
+    ): void {
         $users = User::whereIn('id', $userIds)->get();
         foreach ($users as $user) {
             NotificationModel::createNotification(

@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\RoomResource\Pages;
 
-use App\Filament\Resources\RoomResource;
 use App\Filament\Pages\CreateRedirectToIndex as CreateRecord;
+use App\Filament\Resources\RoomResource;
 
 class CreateRoom extends CreateRecord
 {

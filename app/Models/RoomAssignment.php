@@ -60,14 +60,11 @@ class RoomAssignment extends Model
             'is_senior_citizen' => 'boolean',
             'is_pwd' => 'boolean',
             'guest_age' => 'integer',
+            'num_male_guests' => 'integer',
+            'num_female_guests' => 'integer',
             'additional_requests' => 'array',
             'payment_amount' => 'decimal:2',
         ];
-    }
-
-    protected static function booted(): void
-    {
-        // No bed-derived room_id logic needed — room_id must always be set explicitly
     }
 
     public function reservation(): BelongsTo

@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\ReservationResource\Pages;
 
-use App\Filament\Resources\ReservationResource;
 use App\Filament\Pages\CreateRedirectToIndex as CreateRecord;
+use App\Filament\Resources\ReservationResource;
 
 class CreateReservation extends CreateRecord
 {

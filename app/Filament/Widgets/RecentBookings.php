@@ -36,24 +36,24 @@ class RecentBookings extends BaseWidget
                 Tables\Columns\TextColumn::make('check_out_date')
                     ->date(),
                 Tables\Columns\TextColumn::make('status')
-                        ->badge()
-                        ->formatStateUsing(fn ($state, $record) => match ($state) {
-                            'approved'    => 'Approved',
-                            'pending_payment' => 'Pending Payment',
-                            'checked_out' => 'Checked Out',
-                            'checked_in'  => 'Checked In',
-                            default => ucfirst(str_replace('_', ' ', $state)),
-                        })
-                        ->color(fn ($state, $record): string => match (true) {
-                            $state === 'pending'   => 'warning',
-                            $state === 'approved'  => 'primary',
-                            $state === 'pending_payment'  => 'warning',
-                            $state === 'declined'                                        => 'danger',
-                            $state === 'cancelled'                                       => 'gray',
-                            $state === 'checked_in'                                      => 'success',
-                            $state === 'checked_out'                                     => 'gray',
-                            default                                                      => 'gray',
-                        }),
+                    ->badge()
+                    ->formatStateUsing(fn ($state, $record) => match ($state) {
+                        'approved' => 'Approved',
+                        'pending_payment' => 'Pending Payment',
+                        'checked_out' => 'Checked Out',
+                        'checked_in' => 'Checked In',
+                        default => ucfirst(str_replace('_', ' ', $state)),
+                    })
+                    ->color(fn ($state, $record): string => match (true) {
+                        $state === 'pending' => 'warning',
+                        $state === 'approved' => 'primary',
+                        $state === 'pending_payment' => 'warning',
+                        $state === 'declined' => 'danger',
+                        $state === 'cancelled' => 'gray',
+                        $state === 'checked_in' => 'success',
+                        $state === 'checked_out' => 'gray',
+                        default => 'gray',
+                    }),
             ])
             ->paginated(false);
     }

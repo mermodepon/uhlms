@@ -78,8 +78,7 @@ class FloorResource extends Resource
                 Tables\Actions\DeleteAction::make()
                     ->successNotificationTitle('Floor deleted')
                     ->disabled(fn (Floor $record) => $record->rooms()->exists())
-                    ->tooltip(fn (Floor $record) =>
-                        $record->rooms()->exists()
+                    ->tooltip(fn (Floor $record) => $record->rooms()->exists()
                             ? 'This floor cannot be deleted because it is linked to rooms.'
                             : null
                     ),

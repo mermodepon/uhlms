@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources\RoomResource\Pages;
 
+use App\Filament\Pages\EditRedirectToIndex as EditRecord;
 use App\Filament\Resources\RoomResource;
 use Filament\Actions;
-use App\Filament\Pages\EditRedirectToIndex as EditRecord;
 
 class EditRoom extends EditRecord
 {
@@ -13,10 +13,10 @@ class EditRoom extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-              Actions\DeleteAction::make()
-                 ->successNotificationTitle('Room deleted')
-                 ->disabled(fn ($record) => $record->roomAssignments()->exists())
-                 ->tooltip('Cannot delete: usage history exists'),
+            Actions\DeleteAction::make()
+                ->successNotificationTitle('Room deleted')
+                ->disabled(fn ($record) => $record->roomAssignments()->exists())
+                ->tooltip('Cannot delete: usage history exists'),
         ];
     }
 

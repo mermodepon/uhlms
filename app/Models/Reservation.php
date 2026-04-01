@@ -47,6 +47,8 @@ class Reservation extends Model
     {
         return [
             'guest_age' => 'integer',
+            'num_male_guests' => 'integer',
+            'num_female_guests' => 'integer',
             'check_in_date' => 'date',
             'check_out_date' => 'date',
             'checkin_hold_payload' => 'array',
@@ -79,7 +81,7 @@ class Reservation extends Model
 
                 $sequenceNumber = str_pad($nextSequence, 4, '0', STR_PAD_LEFT);
 
-                $reservation->reference_number = $currentYear . '-' . $sequenceNumber;
+                $reservation->reference_number = $currentYear.'-'.$sequenceNumber;
             }
         });
 
@@ -87,8 +89,8 @@ class Reservation extends Model
         static::saving(function (self $reservation) {
             if ($reservation->guest_first_name || $reservation->guest_last_name) {
                 $reservation->guest_name = trim(
-                    $reservation->guest_first_name . ' ' . 
-                    ($reservation->guest_middle_initial ?? '') . ' ' . 
+                    $reservation->guest_first_name.' '.
+                    ($reservation->guest_middle_initial ?? '').' '.
                     $reservation->guest_last_name
                 );
             }

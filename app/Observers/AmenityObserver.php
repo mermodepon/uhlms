@@ -3,8 +3,6 @@
 namespace App\Observers;
 
 use App\Models\Amenity;
-use App\Models\Notification;
-use App\Models\User;
 use App\Notifications\NotificationHelper;
 
 class AmenityObserver
@@ -16,7 +14,7 @@ class AmenityObserver
             "Amenity \"{$amenity->name}\" has been added to the system.",
             'success',
             'amenity',
-            '/admin/amenities/' . $amenity->id,
+            '/admin/amenities/'.$amenity->id,
             auth()->id()
         );
     }
@@ -29,11 +27,11 @@ class AmenityObserver
             $status = $changes['is_active'] ? 'activated' : 'deactivated';
 
             NotificationHelper::notifyAllStaff(
-                'Amenity ' . ucfirst($status),
+                'Amenity '.ucfirst($status),
                 "Amenity \"{$amenity->name}\" has been {$status}.",
                 $changes['is_active'] ? 'success' : 'warning',
                 'amenity',
-                '/admin/amenities/' . $amenity->id,
+                '/admin/amenities/'.$amenity->id,
                 auth()->id()
             );
         } elseif (count(array_diff_key($changes, ['updated_at' => null])) > 0) {
@@ -42,7 +40,7 @@ class AmenityObserver
                 "Amenity \"{$amenity->name}\" details have been updated.",
                 'info',
                 'amenity',
-                '/admin/amenities/' . $amenity->id,
+                '/admin/amenities/'.$amenity->id,
                 auth()->id()
             );
         }

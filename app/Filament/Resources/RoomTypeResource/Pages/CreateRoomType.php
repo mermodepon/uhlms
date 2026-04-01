@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\RoomTypeResource\Pages;
 
-use App\Filament\Resources\RoomTypeResource;
 use App\Filament\Pages\CreateRedirectToIndex as CreateRecord;
+use App\Filament\Resources\RoomTypeResource;
 use Filament\Notifications\Notification;
 
 class CreateRoomType extends CreateRecord

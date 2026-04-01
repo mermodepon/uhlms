@@ -18,9 +18,9 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\HtmlString;
-use Illuminate\Database\Eloquent\Builder;
 
 class ReservationResource extends Resource
 {
@@ -83,7 +83,6 @@ class ReservationResource extends Resource
                             ->options([
                                 'Male' => 'Male',
                                 'Female' => 'Female',
-                                'Other' => 'Other',
                             ])
                             ->native(false)
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
@@ -165,17 +164,17 @@ class ReservationResource extends Resource
                         Forms\Components\Select::make('checkin_id_type')
                             ->label('ID Type')
                             ->options([
-                                'National ID'       => 'National ID',
-                                "Driver's License"  => "Driver's License",
-                                'Passport'          => 'Passport',
-                                'Student ID'        => 'Student ID',
-                                'SSS ID'            => 'SSS ID',
-                                'UMID'              => 'UMID',
-                                'Phil Health ID'    => 'Phil Health ID',
-                                "Voter's ID"        => "Voter's ID",
+                                'National ID' => 'National ID',
+                                "Driver's License" => "Driver's License",
+                                'Passport' => 'Passport',
+                                'Student ID' => 'Student ID',
+                                'SSS ID' => 'SSS ID',
+                                'UMID' => 'UMID',
+                                'Phil Health ID' => 'Phil Health ID',
+                                "Voter's ID" => "Voter's ID",
                                 'Senior Citizen ID' => 'Senior Citizen ID',
-                                'PWD ID'            => 'PWD ID',
-                                'Other'             => 'Other',
+                                'PWD ID' => 'PWD ID',
+                                'Other' => 'Other',
                             ])
                             ->searchable(),
                         Forms\Components\TextInput::make('checkin_id_number')
@@ -188,137 +187,29 @@ class ReservationResource extends Resource
                         Forms\Components\Select::make('checkin_purpose_of_stay')
                             ->label('Purpose of Stay')
                             ->options([
-                                'Academic'          => 'Academic',
+                                'Academic' => 'Academic',
                                 'Official Business' => 'Official Business',
-                                'Personal'          => 'Personal',
-                                'Event/Conference'  => 'Event/Conference',
-                                'Training'          => 'Training',
-                                'Research'          => 'Research',
-                                'Other'             => 'Other',
+                                'Personal' => 'Personal',
+                                'Event/Conference' => 'Event/Conference',
+                                'Training' => 'Training',
+                                'Research' => 'Research',
+                                'Other' => 'Other',
                             ]),
                         Forms\Components\Toggle::make('checkin_is_student')
                             ->label('Student')
                             ->inline(false)
                             ->live()
-                            ->afterStateUpdated(function ($state, $set, $get, $record) {
-                                if (!$record) return;
-                                
-                                $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                
-                                $assignments = $record->roomAssignments()->with('room.roomType')->get()->unique('room_id');
-                                $roomCharges = 0;
-                                foreach ($assignments as $assignment) {
-                                    if ($assignment->room && $assignment->room->roomType) {
-                                        $rate = (float) $assignment->room->roomType->base_rate;
-                                        $roomCharges += $rate * $nights;
-                                    }
-                                }
-                                
-                                $addonsTotal = static::computeAddonsTotal($get('checkin_additional_requests') ?? []);
-                                
-                                $subtotal = $roomCharges + $addonsTotal;
-                                
-                                $isPwd = (bool) ($get('checkin_is_pwd') ?? false);
-                                $isSenior = (bool) ($get('checkin_is_senior_citizen') ?? false);
-                                $isStudent = (bool) ($state ?? false);
-                                
-                                $pwdPercent     = (float) Setting::get('discount_pwd_percent', 0);
-                                $seniorPercent  = (float) Setting::get('discount_senior_percent', 0);
-                                $studentPercent = (float) Setting::get('discount_student_percent', 0);
-                                
-                                $totalDiscountPercent = 0;
-                                if ($isPwd && $pwdPercent > 0) $totalDiscountPercent += $pwdPercent;
-                                if ($isSenior && $seniorPercent > 0) $totalDiscountPercent += $seniorPercent;
-                                if ($isStudent && $studentPercent > 0) $totalDiscountPercent += $studentPercent;
-                                
-                                $totalDiscountPercent = min($totalDiscountPercent, 100);
-                                $discountAmount = ($subtotal * $totalDiscountPercent) / 100;
-                                $newTotal = max(0, $subtotal - $discountAmount);
-                                
-                                $set('checkin_payment_amount', round($newTotal, 2));
-                            }),
+                            ->afterStateUpdated(fn ($set, $get, $record) => static::recalculateDiscountedTotal($set, $get, $record)),
                         Forms\Components\Toggle::make('checkin_is_senior_citizen')
                             ->label('Senior Citizen')
                             ->inline(false)
                             ->live()
-                            ->afterStateUpdated(function ($state, $set, $get, $record) {
-                                if (!$record) return;
-                                
-                                $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                
-                                $assignments = $record->roomAssignments()->with('room.roomType')->get()->unique('room_id');
-                                $roomCharges = 0;
-                                foreach ($assignments as $assignment) {
-                                    if ($assignment->room && $assignment->room->roomType) {
-                                        $rate = (float) $assignment->room->roomType->base_rate;
-                                        $roomCharges += $rate * $nights;
-                                    }
-                                }
-                                
-                                $addonsTotal = static::computeAddonsTotal($get('checkin_additional_requests') ?? []);
-                                
-                                $subtotal = $roomCharges + $addonsTotal;
-                                
-                                $isPwd = (bool) ($get('checkin_is_pwd') ?? false);
-                                $isSenior = (bool) ($state ?? false);
-                                $isStudent = (bool) ($get('checkin_is_student') ?? false);
-                                
-                                $pwdPercent     = (float) Setting::get('discount_pwd_percent', 0);
-                                $seniorPercent  = (float) Setting::get('discount_senior_percent', 0);
-                                $studentPercent = (float) Setting::get('discount_student_percent', 0);
-                                
-                                $totalDiscountPercent = 0;
-                                if ($isPwd && $pwdPercent > 0) $totalDiscountPercent += $pwdPercent;
-                                if ($isSenior && $seniorPercent > 0) $totalDiscountPercent += $seniorPercent;
-                                if ($isStudent && $studentPercent > 0) $totalDiscountPercent += $studentPercent;
-                                
-                                $totalDiscountPercent = min($totalDiscountPercent, 100);
-                                $discountAmount = ($subtotal * $totalDiscountPercent) / 100;
-                                $newTotal = max(0, $subtotal - $discountAmount);
-                                
-                                $set('checkin_payment_amount', round($newTotal, 2));
-                            }),
+                            ->afterStateUpdated(fn ($set, $get, $record) => static::recalculateDiscountedTotal($set, $get, $record)),
                         Forms\Components\Toggle::make('checkin_is_pwd')
                             ->label('PWD')
                             ->inline(false)
                             ->live()
-                            ->afterStateUpdated(function ($state, $set, $get, $record) {
-                                if (!$record) return;
-                                
-                                $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                
-                                $assignments = $record->roomAssignments()->with('room.roomType')->get()->unique('room_id');
-                                $roomCharges = 0;
-                                foreach ($assignments as $assignment) {
-                                    if ($assignment->room && $assignment->room->roomType) {
-                                        $rate = (float) $assignment->room->roomType->base_rate;
-                                        $roomCharges += $rate * $nights;
-                                    }
-                                }
-                                
-                                $addonsTotal = static::computeAddonsTotal($get('checkin_additional_requests') ?? []);
-                                
-                                $subtotal = $roomCharges + $addonsTotal;
-                                
-                                $isPwd = (bool) ($state ?? false);
-                                $isSenior = (bool) ($get('checkin_is_senior_citizen') ?? false);
-                                $isStudent = (bool) ($get('checkin_is_student') ?? false);
-                                
-                                $pwdPercent     = (float) Setting::get('discount_pwd_percent', 0);
-                                $seniorPercent  = (float) Setting::get('discount_senior_percent', 0);
-                                $studentPercent = (float) Setting::get('discount_student_percent', 0);
-                                
-                                $totalDiscountPercent = 0;
-                                if ($isPwd && $pwdPercent > 0) $totalDiscountPercent += $pwdPercent;
-                                if ($isSenior && $seniorPercent > 0) $totalDiscountPercent += $seniorPercent;
-                                if ($isStudent && $studentPercent > 0) $totalDiscountPercent += $studentPercent;
-                                
-                                $totalDiscountPercent = min($totalDiscountPercent, 100);
-                                $discountAmount = ($subtotal * $totalDiscountPercent) / 100;
-                                $newTotal = max(0, $subtotal - $discountAmount);
-                                
-                                $set('checkin_payment_amount', round($newTotal, 2));
-                            }),
+                            ->afterStateUpdated(fn ($set, $get, $record) => static::recalculateDiscountedTotal($set, $get, $record)),
                         Forms\Components\DatePicker::make('checkin_detailed_checkin_datetime')
                             ->label('Date of Arrival')
                             ->native(false),
@@ -332,7 +223,7 @@ class ReservationResource extends Resource
                                     ->label('Add-On')
                                     ->options(fn () => Service::active()->ordered()->get()
                                         ->mapWithKeys(fn (Service $s) => [
-                                            $s->code => $s->name . ($s->price > 0 ? " ({$s->formatted_price})" : ' (Free)'),
+                                            $s->code => $s->name.($s->price > 0 ? " ({$s->formatted_price})" : ' (Free)'),
                                         ])
                                     )
                                     ->required()
@@ -349,75 +240,38 @@ class ReservationResource extends Resource
                             ->addActionLabel('Add Add-On')
                             ->columns(2)
                             ->live()
-                            ->afterStateUpdated(function ($state, $set, $get, $record) {
-                                if (!$record) return;
-                                
-                                $addonsTotal = static::computeAddonsTotal($state ?? []);
-                                
-                                // Get room charges - calculate from reservation dates
-                                $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                
-                                $assignments = $record->roomAssignments()->with('room.roomType')->get()->unique('room_id');
-                                $roomCharges = 0;
-                                
-                                foreach ($assignments as $assignment) {
-                                    if ($assignment->room && $assignment->room->roomType) {
-                                        $rate = (float) $assignment->room->roomType->base_rate;
-                                        $roomCharges += $rate * $nights;
-                                    }
-                                }
-                                
-                                $subtotal = $roomCharges + $addonsTotal;
-                                
-                                // Apply discount
-                                $isPwd = (bool) ($get('checkin_is_pwd') ?? false);
-                                $isSenior = (bool) ($get('checkin_is_senior_citizen') ?? false);
-                                $isStudent = (bool) ($get('checkin_is_student') ?? false);
-                                
-                                $pwdPercent     = (float) Setting::get('discount_pwd_percent', 0);
-                                $seniorPercent  = (float) Setting::get('discount_senior_percent', 0);
-                                $studentPercent = (float) Setting::get('discount_student_percent', 0);
-                                
-                                $totalDiscountPercent = 0;
-                                if ($isPwd && $pwdPercent > 0) $totalDiscountPercent += $pwdPercent;
-                                if ($isSenior && $seniorPercent > 0) $totalDiscountPercent += $seniorPercent;
-                                if ($isStudent && $studentPercent > 0) $totalDiscountPercent += $studentPercent;
-                                
-                                $totalDiscountPercent = min($totalDiscountPercent, 100);
-                                $discountAmount = ($subtotal * $totalDiscountPercent) / 100;
-                                $newTotal = max(0, $subtotal - $discountAmount);
-                                
-                                $set('checkin_payment_amount', round($newTotal, 2));
-                            })
+                            ->afterStateUpdated(fn ($set, $get, $record) => static::recalculateDiscountedTotal($set, $get, $record))
                             ->columnSpanFull(),
                         Forms\Components\Placeholder::make('checkin_pricing_breakdown')
                             ->label('Pricing Breakdown')
                             ->content(function ($get, $record) {
-                                if (!$record) return 'No pricing data available.';
-                                
+                                if (! $record) {
+                                    return 'No pricing data available.';
+                                }
+
                                 // Calculate nights from reservation dates
                                 $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
-                                
+
                                 // Calculate room charges
                                 $assignments = $record->roomAssignments()->with('room.roomType')->get()->unique('room_id');
                                 $roomCharges = 0;
                                 $roomLines = [];
-                                
+
                                 foreach ($assignments as $assignment) {
                                     if ($assignment->room && $assignment->room->roomType) {
                                         $rate = (float) $assignment->room->roomType->base_rate;
                                         $lineTotal = $rate * $nights;
                                         $roomCharges += $lineTotal;
-                                        $roomLines[] = "Room {$assignment->room->room_number}: ₱" . number_format($rate, 2) . " × {$nights} night(s) = ₱" . number_format($lineTotal, 2);
+                                        $roomLines[] = "Room {$assignment->room->room_number}: ₱".number_format($rate, 2)." × {$nights} night(s) = ₱".number_format($lineTotal, 2);
                                     }
                                 }
-                                
+
                                 // Calculate add-ons
                                 $addonItems = collect($get('checkin_additional_requests') ?? [])
-                                    ->filter(fn ($i) => !empty($i['code'] ?? null));
+                                    ->filter(fn ($i) => ! empty($i['code'] ?? null));
                                 $addonsTotal = 0;
                                 $addonLines = [];
-                                
+
                                 if ($addonItems->isNotEmpty()) {
                                     $addons = Service::query()->whereIn('code', $addonItems->pluck('code')->unique())->get()->keyBy('code');
                                     foreach ($addonItems as $item) {
@@ -426,95 +280,95 @@ class ReservationResource extends Resource
                                         if ($addon) {
                                             $lineTotal = (float) $addon->price * $qty;
                                             $addonsTotal += $lineTotal;
-                                            $addonLines[] = "{$qty}x {$addon->name}: ₱" . number_format($lineTotal, 2);
+                                            $addonLines[] = "{$qty}x {$addon->name}: ₱".number_format($lineTotal, 2);
                                         }
                                     }
                                 }
-                                
+
                                 $subtotal = $roomCharges + $addonsTotal;
-                                
+
                                 // Calculate discount
                                 $isPwd = (bool) ($get('checkin_is_pwd') ?? false);
                                 $isSenior = (bool) ($get('checkin_is_senior_citizen') ?? false);
                                 $isStudent = (bool) ($get('checkin_is_student') ?? false);
-                                
-                                $pwdPercent     = (float) Setting::get('discount_pwd_percent', 0);
-                                $seniorPercent  = (float) Setting::get('discount_senior_percent', 0);
+
+                                $pwdPercent = (float) Setting::get('discount_pwd_percent', 0);
+                                $seniorPercent = (float) Setting::get('discount_senior_percent', 0);
                                 $studentPercent = (float) Setting::get('discount_student_percent', 0);
-                                
+
                                 $discountLines = [];
                                 $totalDiscountPercent = 0;
-                                
+
                                 if ($isPwd && $pwdPercent > 0) {
                                     $discountLines[] = "PWD: {$pwdPercent}%";
                                     $totalDiscountPercent += $pwdPercent;
                                 }
-                                
+
                                 if ($isSenior && $seniorPercent > 0) {
                                     $discountLines[] = "Senior Citizen: {$seniorPercent}%";
                                     $totalDiscountPercent += $seniorPercent;
                                 }
-                                
+
                                 if ($isStudent && $studentPercent > 0) {
                                     $discountLines[] = "Student: {$studentPercent}%";
                                     $totalDiscountPercent += $studentPercent;
                                 }
-                                
+
                                 $totalDiscountPercent = min($totalDiscountPercent, 100);
                                 $discountAmount = ($subtotal * $totalDiscountPercent) / 100;
                                 $grandTotal = max(0, $subtotal - $discountAmount);
-                                
+
                                 $html = '<div class="text-sm space-y-2">';
-                                $html .= '<div><strong>Nights:</strong> ' . $nights . '</div>';
-                                
-                                if (!empty($roomLines)) {
+                                $html .= '<div><strong>Nights:</strong> '.$nights.'</div>';
+
+                                if (! empty($roomLines)) {
                                     $html .= '<div class="mt-2"><strong>Room Charges:</strong></div>';
                                     $html .= '<ul class="list-disc pl-5">';
                                     foreach ($roomLines as $line) {
-                                        $html .= '<li>' . e($line) . '</li>';
+                                        $html .= '<li>'.e($line).'</li>';
                                     }
                                     $html .= '</ul>';
                                 }
-                                
-                                if (!empty($addonLines)) {
+
+                                if (! empty($addonLines)) {
                                     $html .= '<div class="mt-2"><strong>Add-Ons:</strong></div>';
                                     $html .= '<ul class="list-disc pl-5">';
                                     foreach ($addonLines as $line) {
-                                        $html .= '<li>' . e($line) . '</li>';
+                                        $html .= '<li>'.e($line).'</li>';
                                     }
                                     $html .= '</ul>';
                                 } else {
                                     $html .= '<div class="mt-2"><strong>Add-Ons:</strong> None</div>';
                                 }
-                                
-                                $html .= '<div class="mt-2"><strong>Room Subtotal:</strong> ₱' . number_format($roomCharges, 2) . '</div>';
-                                $html .= '<div><strong>Add-Ons Total:</strong> ₱' . number_format($addonsTotal, 2) . '</div>';
-                                $html .= '<div><strong>Subtotal:</strong> ₱' . number_format($subtotal, 2) . '</div>';
-                                
-                                if (!empty($discountLines)) {
+
+                                $html .= '<div class="mt-2"><strong>Room Subtotal:</strong> ₱'.number_format($roomCharges, 2).'</div>';
+                                $html .= '<div><strong>Add-Ons Total:</strong> ₱'.number_format($addonsTotal, 2).'</div>';
+                                $html .= '<div><strong>Subtotal:</strong> ₱'.number_format($subtotal, 2).'</div>';
+
+                                if (! empty($discountLines)) {
                                     $html .= '<div class="mt-2 text-green-600"><strong>Discounts Applied:</strong></div>';
                                     $html .= '<ul class="list-disc pl-5 text-green-600">';
                                     foreach ($discountLines as $line) {
-                                        $html .= '<li>' . e($line) . '</li>';
+                                        $html .= '<li>'.e($line).'</li>';
                                     }
                                     $html .= '</ul>';
-                                    $html .= '<div class="text-green-600"><strong>Total Discount (' . $totalDiscountPercent . '%):</strong> -₱' . number_format($discountAmount, 2) . '</div>';
+                                    $html .= '<div class="text-green-600"><strong>Total Discount ('.$totalDiscountPercent.'%):</strong> -₱'.number_format($discountAmount, 2).'</div>';
                                 }
-                                
-                                $html .= '<div class="font-semibold text-lg mt-2"><strong>Grand Total:</strong> ₱' . number_format($grandTotal, 2) . '</div>';
+
+                                $html .= '<div class="font-semibold text-lg mt-2"><strong>Grand Total:</strong> ₱'.number_format($grandTotal, 2).'</div>';
                                 $html .= '</div>';
-                                
+
                                 return new HtmlString($html);
                             })
                             ->columnSpanFull(),
                         Forms\Components\Select::make('checkin_payment_mode')
                             ->label('Payment Mode')
                             ->options([
-                                'cash'          => 'Cash',
+                                'cash' => 'Cash',
                                 'bank_transfer' => 'Bank Transfer',
-                                'gcash'         => 'GCash',
-                                'check'         => 'Check',
-                                'others'        => 'Others',
+                                'gcash' => 'GCash',
+                                'check' => 'Check',
+                                'others' => 'Others',
                             ])
                             ->live(),
                         Forms\Components\TextInput::make('checkin_payment_mode_other')
@@ -599,8 +453,8 @@ class ReservationResource extends Resource
                                             ->copyable(),
                                         Infolists\Components\TextEntry::make('billing_or_date')
                                             ->label('OR Date')
-                                            ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['or_date'] 
-                                                ? \Carbon\Carbon::parse(self::resolveBillingSnapshot($record)['or_date'])->format('M d, Y') 
+                                            ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['or_date']
+                                                ? \Carbon\Carbon::parse(self::resolveBillingSnapshot($record)['or_date'])->format('M d, Y')
                                                 : '-'),
                                         Infolists\Components\TextEntry::make('billing_discount_availed')
                                             ->label('Discount Availed')
@@ -610,14 +464,14 @@ class ReservationResource extends Resource
                                         Infolists\Components\TextEntry::make('billing_discount_amount')
                                             ->label('Discount Amount')
                                             ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['discount_applied']
-                                                ? '-₱' . number_format((float) self::resolveBillingSnapshot($record)['discount_amount'], 2)
+                                                ? '-₱'.number_format((float) self::resolveBillingSnapshot($record)['discount_amount'], 2)
                                                 : '-'),
                                         Infolists\Components\TextEntry::make('billing_addons')
                                             ->label('Add-Ons')
                                             ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['addons_label'])
                                             ->columnSpanFull()
                                             ->badge(),
-                                        ])->columns(2),
+                                    ])->columns(2),
                             ]),
 
                         Infolists\Components\Tabs\Tab::make('Check-In Information')
@@ -643,7 +497,8 @@ class ReservationResource extends Resource
                                             ->label('Checked-In Guests')
                                             ->default(function (Reservation $record) {
                                                 $checkedIn = $record->roomAssignments()->whereNotNull('checked_in_at')->count();
-                                                return $checkedIn . ' / ' . ((int) $record->number_of_occupants ?: $checkedIn);
+
+                                                return $checkedIn.' / '.((int) $record->number_of_occupants ?: $checkedIn);
                                             }),
                                         Infolists\Components\TextEntry::make('checkin_hold_expires_at')
                                             ->label('Payment Hold Expires')
@@ -665,7 +520,7 @@ class ReservationResource extends Resource
                                         Infolists\Components\TextEntry::make('snapshot_discount_amount')
                                             ->label('Discount Amount')
                                             ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['discount_applied']
-                                                ? '-₱' . number_format((float) self::resolveBillingSnapshot($record)['discount_amount'], 2)
+                                                ? '-₱'.number_format((float) self::resolveBillingSnapshot($record)['discount_amount'], 2)
                                                 : '-'),
                                         Infolists\Components\TextEntry::make('snapshot_id_type')
                                             ->label('ID Type')
@@ -695,6 +550,7 @@ class ReservationResource extends Resource
                                             ->label('Official Check-in (Payment)')
                                             ->default(function (Reservation $record) {
                                                 $ts = $record->roomAssignments()->whereNotNull('checked_in_at')->oldest('checked_in_at')->value('checked_in_at');
+
                                                 return $ts ? Carbon::parse($ts)->format('M d, Y') : '-';
                                             })
                                             ->placeholder('-'),
@@ -702,6 +558,7 @@ class ReservationResource extends Resource
                                             ->label('Actual Check-out')
                                             ->default(function (Reservation $record) {
                                                 $ts = $record->roomAssignments()->whereNotNull('checked_out_at')->latest('checked_out_at')->value('checked_out_at');
+
                                                 return $ts ? Carbon::parse($ts)->format('M d, Y') : '-';
                                             })
                                             ->placeholder('-'),
@@ -803,8 +660,7 @@ class ReservationResource extends Resource
                         return empty($rooms) ? null : (count($rooms) === 1 ? $rooms[0] : $rooms);
                     })
                     ->searchable(query: function ($query, string $search) {
-                        $query->whereHas('roomAssignments.room', fn ($q) =>
-                            $q->where('room_number', 'like', "%{$search}%")
+                        $query->whereHas('roomAssignments.room', fn ($q) => $q->where('room_number', 'like', "%{$search}%")
                         );
                     }),
                 Tables\Columns\TextColumn::make('check_in_date')
@@ -832,11 +688,11 @@ class ReservationResource extends Resource
                             ->first()?->detailed_checkout_datetime;
 
                         if ($scheduled) {
-                            return 'Due: ' . Carbon::parse($scheduled)->format('M d, Y');
+                            return 'Due: '.Carbon::parse($scheduled)->format('M d, Y');
                         }
 
                         // Fallback to reservation-level date
-                        return 'Due: ' . Carbon::parse($record->check_out_date)->format('M d, Y');
+                        return 'Due: '.Carbon::parse($record->check_out_date)->format('M d, Y');
                     })
                     ->searchable(false)
                     ->sortable(query: fn ($query, $direction) => $query->orderBy('check_out_date', $direction))
@@ -848,15 +704,15 @@ class ReservationResource extends Resource
                     ->width('120px')
                     ->formatStateUsing(fn ($state) => str_replace('_', ' ', ucfirst($state)))
                     ->color(fn ($state, $record): string => match (true) {
-                        $state === 'pending'                                          => 'warning',
+                        $state === 'pending' => 'warning',
                         $state === 'approved' && $record->roomAssignments->isEmpty() => 'info',
-                        $state === 'approved'                                        => 'primary',
-                        $state === 'pending_payment'                                 => 'warning',
-                        $state === 'declined'                                        => 'danger',
-                        $state === 'cancelled'                                       => 'gray',
-                        $state === 'checked_in'                                      => 'success',
-                        $state === 'checked_out'                                     => 'gray',
-                        default                                                      => 'gray',
+                        $state === 'approved' => 'primary',
+                        $state === 'pending_payment' => 'warning',
+                        $state === 'declined' => 'danger',
+                        $state === 'cancelled' => 'gray',
+                        $state === 'checked_in' => 'success',
+                        $state === 'checked_out' => 'gray',
+                        default => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('discount_availed')
                     ->label('Discount')
@@ -915,6 +771,7 @@ class ReservationResource extends Resource
                                     now()->addDay()->toDateString(),
                                 ]);
                         }
+
                         return $query;
                     })
                     ->indicateUsing(fn (array $data): ?string => ($data['enabled'] ?? false) ? 'Near Due (checkout ≤ 24h)' : null),
@@ -930,6 +787,7 @@ class ReservationResource extends Resource
                                 ->where('status', 'checked_in')
                                 ->whereDate('check_out_date', '<', now()->toDateString());
                         }
+
                         return $query;
                     })
                     ->indicateUsing(fn (array $data): ?string => ($data['enabled'] ?? false) ? 'Overdue check-outs' : null),
@@ -1019,9 +877,8 @@ class ReservationResource extends Resource
                                         ->required()
                                         ->default(fn (Reservation $record) => $record->guest_gender)
                                         ->options([
-                                            'Male'   => 'Male',
+                                            'Male' => 'Male',
                                             'Female' => 'Female',
-                                            'Other'  => 'Other',
                                         ])
                                         ->native(false)
                                         ->live()
@@ -1060,8 +917,7 @@ class ReservationResource extends Resource
                                                     'private' => 'Private (occupies whole room)',
                                                     'dorm' => 'Dorm (per-bed assignment)',
                                                 ])
-                                                ->default(fn (Reservation $record) =>
-                                                    $record->preferredRoomType?->isPrivate() ? 'private' : 'dorm'
+                                                ->default(fn (Reservation $record) => $record->preferredRoomType?->isPrivate() ? 'private' : 'dorm'
                                                 )
                                                 ->placeholder('Select an option')
                                                 ->dehydrated()
@@ -1093,7 +949,7 @@ class ReservationResource extends Resource
 
                                                     $preferredTypeId = $record->preferred_room_type_id;
                                                     $preferredTypeName = $record->preferredRoomType->name;
-                                                    
+
                                                     $query = Room::query()
                                                         ->with('roomType')
                                                         ->where('is_active', true);
@@ -1115,18 +971,18 @@ class ReservationResource extends Resource
                                                     $grouped = $rooms->groupBy('room_type_id')->sortBy(function ($group, $typeId) use ($preferredTypeId) {
                                                         return $typeId == $preferredTypeId ? 0 : 1;
                                                     });
-                                                    
+
                                                     $options = [];
                                                     foreach ($grouped as $typeId => $roomsInType) {
                                                         $typeName = $roomsInType->first()->roomType->name;
                                                         $isPreferred = $typeId == $preferredTypeId;
-                                                        $groupLabel = $isPreferred ? "⭐ {$typeName} (Preferred)" : $typeName;
-                                                        
+                                                        $groupLabel = $isPreferred ? "{$typeName} (Preferred)" : $typeName;
+
                                                         $options[$groupLabel] = $roomsInType->mapWithKeys(fn ($room) => [
                                                             $room->id => "Room {$room->room_number}",
                                                         ])->toArray();
                                                     }
-                                                    
+
                                                     return $options;
                                                 })
                                                 ->helperText(fn ($get) => filled($get('room_mode') ?? null)
@@ -1160,7 +1016,7 @@ class ReservationResource extends Resource
                                                     if ($state === true && $itemKey !== null) {
                                                         foreach ($entries as $key => $entry) {
                                                             $set(
-                                                                '../../reservation_rooms.' . $key . '.includes_primary_guest',
+                                                                '../../reservation_rooms.'.$key.'.includes_primary_guest',
                                                                 ((string) $key === (string) $itemKey)
                                                             );
                                                         }
@@ -1173,8 +1029,10 @@ class ReservationResource extends Resource
                                                     $roomId = $get('room_id');
                                                     if ($roomId) {
                                                         $room = \App\Models\Room::find($roomId);
+
                                                         return $room ? "Guests for Room {$room->room_number}" : 'Guests for selected room';
                                                     }
+
                                                     return 'Guests for selected room';
                                                 })
                                                 ->schema([
@@ -1203,7 +1061,6 @@ class ReservationResource extends Resource
                                                         ->options([
                                                             'Male' => 'Male',
                                                             'Female' => 'Female',
-                                                            'Other' => 'Other',
                                                         ])
                                                         ->native(false)
                                                         ->live(),
@@ -1233,17 +1090,17 @@ class ReservationResource extends Resource
                                         ->label('ID Type')
                                         ->required()
                                         ->options([
-                                            'National ID'       => 'National ID',
-                                            "Driver's License"  => "Driver's License",
-                                            'Passport'          => 'Passport',
-                                            'Student ID'        => 'Student ID',
-                                            'SSS ID'            => 'SSS ID',
-                                            'UMID'              => 'UMID',
-                                            'Phil Health ID'    => 'Phil Health ID',
-                                            "Voter's ID"        => "Voter's ID",
+                                            'National ID' => 'National ID',
+                                            "Driver's License" => "Driver's License",
+                                            'Passport' => 'Passport',
+                                            'Student ID' => 'Student ID',
+                                            'SSS ID' => 'SSS ID',
+                                            'UMID' => 'UMID',
+                                            'Phil Health ID' => 'Phil Health ID',
+                                            "Voter's ID" => "Voter's ID",
                                             'Senior Citizen ID' => 'Senior Citizen ID',
-                                            'PWD ID'            => 'PWD ID',
-                                            'Other'             => 'Other',
+                                            'PWD ID' => 'PWD ID',
+                                            'Other' => 'Other',
                                         ])
                                         ->searchable(),
                                     Forms\Components\TextInput::make('id_number')
@@ -1278,23 +1135,24 @@ class ReservationResource extends Resource
                                                 'academic' => 'Academic',
                                                 'official' => 'Official Business',
                                                 'personal' => 'Personal',
-                                                'event'    => 'Event/Conference',
+                                                'event' => 'Event/Conference',
                                                 'training' => 'Training',
                                                 'research' => 'Research',
-                                                'other'    => 'Other',
+                                                'other' => 'Other',
                                             ];
+
                                             return $map[$record->purpose]
                                                 ?? ucwords(str_replace('_', ' ', $record->purpose ?? 'Personal'));
                                         })
                                         ->required()
                                         ->options([
-                                            'Academic'          => 'Academic',
+                                            'Academic' => 'Academic',
                                             'Official Business' => 'Official Business',
-                                            'Personal'          => 'Personal',
-                                            'Event/Conference'  => 'Event/Conference',
-                                            'Training'          => 'Training',
-                                            'Research'          => 'Research',
-                                            'Other'             => 'Other',
+                                            'Personal' => 'Personal',
+                                            'Event/Conference' => 'Event/Conference',
+                                            'Training' => 'Training',
+                                            'Research' => 'Research',
+                                            'Other' => 'Other',
                                         ]),
                                     Forms\Components\Hidden::make('num_male_guests')->default(0),
                                     Forms\Components\Hidden::make('num_female_guests')->default(0),
@@ -1324,7 +1182,7 @@ class ReservationResource extends Resource
                                                 ->label('Add-On')
                                                 ->options(fn () => Service::active()->ordered()->get()
                                                     ->mapWithKeys(fn (Service $s) => [
-                                                        $s->code => $s->name . ($s->price > 0 ? " ({$s->formatted_price})" : ' (Free)'),
+                                                        $s->code => $s->name.($s->price > 0 ? " ({$s->formatted_price})" : ' (Free)'),
                                                     ])
                                                 )
                                                 ->required()
@@ -1345,7 +1203,7 @@ class ReservationResource extends Resource
                                         ->columnSpanFull(),
                                     Forms\Components\Placeholder::make('declared_occupants')
                                         ->label('Declared Number of Guests')
-                                        ->content(fn (Reservation $record) => $record->number_of_occupants . ' guest' . ($record->number_of_occupants > 1 ? 's' : '')),
+                                        ->content(fn (Reservation $record) => $record->number_of_occupants.' guest'.($record->number_of_occupants > 1 ? 's' : '')),
                                     Forms\Components\Placeholder::make('declared_days')
                                         ->label('Declared Number of Nights')
                                         ->content(function ($get, Reservation $record) {
@@ -1358,7 +1216,7 @@ class ReservationResource extends Resource
                                                 $d = max(1, $record->check_in_date->startOfDay()->diffInDays($record->check_out_date->startOfDay()));
                                             }
 
-                                            return $d . ' night' . ($d > 1 ? 's' : '');
+                                            return $d.' night'.($d > 1 ? 's' : '');
                                         }),
                                     Forms\Components\Placeholder::make('live_checkin_pricing_breakdown')
                                         ->label('Estimated Payable Amount (Actual Check-in Data)')
@@ -1389,17 +1247,17 @@ class ReservationResource extends Resource
                                             }
 
                                             $html = '<div class="text-sm space-y-2">';
-                                            $html .= '<div><strong>Nights:</strong> ' . $pricing['nights'] . '</div>';
-                                            $html .= '<ul class="list-disc pl-5 space-y-1">' . implode('', $rows) . '</ul>';
-                                            $html .= '<div><strong>Room Subtotal:</strong> ₱' . number_format($pricing['room_subtotal'], 2) . '</div>';
-                                            $html .= '<div><strong>Add-Ons:</strong> ₱' . number_format($pricing['services_total'], 2) . '</div>';
-                                            $html .= '<div><strong>Subtotal:</strong> ₱' . number_format($pricing['subtotal'], 2) . '</div>';
-                                            
+                                            $html .= '<div><strong>Nights:</strong> '.$pricing['nights'].'</div>';
+                                            $html .= '<ul class="list-disc pl-5 space-y-1">'.implode('', $rows).'</ul>';
+                                            $html .= '<div><strong>Room Subtotal:</strong> ₱'.number_format($pricing['room_subtotal'], 2).'</div>';
+                                            $html .= '<div><strong>Add-Ons:</strong> ₱'.number_format($pricing['services_total'], 2).'</div>';
+                                            $html .= '<div><strong>Subtotal:</strong> ₱'.number_format($pricing['subtotal'], 2).'</div>';
+
                                             if ($pricing['discount_amount'] > 0) {
-                                                $html .= '<div class="text-green-600"><strong>Discount (' . $pricing['discount_percent'] . '%):</strong> -₱' . number_format($pricing['discount_amount'], 2) . '</div>';
+                                                $html .= '<div class="text-green-600"><strong>Discount ('.$pricing['discount_percent'].'%):</strong> -₱'.number_format($pricing['discount_amount'], 2).'</div>';
                                             }
-                                            
-                                            $html .= '<div class="font-semibold"><strong>Estimated Payable:</strong> ₱' . number_format($pricing['grand_total'], 2) . '</div>';
+
+                                            $html .= '<div class="font-semibold"><strong>Estimated Payable:</strong> ₱'.number_format($pricing['grand_total'], 2).'</div>';
                                             $html .= '</div>';
 
                                             return new HtmlString($html);
@@ -1416,11 +1274,11 @@ class ReservationResource extends Resource
                                     Forms\Components\Select::make('hold_duration_minutes')
                                         ->label('Payment Hold Duration')
                                         ->options([
-                                            15  => '15 minutes',
-                                            30  => '30 minutes',
-                                            45  => '45 minutes',
-                                            60  => '1 hour',
-                                            90  => '1 hour 30 minutes',
+                                            15 => '15 minutes',
+                                            30 => '30 minutes',
+                                            45 => '45 minutes',
+                                            60 => '1 hour',
+                                            90 => '1 hour 30 minutes',
                                             120 => '2 hours',
                                             180 => '3 hours',
                                             240 => '4 hours',
@@ -1439,7 +1297,7 @@ class ReservationResource extends Resource
                                 Notification::make()
                                     ->success()
                                     ->title('Check-in Prepared')
-                                    ->body('Hold created for ' . $result['held_guest_count'] . ' guest(s). Expires at ' . optional($result['hold_expires_at'])?->format('M d, Y h:i A') . '.')
+                                    ->body('Hold created for '.$result['held_guest_count'].' guest(s). Expires at '.optional($result['hold_expires_at'])?->format('M d, Y h:i A').'.')
                                     ->send();
                             } catch (\Throwable $e) {
                                 Notification::make()
@@ -1461,7 +1319,7 @@ class ReservationResource extends Resource
                             Forms\Components\Placeholder::make('hold_expiry_notice')
                                 ->label('Hold Status')
                                 ->content(fn (Reservation $record) => $record->checkin_hold_expires_at
-                                    ? 'Hold expires on ' . $record->checkin_hold_expires_at->format('M d, Y h:i A')
+                                    ? 'Hold expires on '.$record->checkin_hold_expires_at->format('M d, Y h:i A')
                                     : 'No hold expiry recorded.'),
                             Forms\Components\Placeholder::make('payable_amount_notice')
                                 ->label('Payable Amount')
@@ -1469,18 +1327,18 @@ class ReservationResource extends Resource
                                     $payable = self::computeHoldPayableAmount($record);
 
                                     return $payable > 0
-                                        ? '₱' . number_format($payable, 2)
+                                        ? '₱'.number_format($payable, 2)
                                         : 'No payable amount available. Re-prepare check-in if needed.';
                                 }),
                             Forms\Components\Select::make('payment_mode')
                                 ->label('Mode of Payment')
                                 ->default('cash')
                                 ->options([
-                                    'cash'          => 'Cash',
+                                    'cash' => 'Cash',
                                     'bank_transfer' => 'Bank Transfer',
-                                    'gcash'         => 'GCash',
-                                    'check'         => 'Check',
-                                    'others'        => 'Others',
+                                    'gcash' => 'GCash',
+                                    'check' => 'Check',
+                                    'others' => 'Others',
                                 ])
                                 ->live()
                                 ->required(),
@@ -1517,7 +1375,7 @@ class ReservationResource extends Resource
                                     Notification::make()
                                         ->danger()
                                         ->title('Paid Amount Too Low')
-                                        ->body('Paid amount cannot be less than payable amount of ₱' . number_format($payable, 2) . '.')
+                                        ->body('Paid amount cannot be less than payable amount of ₱'.number_format($payable, 2).'.')
                                         ->persistent()
                                         ->send();
 
@@ -1611,7 +1469,7 @@ class ReservationResource extends Resource
                                     ->each(function ($assignment) use ($data) {
                                         $assignment->update([
                                             'remarks' => $assignment->remarks
-                                                ? $assignment->remarks . ' | ' . $data['remarks']
+                                                ? $assignment->remarks.' | '.$data['remarks']
                                                 : $data['remarks'],
                                         ]);
                                     });
@@ -1679,17 +1537,68 @@ class ReservationResource extends Resource
      */
     protected static function computeAddonsTotal(array $items): float
     {
-        if (empty($items)) return 0.0;
+        if (empty($items)) {
+            return 0.0;
+        }
         // Normalize: detect legacy format (array of plain strings)
         if (isset($items[0]) && is_string($items[0])) {
             $items = array_map(fn ($code) => ['code' => $code, 'qty' => 1], array_filter($items));
         }
-        $items = collect($items)->filter(fn ($i) => !empty($i['code'] ?? null));
-        if ($items->isEmpty()) return 0.0;
+        $items = collect($items)->filter(fn ($i) => ! empty($i['code'] ?? null));
+        if ($items->isEmpty()) {
+            return 0.0;
+        }
         $services = Service::whereIn('code', $items->pluck('code')->unique()->values())->get()->keyBy('code');
-        return (float) $items->sum(fn ($i) =>
-            (float) ($services->get($i['code'])?->price ?? 0) * max(1, (int) ($i['qty'] ?? 1))
+
+        return (float) $items->sum(fn ($i) => (float) ($services->get($i['code'])?->price ?? 0) * max(1, (int) ($i['qty'] ?? 1))
         );
+    }
+
+    protected static function recalculateDiscountedTotal($set, $get, $record): void
+    {
+        if (! $record) {
+            return;
+        }
+
+        $nights = max(1, $record->check_in_date->diffInDays($record->check_out_date));
+
+        $assignments = $record->roomAssignments()->with('room.roomType')->get()->unique('room_id');
+        $roomCharges = 0;
+        foreach ($assignments as $assignment) {
+            if ($assignment->room && $assignment->room->roomType) {
+                $rate = (float) $assignment->room->roomType->base_rate;
+                $roomCharges += $rate * $nights;
+            }
+        }
+
+        $addonsTotal = static::computeAddonsTotal($get('checkin_additional_requests') ?? []);
+
+        $subtotal = $roomCharges + $addonsTotal;
+
+        $isPwd = (bool) ($get('checkin_is_pwd') ?? false);
+        $isSenior = (bool) ($get('checkin_is_senior_citizen') ?? false);
+        $isStudent = (bool) ($get('checkin_is_student') ?? false);
+
+        $pwdPercent = (float) Setting::get('discount_pwd_percent', 0);
+        $seniorPercent = (float) Setting::get('discount_senior_percent', 0);
+        $studentPercent = (float) Setting::get('discount_student_percent', 0);
+
+        $totalDiscountPercent = 0;
+        if ($isPwd && $pwdPercent > 0) {
+            $totalDiscountPercent += $pwdPercent;
+        }
+        if ($isSenior && $seniorPercent > 0) {
+            $totalDiscountPercent += $seniorPercent;
+        }
+        if ($isStudent && $studentPercent > 0) {
+            $totalDiscountPercent += $studentPercent;
+        }
+
+        $totalDiscountPercent = min($totalDiscountPercent, 100);
+        $discountAmount = ($subtotal * $totalDiscountPercent) / 100;
+        $newTotal = max(0, $subtotal - $discountAmount);
+
+        $set('checkin_payment_amount', round($newTotal, 2));
     }
 
     protected static function computeCheckInPricing(
@@ -1760,7 +1669,7 @@ class ReservationResource extends Resource
 
             $roomSubtotal += $lineTotal;
             $roomLines[] = [
-                'label' => "Room {$room->room_number} ({$roomType->name}, " . ucfirst($roomMode) . ')',
+                'label' => "Room {$room->room_number} ({$roomType->name}, ".ucfirst($roomMode).')',
                 'formula' => $formula,
                 'line_total' => $lineTotal,
             ];
@@ -1771,14 +1680,20 @@ class ReservationResource extends Resource
         $subtotal = $roomSubtotal + $servicesTotal;
 
         // Calculate discount
-        $pwdPercent     = (float) Setting::get('discount_pwd_percent', 0);
-                                $seniorPercent  = (float) Setting::get('discount_senior_percent', 0);
-                                $studentPercent = (float) Setting::get('discount_student_percent', 0);
+        $pwdPercent = (float) Setting::get('discount_pwd_percent', 0);
+        $seniorPercent = (float) Setting::get('discount_senior_percent', 0);
+        $studentPercent = (float) Setting::get('discount_student_percent', 0);
 
         $totalDiscountPercent = 0;
-        if ($isPwd && $pwdPercent > 0) $totalDiscountPercent += $pwdPercent;
-        if ($isSenior && $seniorPercent > 0) $totalDiscountPercent += $seniorPercent;
-        if ($isStudent && $studentPercent > 0) $totalDiscountPercent += $studentPercent;
+        if ($isPwd && $pwdPercent > 0) {
+            $totalDiscountPercent += $pwdPercent;
+        }
+        if ($isSenior && $seniorPercent > 0) {
+            $totalDiscountPercent += $seniorPercent;
+        }
+        if ($isStudent && $studentPercent > 0) {
+            $totalDiscountPercent += $studentPercent;
+        }
 
         $totalDiscountPercent = min($totalDiscountPercent, 100);
         $discountAmount = ($subtotal * $totalDiscountPercent) / 100;
@@ -1790,7 +1705,7 @@ class ReservationResource extends Resource
             $declaredSubtotal = $declaredBase + $servicesTotal;
             $declaredDiscount = ($declaredSubtotal * $totalDiscountPercent) / 100;
             $declaredGrandTotal = max(0, $declaredSubtotal - $declaredDiscount);
-            
+
             return [
                 'nights' => $nights,
                 'rooms' => [],
@@ -1877,7 +1792,13 @@ class ReservationResource extends Resource
         $discountTypes = $discountCharges
             ->flatMap(function ($charge) {
                 $types = data_get($charge->meta, 'discount_types', []);
-                return is_array($types) ? $types : [];
+                if (is_array($types) && ! empty($types)) {
+                    return $types;
+                }
+                // Fallback: legacy 'discount_type' (singular string)
+                $legacy = data_get($charge->meta, 'discount_type');
+
+                return $legacy ? [ucfirst((string) $legacy)] : [];
             })
             ->filter()
             ->values();
@@ -1886,7 +1807,7 @@ class ReservationResource extends Resource
             ?? data_get($holdPayload, 'additional_requests', []);
 
         $billingGuestName = $record->billingGuest
-            ? trim(($record->billingGuest->first_name ?? '') . ' ' . ($record->billingGuest->last_name ?? ''))
+            ? trim(($record->billingGuest->first_name ?? '').' '.($record->billingGuest->last_name ?? ''))
             : '';
         if ($billingGuestName === '' && $record->billingGuest?->full_name) {
             $billingGuestName = (string) $record->billingGuest->full_name;
@@ -1927,7 +1848,7 @@ class ReservationResource extends Resource
             'guest_name' => $billingGuestName !== ''
                 ? $billingGuestName
                 : ($paidAssignment
-                    ? trim(($paidAssignment->guest_first_name ?? '') . ' ' . ($paidAssignment->guest_last_name ?? ''))
+                    ? trim(($paidAssignment->guest_first_name ?? '').' '.($paidAssignment->guest_last_name ?? ''))
                     : (string) $record->guest_name),
             'payment_mode' => $paymentMode,
             'payment_amount' => $paymentAmount,
@@ -2000,23 +1921,25 @@ class ReservationResource extends Resource
 
         // Detect new format [{code,qty}] vs legacy format [code, ...]
         if (isset($serviceCodes[0]) && is_array($serviceCodes[0])) {
-            $items = collect($serviceCodes)->filter(fn ($i) => !empty($i['code'] ?? null));
+            $items = collect($serviceCodes)->filter(fn ($i) => ! empty($i['code'] ?? null));
             $addons = Service::whereIn('code', $items->pluck('code')->unique())->get()->keyBy('code');
             $names = $items->map(function ($item) use ($addons) {
                 $qty = max(1, (int) ($item['qty'] ?? 1));
                 $service = $addons->get($item['code']);
-                if (! $service) return null;
-                $linePrice = $qty > 1 ? '₱' . number_format((float) $service->price * $qty, 2) : null;
-                $label = $service->name . ($service->price > 0
-                    ? ' (' . ($linePrice ?? '₱' . number_format((float) $service->price, 2)) . ')'
+                if (! $service) {
+                    return null;
+                }
+                $linePrice = $qty > 1 ? '₱'.number_format((float) $service->price * $qty, 2) : null;
+                $label = $service->name.($service->price > 0
+                    ? ' ('.($linePrice ?? '₱'.number_format((float) $service->price, 2)).')'
                     : ' (Free)');
+
                 return $qty > 1 ? "{$qty}x {$label}" : $label;
             })->filter()->values();
         } else {
             $names = Service::whereIn('code', array_filter($serviceCodes))
                 ->get()
-                ->map(fn (Service $service) =>
-                    $service->name . ($service->price > 0 ? ' (₱' . number_format((float) $service->price, 2) . ')' : ' (Free)')
+                ->map(fn (Service $service) => $service->name.($service->price > 0 ? ' (₱'.number_format((float) $service->price, 2).')' : ' (Free)')
                 )
                 ->values();
         }

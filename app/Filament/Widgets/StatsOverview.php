@@ -2,9 +2,9 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\Reservation;
 use App\Filament\Resources\ReservationResource;
 use App\Filament\Resources\RoomResource;
+use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
@@ -32,20 +32,22 @@ class StatsOverview extends BaseWidget
 
             // Consolidate reservation stats into a single query (down from 4 queries)
             $reservationStats = Reservation::select(
-                    DB::raw("SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending"),
-                    DB::raw("SUM(CASE WHEN status = 'pending_payment' THEN 1 ELSE 0 END) as pending_payment"),
-                    DB::raw("SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as active"),
-                    DB::raw("SUM(CASE WHEN status = 'approved' AND check_in_date = CURDATE() THEN 1 ELSE 0 END) as today_checkins"),
-                    DB::raw("SUM(CASE WHEN status = 'checked_in' AND check_out_date = CURDATE() THEN 1 ELSE 0 END) as today_checkouts"),
-                    DB::raw("SUM(CASE WHEN status = 'checked_in' AND check_out_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+                DB::raw("SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending"),
+                DB::raw("SUM(CASE WHEN status = 'pending_payment' THEN 1 ELSE 0 END) as pending_payment"),
+                DB::raw("SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as active"),
+                DB::raw("SUM(CASE WHEN status = 'approved' AND check_in_date = CURDATE() THEN 1 ELSE 0 END) as today_checkins"),
+                DB::raw("SUM(CASE WHEN status = 'checked_in' AND check_out_date = CURDATE() THEN 1 ELSE 0 END) as today_checkouts"),
+                DB::raw("SUM(CASE WHEN status = 'checked_in' AND check_out_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
                              THEN 1 ELSE 0 END) as near_due"),
-                    DB::raw("SUM(CASE WHEN status = 'checked_in' AND check_out_date < CURDATE() THEN 1 ELSE 0 END) as overdue")
-                )
+                DB::raw("SUM(CASE WHEN status = 'checked_in' AND check_out_date < CURDATE() THEN 1 ELSE 0 END) as overdue")
+            )
                 ->first();
 
-            // Active (checked-in) assignments in one query
+            // Active (checked-in) assignments in one query – only count active rooms
+            $activeRoomIds = Room::where('is_active', true)->pluck('id');
             $stayStats = RoomAssignment::whereNotNull('checked_in_at')
                 ->whereNull('checked_out_at')
+                ->whereIn('room_id', $activeRoomIds)
                 ->select(
                     DB::raw('COUNT(*) as checked_in'),
                     DB::raw('COUNT(DISTINCT room_id) as occupied_rooms')
@@ -74,20 +76,20 @@ class StatsOverview extends BaseWidget
         $resourceIndex = ReservationResource::getUrl('index');
         $roomIndex = RoomResource::getUrl('index');
 
-        $pendingUrl = $resourceIndex . '?status=pending';
-        $pendingPaymentUrl = $resourceIndex . '?status=pending_payment';
-        $nearDueUrl = $resourceIndex . '?near_due=1';
-        $activeUrl = $resourceIndex . '?status=approved';
-        $checkedInUrl = $resourceIndex . '?status=checked_in';
-        $overdueUrl = $resourceIndex . '?overdue=1';
+        $pendingUrl = $resourceIndex.'?status=pending';
+        $pendingPaymentUrl = $resourceIndex.'?status=pending_payment';
+        $nearDueUrl = $resourceIndex.'?near_due=1';
+        $activeUrl = $resourceIndex.'?status=approved';
+        $checkedInUrl = $resourceIndex.'?status=checked_in';
+        $overdueUrl = $resourceIndex.'?overdue=1';
 
         return [
-            Stat::make('Occupancy Rate', $stats['occupancyRate'] . '%')
+            Stat::make('Occupancy Rate', $stats['occupancyRate'].'%')
                 ->description("{$stats['occupiedRooms']} of {$stats['totalRooms']} rooms occupied")
                 ->descriptionIcon('heroicon-m-home-modern')
                 ->color($stats['occupancyRate'] > 80 ? 'success' : ($stats['occupancyRate'] > 50 ? 'warning' : 'danger'))
                 ->chart([65, 70, 75, 80, 78, $stats['occupancyRate']])
-                ->url($roomIndex . '?has_occupants=1'),
+                ->url($roomIndex.'?has_occupants=1'),
 
             Stat::make('Pending Reservations', $stats['pendingReservations'])
                 ->description('Awaiting review')

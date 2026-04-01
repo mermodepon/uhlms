@@ -16,10 +16,10 @@ abstract class EditRedirectToIndex extends EditRecord
     {
         $modelName = $this->getModel();
         $entityName = class_basename($modelName);
-        
+
         return Notification::make()
             ->success()
-            ->title($entityName . ' updated')
-            ->body('The ' . strtolower($entityName) . ' has been updated successfully.');
+            ->title($entityName.' updated')
+            ->body('The '.strtolower($entityName).' has been updated successfully.');
     }
 }

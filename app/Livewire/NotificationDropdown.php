@@ -8,9 +8,10 @@ use Livewire\Component;
 class NotificationDropdown extends Component
 {
     public $notifications = [];
+
     public $unreadCount = 0;
+
     public $showDropdown = false;
-    public $isLoading = false;
 
     protected $listeners = ['notificationCreated' => 'refreshNotifications'];
 
@@ -23,7 +24,7 @@ class NotificationDropdown extends Component
     {
         // This method is called by wire:poll to check for new notifications
         $this->loadNotificationCounts();
-        
+
         // If dropdown is open, refresh the notifications list too
         if ($this->showDropdown) {
             $this->refreshNotifications();
@@ -33,8 +34,9 @@ class NotificationDropdown extends Component
     public function loadNotificationCounts()
     {
         $user = auth()->user();
-        if (!$user) {
+        if (! $user) {
             $this->unreadCount = 0;
+
             return;
         }
 
@@ -48,7 +50,7 @@ class NotificationDropdown extends Component
     public function refreshNotifications()
     {
         $user = auth()->user();
-        if (!$user) {
+        if (! $user) {
             return;
         }
 
@@ -80,7 +82,9 @@ class NotificationDropdown extends Component
     public function markAsRead($notificationId)
     {
         $user = auth()->user();
-        if (!$user) return;
+        if (! $user) {
+            return;
+        }
 
         Notification::where('id', $notificationId)
             ->where('notifiable_id', $user->id)
@@ -88,14 +92,16 @@ class NotificationDropdown extends Component
                 'is_read' => true,
                 'read_at' => now(),
             ]);
-        
+
         $this->loadNotificationCounts();
     }
 
     public function markAllAsRead()
     {
         $user = auth()->user();
-        if (!$user) return;
+        if (! $user) {
+            return;
+        }
 
         Notification::where('notifiable_type', \App\Models\User::class)
             ->where('notifiable_id', $user->id)
@@ -104,30 +110,30 @@ class NotificationDropdown extends Component
                 'is_read' => true,
                 'read_at' => now(),
             ]);
-        
+
         $this->refreshNotifications();
     }
 
     public function deleteNotification($notificationId)
     {
         $user = auth()->user();
-        if (!$user) return;
+        if (! $user) {
+            return;
+        }
 
         Notification::where('id', $notificationId)
             ->where('notifiable_id', $user->id)
             ->delete();
-        
+
         $this->refreshNotifications();
     }
 
     public function toggleDropdown()
     {
-        $this->showDropdown = !$this->showDropdown;
+        $this->showDropdown = ! $this->showDropdown;
         // Load notifications only when opening the dropdown
         if ($this->showDropdown) {
-            $this->isLoading = true;
             $this->refreshNotifications();
-            $this->isLoading = false;
             // Clear the badge immediately when the user opens the dropdown
             $this->markAllAsRead();
         }

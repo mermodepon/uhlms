@@ -2,10 +2,10 @@
 
 namespace App\Filament\Resources\UserResource\Pages;
 
+use App\Filament\Pages\EditRedirectToIndex as EditRecord;
 use App\Filament\Resources\UserResource;
 use App\Models\User;
 use Filament\Actions;
-use App\Filament\Pages\EditRedirectToIndex as EditRecord;
 
 class EditUser extends EditRecord
 {
@@ -17,8 +17,7 @@ class EditUser extends EditRecord
             Actions\DeleteAction::make()
                 ->successNotificationTitle('User deleted')
                 ->disabled(fn ($record) => $record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
-                ->tooltip(fn ($record) =>
-                    ($record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
+                ->tooltip(fn ($record) => ($record->roomAssignments()->exists() || $record->reviewedReservations()->exists())
                         ? 'This user cannot be deleted because they are linked to room assignments or reservations.'
                         : null
                 ),
@@ -36,7 +35,7 @@ class EditUser extends EditRecord
 
         // Seed toggles with role defaults so super admin sees a useful starting
         // point before they enable custom permissions for the first time.
-        if (!$hasCustom) {
+        if (! $hasCustom) {
             $data['permissions'] = User::defaultPermissionsForRole($data['role'] ?? 'staff');
         }
 

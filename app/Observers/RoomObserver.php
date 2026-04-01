@@ -2,9 +2,7 @@
 
 namespace App\Observers;
 
-use App\Models\Notification;
 use App\Models\Room;
-use App\Models\User;
 use App\Notifications\NotificationHelper;
 
 class RoomObserver
@@ -16,7 +14,7 @@ class RoomObserver
             "Room {$room->room_number} ({$room->roomType->name}) has been added to the system.",
             'success',
             'room',
-            '/admin/rooms/' . $room->id,
+            '/admin/rooms/'.$room->id,
             auth()->id()
         );
     }
@@ -24,31 +22,31 @@ class RoomObserver
     public function updated(Room $room): void
     {
         $changes = $room->getChanges();
-        
+
         if (array_key_exists('status', $changes)) {
             $newStatus = $changes['status'];
             $oldStatus = $room->getOriginal('status');
-            
+
             NotificationHelper::notifyAllStaff(
                 'Room Status Changed',
                 "Room {$room->room_number} status changed from {$oldStatus} to {$newStatus}.",
                 $this->getStatusNotificationType($newStatus),
                 'room',
-                '/admin/rooms/' . $room->id,
+                '/admin/rooms/'.$room->id,
                 auth()->id()
             );
         }
-        
+
         if (array_key_exists('is_active', $changes)) {
             $isActive = $changes['is_active'];
             $status = $isActive ? 'activated' : 'deactivated';
-            
+
             NotificationHelper::notifyAllStaff(
-                'Room ' . ucfirst($status),
+                'Room '.ucfirst($status),
                 "Room {$room->room_number} has been {$status}.",
                 $isActive ? 'success' : 'warning',
                 'room',
-                '/admin/rooms/' . $room->id,
+                '/admin/rooms/'.$room->id,
                 auth()->id()
             );
         }

@@ -2,19 +2,18 @@
 
 namespace App\Filament\Resources\ReservationResource\RelationManagers;
 
+use App\Models\Guest;
+use App\Models\Room;
+use App\Models\RoomAssignment;
+use App\Models\Service;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Infolists;
+use Filament\Infolists\Infolist;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Notifications\Notification;
-use Filament\Infolists;
-use Filament\Infolists\Infolist;
-use Illuminate\Database\Eloquent\Builder;
-use App\Models\Room;
-use App\Models\Service;
-use App\Models\Guest;
-use App\Models\RoomAssignment;
 
 class RoomAssignmentsRelationManager extends RelationManager
 {
@@ -64,9 +63,9 @@ class RoomAssignmentsRelationManager extends RelationManager
                     ->badge()
                     ->formatStateUsing(fn ($state) => ucfirst($state ?? '—'))
                     ->color(fn ($state) => match (strtolower($state)) {
-                        'male'   => 'info',
+                        'male' => 'info',
                         'female' => 'danger',
-                        default  => 'gray',
+                        default => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('guest_age')
                     ->label('Age')
@@ -86,23 +85,23 @@ class RoomAssignmentsRelationManager extends RelationManager
             ->heading(null)
             ->description(function () {
                 $reservation = $this->getOwnerRecord();
-                $count       = $reservation->roomAssignments()->count();
+                $count = $reservation->roomAssignments()->count();
 
                 if ($count === 0) {
                     return 'No room assignments yet. Use the main Check In action on the reservation to start.';
                 }
 
-                $maleCount   = $reservation->roomAssignments()->where('guest_gender','Male')->count();
-                $femaleCount = $reservation->roomAssignments()->where('guest_gender','Female')->count();
-                $other       = $reservation->roomAssignments()->whereNotIn('guest_gender', ['Male', 'Female'])->count();
+                $maleCount = $reservation->roomAssignments()->where('guest_gender', 'Male')->count();
+                $femaleCount = $reservation->roomAssignments()->where('guest_gender', 'Female')->count();
+                $other = $reservation->roomAssignments()->whereNotIn('guest_gender', ['Male', 'Female'])->count();
 
                 $parts = array_filter([
-                    $maleCount   ? "{$maleCount} male"   : '',
+                    $maleCount ? "{$maleCount} male" : '',
                     $femaleCount ? "{$femaleCount} female" : '',
-                    $other       ? "{$other} other"        : '',
+                    $other ? "{$other} other" : '',
                 ]);
 
-                return "{$count} guest(s) checked in — " . implode(', ', $parts) . '.';
+                return "{$count} guest(s) checked in — ".implode(', ', $parts).'.';
             })
             ->headerActions([
                 // ── Add New Guest ────────────────────────────────────────────
@@ -172,7 +171,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                                     ->label('Add-On')
                                     ->options(fn () => Service::active()->ordered()->get()
                                         ->mapWithKeys(fn (Service $service) => [
-                                            $service->code => $service->name .
+                                            $service->code => $service->name.
                                                 ($service->price > 0 ? " ({$service->formatted_price})" : ' (Free)'),
                                         ])
                                     )
@@ -250,18 +249,18 @@ class RoomAssignmentsRelationManager extends RelationManager
                             'gender' => $data['gender'],
                             'age' => $data['age'] ?? null,
                             'full_name' => trim(
-                                ($data['first_name'] ?? '') . ' ' .
-                                ($data['middle_initial'] ?? '') . ' ' .
+                                ($data['first_name'] ?? '').' '.
+                                ($data['middle_initial'] ?? '').' '.
                                 ($data['last_name'] ?? '')
                             ),
                         ]);
 
                         $selectedServices = collect($data['additional_requests'] ?? [])
-                            ->filter(fn ($i) => !empty($i['code'] ?? null))
+                            ->filter(fn ($i) => ! empty($i['code'] ?? null))
                             ->values()
                             ->all();
                         $serviceAmount = null;
-                        if (!empty($selectedServices)) {
+                        if (! empty($selectedServices)) {
                             $servicesMap = Service::whereIn('code', collect($selectedServices)->pluck('code')->unique())
                                 ->get()->keyBy('code');
                             $calc = (float) collect($selectedServices)->sum(
@@ -308,6 +307,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                     ->visible(false) // Consolidated into primary "Check In Reservation" action for consistency
                     ->form(function () {
                         $reservation = $this->getOwnerRecord();
+
                         return [
                             // ── Step 1: Room ─────────────────────────────────────────
                             Forms\Components\Section::make('Room & Bed Assignment')
@@ -316,14 +316,14 @@ class RoomAssignmentsRelationManager extends RelationManager
                                     Forms\Components\Select::make('room_id')
                                         ->label('Select Room')
                                         ->default($reservation->roomAssignments()->first()?->room_id)
-                                    ->options(function ($get) use ($reservation) {
+                                        ->options(function ($get) use ($reservation) {
                                             $query = Room::query()
                                                 ->where('is_active', true)
                                                 ->where('room_type_id', $reservation->preferred_room_type_id)
                                                 ->where('status', 'available');
 
                                             return $query->get()->mapWithKeys(fn ($room) => [
-                                            $room->id => "Room {$room->room_number} — {$room->availableSlots()} slot(s) free",
+                                                $room->id => "Room {$room->room_number} — {$room->availableSlots()} slot(s) free",
                                             ]);
                                         })
                                         ->required()
@@ -345,10 +345,11 @@ class RoomAssignmentsRelationManager extends RelationManager
                                             if (! $room) {
                                                 return 'Room not found.';
                                             }
-                                            $occupied  = $room->currentOccupancy();
+                                            $occupied = $room->currentOccupancy();
                                             $available = $room->availableSlots();
+
                                             return "Room {$room->room_number} — "
-                                                 . "{$occupied}/{$room->capacity} slots occupied, {$available} available.";
+                                                 ."{$occupied}/{$room->capacity} slots occupied, {$available} available.";
                                         }),
                                 ])->columns(2),
 
@@ -385,9 +386,8 @@ class RoomAssignmentsRelationManager extends RelationManager
                                         ->defaultItems(1)
                                         ->addActionLabel('+ Add Guest')
                                         ->reorderable(false)
-                                        ->itemLabel(fn (array $state): ?string =>
-                                            ($state['first_name'] ?? '') || ($state['last_name'] ?? '')
-                                                ? trim(($state['first_name'] ?? '') . ' ' . ($state['last_name'] ?? ''))
+                                        ->itemLabel(fn (array $state): ?string => ($state['first_name'] ?? '') || ($state['last_name'] ?? '')
+                                                ? trim(($state['first_name'] ?? '').' '.($state['last_name'] ?? ''))
                                                 : 'Guest'
                                         )
                                         ->columnSpanFull(),
@@ -443,8 +443,8 @@ class RoomAssignmentsRelationManager extends RelationManager
                                 $reservation = $livewire->getOwnerRecord();
 
                                 $data['full_name'] = trim(
-                                    ($data['first_name'] ?? '') . ' ' .
-                                    ($data['middle_initial'] ?? '') . ' ' .
+                                    ($data['first_name'] ?? '').' '.
+                                    ($data['middle_initial'] ?? '').' '.
                                     ($data['last_name'] ?? '')
                                 );
 
@@ -463,17 +463,19 @@ class RoomAssignmentsRelationManager extends RelationManager
                     ])
                     ->action(function ($livewire, array $data) {
                         $reservation = $livewire->getOwnerRecord();
-                        $guests      = array_values($data['guests'] ?? []);
-                        $roomId      = $data['room_id'] ?? null;
+                        $guests = array_values($data['guests'] ?? []);
+                        $roomId = $data['room_id'] ?? null;
 
                         if (empty($guests) || ! $roomId) {
                             Notification::make()->danger()->title('Invalid Data')->body('A room and at least one guest are required.')->send();
+
                             return;
                         }
 
                         $room = Room::with('roomType')->find($roomId);
                         if (! $room) {
                             Notification::make()->danger()->title('Room Not Found')->body('The selected room could not be found.')->send();
+
                             return;
                         }
 
@@ -491,42 +493,42 @@ class RoomAssignmentsRelationManager extends RelationManager
                             }
 
                             $fullName = trim(
-                                ($guest['first_name'] ?? '') . ' ' .
-                                (($guest['middle_initial'] ?? '') ? $guest['middle_initial'] . ' ' : '') .
+                                ($guest['first_name'] ?? '').' '.
+                                (($guest['middle_initial'] ?? '') ? $guest['middle_initial'].' ' : '').
                                 ($guest['last_name'] ?? '')
                             );
 
                             $guestRecord = Guest::firstOrCreate([
                                 'reservation_id' => $reservation->id,
-                                'first_name'     => $guest['first_name'] ?? null,
-                                'last_name'      => $guest['last_name'] ?? null,
+                                'first_name' => $guest['first_name'] ?? null,
+                                'last_name' => $guest['last_name'] ?? null,
                                 'middle_initial' => $guest['middle_initial'] ?? null,
-                                'gender'         => $guest['gender'] ?? null,
+                                'gender' => $guest['gender'] ?? null,
                             ], [
                                 'full_name' => $fullName ?: 'Unknown',
-                                'age'       => $guest['age'] ?? null,
+                                'age' => $guest['age'] ?? null,
                             ]);
 
                             RoomAssignment::create([
-                                'reservation_id'             => $reservation->id,
-                                'guest_id'                   => $guestRecord->id,
-                                'room_id'                    => $room->id,
-                                'status'                     => 'checked_in',
-                                'assigned_by'                => auth()->id(),
-                                'assigned_at'                => now(),
-                                'checked_in_at'              => now(),
-                                'checked_in_by'              => auth()->id(),
-                                'guest_last_name'            => $guest['last_name'] ?? null,
-                                'guest_first_name'           => $guest['first_name'] ?? null,
-                                'guest_middle_initial'       => $guest['middle_initial'] ?? null,
-                                'guest_gender'               => $guest['gender'] ?? null,
-                                'guest_age'                  => $guest['age'] ?? null,
-                                'nationality'                => 'Filipino',
-                                'purpose_of_stay'            => $reservation->purpose ?? null,
-                                'detailed_checkin_datetime'  => $data['detailed_checkin_datetime'],
+                                'reservation_id' => $reservation->id,
+                                'guest_id' => $guestRecord->id,
+                                'room_id' => $room->id,
+                                'status' => 'checked_in',
+                                'assigned_by' => auth()->id(),
+                                'assigned_at' => now(),
+                                'checked_in_at' => now(),
+                                'checked_in_by' => auth()->id(),
+                                'guest_last_name' => $guest['last_name'] ?? null,
+                                'guest_first_name' => $guest['first_name'] ?? null,
+                                'guest_middle_initial' => $guest['middle_initial'] ?? null,
+                                'guest_gender' => $guest['gender'] ?? null,
+                                'guest_age' => $guest['age'] ?? null,
+                                'nationality' => 'Filipino',
+                                'purpose_of_stay' => $reservation->purpose ?? null,
+                                'detailed_checkin_datetime' => $data['detailed_checkin_datetime'],
                                 'detailed_checkout_datetime' => $data['detailed_checkout_datetime'],
-                                'num_male_guests'            => 0,
-                                'num_female_guests'          => 0,
+                                'num_male_guests' => 0,
+                                'num_female_guests' => 0,
                             ]);
 
                             $checkedIn++;
@@ -633,7 +635,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                         Infolists\Components\TextEntry::make('room.floor.name')
                             ->label('Floor'),
                     ])->columns(5),
-                
+
                 Infolists\Components\Section::make('Guest Information')
                     ->schema([
                         Infolists\Components\TextEntry::make('guest_first_name')
@@ -655,7 +657,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                         Infolists\Components\TextEntry::make('nationality')
                             ->label('Nationality'),
                     ])->columns(3),
-                
+
                 Infolists\Components\Section::make('Identification & Status')
                     ->schema([
                         Infolists\Components\TextEntry::make('id_type')
@@ -673,7 +675,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                             ->label('PWD')
                             ->boolean(),
                     ])->columns(5),
-                
+
                 Infolists\Components\Section::make('Stay Details')
                     ->schema([
                         Infolists\Components\TextEntry::make('purpose_of_stay')
@@ -693,7 +695,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                             ->date('M d, Y')
                             ->placeholder('—'),
                     ])->columns(3),
-                
+
                 Infolists\Components\Section::make('Add-Ons & Payment')
                     ->schema([
                         Infolists\Components\TextEntry::make('additional_requests')
@@ -707,22 +709,26 @@ class RoomAssignmentsRelationManager extends RelationManager
                                 if ($items->first() !== null && is_string($items->first())) {
                                     $serviceNames = $items->map(function ($code) {
                                         $service = Service::where('code', $code)->first();
+
                                         return $service
-                                            ? $service->name . ($service->price > 0 ? " ({$service->formatted_price})" : ' (Free)')
+                                            ? $service->name.($service->price > 0 ? " ({$service->formatted_price})" : ' (Free)')
                                             : $code;
                                     })->filter();
                                 } else {
-                                    $serviceNames = $items->filter(fn ($i) => !empty($i['code'] ?? null))->map(function ($item) {
+                                    $serviceNames = $items->filter(fn ($i) => ! empty($i['code'] ?? null))->map(function ($item) {
                                         $qty = max(1, (int) ($item['qty'] ?? 1));
                                         $service = Service::where('code', $item['code'])->first();
                                         if ($service) {
                                             $lineTotal = (float) $service->price * $qty;
-                                            $label = $service->name . ($service->price > 0 ? " (₱" . number_format($lineTotal, 2) . ")" : ' (Free)');
+                                            $label = $service->name.($service->price > 0 ? ' (₱'.number_format($lineTotal, 2).')' : ' (Free)');
+
                                             return $qty > 1 ? "{$qty}x {$label}" : $label;
                                         }
+
                                         return $item['code'];
                                     })->filter();
                                 }
+
                                 return $serviceNames->isEmpty() ? 'None requested' : $serviceNames->implode(', ');
                             })
                             ->columnSpanFull(),
@@ -735,7 +741,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                         Infolists\Components\TextEntry::make('payment_or_number')
                             ->label('OR Number'),
                     ])->columns(3),
-                
+
                 Infolists\Components\Section::make('Assignment Details')
                     ->schema([
                         Infolists\Components\TextEntry::make('assignedByUser.name')
@@ -748,7 +754,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                             ->columnSpanFull()
                             ->placeholder('No notes'),
                     ])->columns(2),
-                
+
                 Infolists\Components\Section::make('Guest List')
                     ->schema([
                         Infolists\Components\ViewEntry::make('reservation.guests')
@@ -762,6 +768,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                         $guestCount = $reservation->guests()->count();
                         $maleCount = $reservation->guests()->where('gender', 'Male')->count();
                         $femaleCount = $reservation->guests()->where('gender', 'Female')->count();
+
                         return "{$guestCount} total guests ({$maleCount} male, {$femaleCount} female)";
                     }),
             ]);
@@ -796,5 +803,4 @@ class RoomAssignmentsRelationManager extends RelationManager
             'num_female_guests' => $female,
         ]);
     }
-
 }

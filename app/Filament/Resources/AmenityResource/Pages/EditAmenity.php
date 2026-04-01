@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources\AmenityResource\Pages;
 
+use App\Filament\Pages\EditRedirectToIndex as EditRecord;
 use App\Filament\Resources\AmenityResource;
 use Filament\Actions;
-use App\Filament\Pages\EditRedirectToIndex as EditRecord;
 
 class EditAmenity extends EditRecord
 {

@@ -35,8 +35,7 @@ class RoomTypeResource extends Resource
                             ->prefix('₱')
                             ->minValue(0)
                             ->label('Base Rate')
-                            ->helperText(fn ($get) => 
-                                $get('pricing_type') === 'per_person' 
+                            ->helperText(fn ($get) => $get('pricing_type') === 'per_person'
                                     ? 'Rate per person per night'
                                     : 'Rate per night'
                             ),
@@ -53,14 +52,14 @@ class RoomTypeResource extends Resource
                         Forms\Components\Select::make('room_sharing_type')
                             ->label('Room Sharing Type')
                             ->options([
-                                'public'  => 'Public / Shared (dormitory-style)',
+                                'public' => 'Public / Shared (dormitory-style)',
                                 'private' => 'Private (exclusive to one reservation)',
                             ])
                             ->default('private')
                             ->required()
                             ->helperText(
                                 'Public: multiple guests can share the room up to capacity. '
-                              . 'Private: once a guest checks in, the room is locked exclusively for that reservation.'
+                              .'Private: once a guest checks in, the room is locked exclusively for that reservation.'
                             ),
                         Forms\Components\Toggle::make('is_active')
                             ->default(true),
@@ -137,13 +136,13 @@ class RoomTypeResource extends Resource
                     ->badge()
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'private' => 'Private',
-                        'public'  => 'Public / Shared',
-                        default   => ucfirst($state),
+                        'public' => 'Public / Shared',
+                        default => ucfirst($state),
                     })
                     ->color(fn (string $state): string => match ($state) {
                         'private' => 'warning',
-                        'public'  => 'success',
-                        default   => 'gray',
+                        'public' => 'success',
+                        default => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('rooms.room_number')
                     ->label('Rooms')
@@ -164,7 +163,7 @@ class RoomTypeResource extends Resource
                 Tables\Columns\IconColumn::make('virtual_tour_url')
                     ->label('Tour')
                     ->boolean()
-                    ->getStateUsing(fn ($record) => !empty($record->virtual_tour_url)),
+                    ->getStateUsing(fn ($record) => ! empty($record->virtual_tour_url)),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->searchable()
@@ -180,8 +179,7 @@ class RoomTypeResource extends Resource
                 Tables\Actions\DeleteAction::make()
                     ->successNotificationTitle('Room Type deleted')
                     ->disabled(fn (RoomType $record) => $record->rooms()->exists())
-                    ->tooltip(fn (RoomType $record) =>
-                        $record->rooms()->exists()
+                    ->tooltip(fn (RoomType $record) => $record->rooms()->exists()
                             ? 'This room type cannot be deleted because it is linked to rooms.'
                             : null
                     ),

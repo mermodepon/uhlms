@@ -21,7 +21,9 @@ class PermissionsReference extends Page
     public static function canAccess(): bool
     {
         $user = auth()->user();
-        if (!$user) return false;
+        if (! $user) {
+            return false;
+        }
 
         return $user->isAdmin();
     }

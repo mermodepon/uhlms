@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Models\Reservation;
 use App\Notifications\NotificationHelper;
 use Illuminate\Console\Command;
-use Illuminate\Support\Carbon;
 
 class SendNearDueReservationReminders extends Command
 {
@@ -37,6 +36,7 @@ class SendNearDueReservationReminders extends Command
 
         if ($nearDue->isEmpty()) {
             $this->info('No near due reservations found.');
+
             return 0;
         }
 
@@ -53,11 +53,12 @@ class SendNearDueReservationReminders extends Command
                 $message,
                 'warning',
                 'reservation',
-                url('/admin/reservations/' . $reservation->id)
+                url('/admin/reservations/'.$reservation->id)
             );
         }
 
-        $this->info('Reminders sent for ' . $nearDue->count() . ' near due reservations.');
+        $this->info('Reminders sent for '.$nearDue->count().' near due reservations.');
+
         return 0;
     }
 }

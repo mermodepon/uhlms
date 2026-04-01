@@ -28,7 +28,6 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->passwordReset()
             ->profile()
             ->brandName('UH Lodging Management System')
             ->favicon(asset('images/uh_logo.jpg'))

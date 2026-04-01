@@ -2,11 +2,9 @@
 
 namespace App\Observers;
 
-use App\Models\Notification;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\RoomAssignment;
-use App\Models\User;
 use App\Notifications\NotificationHelper;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -29,7 +27,7 @@ class ReservationObserver
             "Reservation #{$reservation->reference_number} from {$reservation->guest_name} has been created.",
             'info',
             'reservation',
-            '/admin/reservations/' . $reservation->id,
+            '/admin/reservations/'.$reservation->id,
             auth()->id()
         );
     }
@@ -38,14 +36,14 @@ class ReservationObserver
     {
         $changes = $reservation->getChanges();
         $this->clearReservationCalendarCache($reservation);
-        
+
         // Sync guest names to any existing assignments if the reservation name fields changed
         if (array_key_exists('guest_first_name', $changes) || array_key_exists('guest_last_name', $changes) || array_key_exists('guest_middle_initial', $changes)) {
             RoomAssignment::where('reservation_id', $reservation->id)
                 ->update([
-                    'guest_first_name'    => $reservation->guest_first_name,
-                    'guest_last_name'     => $reservation->guest_last_name,
-                    'guest_middle_initial'=> $reservation->guest_middle_initial,
+                    'guest_first_name' => $reservation->guest_first_name,
+                    'guest_last_name' => $reservation->guest_last_name,
+                    'guest_middle_initial' => $reservation->guest_middle_initial,
                 ]);
         }
 
@@ -66,7 +64,7 @@ class ReservationObserver
                     $assign->update([
                         'checked_out_at' => now(),
                         'checked_out_by' => auth()->id(),
-                        'remarks' => 'Auto-closed: reservation status changed to ' . $newStatus,
+                        'remarks' => 'Auto-closed: reservation status changed to '.$newStatus,
                     ]);
                     // Note: RoomAssignmentObserver will automatically update the room status
                 }
@@ -74,23 +72,23 @@ class ReservationObserver
 
             // Log meaningful status transitions
             $logEvent = match (true) {
-                $oldStatus === 'pending'         && $newStatus === 'approved'    => 'reservation_approved',
-                $newStatus === 'declined'                                        => 'reservation_declined',
-                $newStatus === 'cancelled'                                       => 'reservation_cancelled',
-                $oldStatus === 'checked_in'      && $newStatus === 'checked_out' => 'reservation_checked_out',
-                $oldStatus === 'pending_payment' && $newStatus === 'approved'    => 'checkin_hold_released',
-                default                                                          => null,
+                $oldStatus === 'pending' && $newStatus === 'approved' => 'reservation_approved',
+                $newStatus === 'declined' => 'reservation_declined',
+                $newStatus === 'cancelled' => 'reservation_cancelled',
+                $oldStatus === 'checked_in' && $newStatus === 'checked_out' => 'reservation_checked_out',
+                $oldStatus === 'pending_payment' && $newStatus === 'approved' => 'checkin_hold_released',
+                default => null,
             };
 
             if ($logEvent) {
                 $description = match ($logEvent) {
-                    'reservation_approved'    => "Reservation #{$reservation->reference_number} approved.",
-                    'reservation_declined'    => "Reservation #{$reservation->reference_number} declined.",
-                    'reservation_cancelled'   => "Reservation #{$reservation->reference_number} cancelled."
-                        . ($reservation->admin_notes ? " Reason: {$reservation->admin_notes}" : ''),
+                    'reservation_approved' => "Reservation #{$reservation->reference_number} approved.",
+                    'reservation_declined' => "Reservation #{$reservation->reference_number} declined.",
+                    'reservation_cancelled' => "Reservation #{$reservation->reference_number} cancelled."
+                        .($reservation->admin_notes ? " Reason: {$reservation->admin_notes}" : ''),
                     'reservation_checked_out' => "Reservation #{$reservation->reference_number} checked out.",
-                    'checkin_hold_released'   => "Payment hold released. Reservation #{$reservation->reference_number} returned to approved.",
-                    default                   => "Status changed from {$oldStatus} to {$newStatus}.",
+                    'checkin_hold_released' => "Payment hold released. Reservation #{$reservation->reference_number} returned to approved.",
+                    default => "Status changed from {$oldStatus} to {$newStatus}.",
                 };
 
                 ReservationLog::record(
@@ -107,7 +105,7 @@ class ReservationObserver
                 "Reservation #{$reservation->reference_number} status changed from {$oldStatus} to {$newStatus}.",
                 $this->getStatusNotificationType($newStatus),
                 'reservation',
-                '/admin/reservations/' . $reservation->id,
+                '/admin/reservations/'.$reservation->id,
                 auth()->id()
             );
         }

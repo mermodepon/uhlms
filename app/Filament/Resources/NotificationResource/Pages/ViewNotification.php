@@ -13,6 +13,7 @@ class ViewNotification extends ViewRecord
     {
         // Mark as read when viewing
         $this->record->markAsRead();
+
         return $data;
     }
 }

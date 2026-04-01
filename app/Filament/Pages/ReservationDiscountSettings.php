@@ -46,8 +46,8 @@ class ReservationDiscountSettings extends Page implements HasForms
     public function mount(): void
     {
         $this->form->fill([
-            'discount_pwd_percent'     => (float) Setting::get('discount_pwd_percent', 0),
-            'discount_senior_percent'  => (float) Setting::get('discount_senior_percent', 0),
+            'discount_pwd_percent' => (float) Setting::get('discount_pwd_percent', 0),
+            'discount_senior_percent' => (float) Setting::get('discount_senior_percent', 0),
             'discount_student_percent' => (float) Setting::get('discount_student_percent', 0),
         ]);
     }
@@ -116,7 +116,7 @@ class ReservationDiscountSettings extends Page implements HasForms
         $changed = false;
         foreach ($keys as $key) {
             $current = (string) Setting::get($key, '0');
-            $new     = (string) ((float) ($data[$key] ?? 0));
+            $new = (string) ((float) ($data[$key] ?? 0));
             if ($current !== $new) {
                 $changed = true;
                 break;
@@ -130,7 +130,7 @@ class ReservationDiscountSettings extends Page implements HasForms
         });
 
         if ($changed) {
-            $actor     = auth()->user();
+            $actor = auth()->user();
             $actorName = $actor?->name ?? 'Someone';
 
             $recipients = User::whereIn('role', ['admin', 'staff'])

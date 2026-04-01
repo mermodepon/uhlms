@@ -43,7 +43,7 @@ class RoomResource extends Resource
                             ->preload()
                             ->searchable()
                             ->default(function () {
-                                return \App\Models\Floor::where('name', 'Ground Floor')->first()?->id 
+                                return \App\Models\Floor::where('name', 'Ground Floor')->first()?->id
                                     ?? \App\Models\Floor::orderBy('level')->first()?->id;
                             }),
                         Forms\Components\TextInput::make('capacity')
@@ -81,8 +81,7 @@ class RoomResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('capacity')
                     ->label('Capacity')
-                    ->formatStateUsing(fn ($state, \App\Models\Room $record): string =>
-                        $record->availableSlots() . ' / ' . $state
+                    ->formatStateUsing(fn ($state, \App\Models\Room $record): string => $record->availableSlots().' / '.$state
                     )
                     ->searchable()
                     ->sortable(),
@@ -99,20 +98,20 @@ class RoomResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'available'   => 'Available',
-                        'reserved'    => 'Reserved',
-                        'occupied'    => 'Occupied',
+                        'available' => 'Available',
+                        'reserved' => 'Reserved',
+                        'occupied' => 'Occupied',
                         'maintenance' => 'Under Maintenance',
-                        'inactive'    => 'Inactive',
-                        default       => ucfirst($state),
+                        'inactive' => 'Inactive',
+                        default => ucfirst($state),
                     })
                     ->color(fn (string $state): string => match ($state) {
-                        'available'   => 'success',
-                        'reserved'    => 'warning',
-                        'occupied'    => 'danger',
+                        'available' => 'success',
+                        'reserved' => 'warning',
+                        'occupied' => 'danger',
                         'maintenance' => 'warning',
-                        'inactive'    => 'gray',
-                        default       => 'gray',
+                        'inactive' => 'gray',
+                        default => 'gray',
                     }),
                 Tables\Columns\IconColumn::make('is_active')
                     ->boolean()
@@ -152,9 +151,10 @@ class RoomResource extends Resource
                         if ($data['enabled'] ?? false) {
                             return $query->whereHas('roomAssignments', function (Builder $q) {
                                 $q->where('status', 'checked_in')
-                                  ->whereNull('checked_out_at');
+                                    ->whereNull('checked_out_at');
                             });
                         }
+
                         return $query;
                     })
                     ->indicateUsing(fn (array $data): ?string => ($data['enabled'] ?? false) ? 'Has current occupants' : null),
@@ -165,8 +165,7 @@ class RoomResource extends Resource
                 Tables\Actions\DeleteAction::make()
                     ->successNotificationTitle('Room deleted')
                     ->disabled(fn (Room $record) => $record->roomAssignments()->exists())
-                    ->tooltip(fn (Room $record) =>
-                        $record->roomAssignments()->exists()
+                    ->tooltip(fn (Room $record) => $record->roomAssignments()->exists()
                             ? 'This room cannot be deleted because it is linked to reservations.'
                             : null
                     ),
