@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Service extends Model
 {
@@ -16,6 +17,23 @@ class Service extends Model
         'sort_order',
     ];
 
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::creating(function (self $service) {
+            if (empty($service->code)) {
+                $base = Str::slug($service->name);
+                $code = $base;
+                $i = 1;
+                while (static::where('code', $code)->exists()) {
+                    $code = $base . '-' . $i++;
+                }
+                $service->code = $code;
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -25,7 +43,7 @@ class Service extends Model
     }
 
     /**
-     * Get active services only
+     * Get active add-ons only
      */
     public function scopeActive($query)
     {

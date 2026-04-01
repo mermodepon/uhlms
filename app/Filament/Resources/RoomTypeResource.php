@@ -56,7 +56,7 @@ class RoomTypeResource extends Resource
                                 'public'  => 'Public / Shared (dormitory-style)',
                                 'private' => 'Private (exclusive to one reservation)',
                             ])
-                            ->default('public')
+                            ->default('private')
                             ->required()
                             ->helperText(
                                 'Public: multiple guests can share the room up to capacity. '

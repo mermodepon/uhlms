@@ -2,119 +2,66 @@
 
 namespace App\Filament\Resources\ReservationResource\RelationManagers;
 
-use Filament\Forms;
-use Filament\Forms\Form;
-use Filament\Infolists;
-use Filament\Infolists\Infolist;
+use App\Models\ReservationLog;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
 
 class StayLogsRelationManager extends RelationManager
 {
-    protected static string $relationship = 'stayLogs';
+    protected static string $relationship = 'logs';
 
-    protected static ?string $title = 'Stay Logs';
+    protected static ?string $title = 'Activity Log';
 
-    public function form(Form $form): Form
+    public function isReadOnly(): bool
     {
-        return $form
-            ->schema([
-                Forms\Components\Select::make('room_id')
-                    ->relationship('room', 'room_number')
-                    ->required()
-                    ->preload(),
-                Forms\Components\DateTimePicker::make('checked_in_at'),
-                Forms\Components\DateTimePicker::make('checked_out_at'),
-                Forms\Components\Textarea::make('remarks')
-                    ->rows(2)
-                    ->columnSpanFull(),
-            ]);
-    }
-
-    public function infolist(Infolist $infolist): Infolist
-    {
-        return $infolist
-            ->schema([
-                Infolists\Components\Section::make('Stay Information')
-                    ->schema([
-                        Infolists\Components\TextEntry::make('room.room_number')
-                            ->label('Room'),
-                        Infolists\Components\TextEntry::make('room.roomType.name')
-                            ->label('Room Type'),
-                        Infolists\Components\TextEntry::make('room.floor.name')
-                            ->label('Floor'),
-                    ])->columns(3),
-                
-                Infolists\Components\Section::make('Check-in Details')
-                    ->schema([
-                        Infolists\Components\TextEntry::make('checked_in_at')
-                            ->label('Date & Time')
-                            ->dateTime(),
-                        Infolists\Components\TextEntry::make('checkedInByUser.name')
-                            ->label('Processed By'),
-                    ])->columns(2),
-                
-                Infolists\Components\Section::make('Check-out Details')
-                    ->schema([
-                        Infolists\Components\TextEntry::make('checked_out_at')
-                            ->label('Date & Time')
-                            ->dateTime()
-                            ->placeholder('Not checked out yet'),
-                        Infolists\Components\TextEntry::make('checkedOutByUser.name')
-                            ->label('Processed By')
-                            ->placeholder('—'),
-                    ])->columns(2),
-                
-                Infolists\Components\Section::make('Remarks')
-                    ->schema([
-                        Infolists\Components\TextEntry::make('remarks')
-                            ->label('')
-                            ->placeholder('No remarks')
-                            ->columnSpanFull(),
-                    ]),
-            ]);
+        return true;
     }
 
     public function table(Table $table): Table
     {
         return $table
+            ->recordTitleAttribute('description')
+            ->defaultSort('logged_at', 'desc')
+            ->paginated([15, 25, 50])
             ->columns([
-                Tables\Columns\TextColumn::make('room.room_number')
-                    ->label('Room')
+                Tables\Columns\TextColumn::make('logged_at')
+                    ->label('Date & Time')
+                    ->dateTime('M d, Y h:i A')
                     ->sortable()
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('checked_in_at')
-                    ->dateTime()
-                    ->label('Checked In')
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('checkedInByUser.name')
+                    ->width('180px'),
+                Tables\Columns\BadgeColumn::make('event')
+                    ->label('Event')
+                    ->formatStateUsing(fn (string $state) => ReservationLog::eventLabel($state))
+                    ->color(fn (string $state) => ReservationLog::eventColor($state))
+                    ->width('170px'),
+                Tables\Columns\TextColumn::make('description')
+                    ->label('Details')
+                    ->wrap(),
+                Tables\Columns\TextColumn::make('actor_name')
                     ->label('By')
-                    ->sortable()
-                    ->searchable()
-                    ->default('—'),
-                Tables\Columns\TextColumn::make('checked_out_at')
-                    ->dateTime()
-                    ->label('Checked Out')
-                    ->sortable()
-                    ->placeholder('—'),
-                Tables\Columns\TextColumn::make('checkedOutByUser.name')
-                    ->label('By')
-                    ->sortable()
-                    ->searchable()
-                    ->placeholder('—')
-                    ->default('—'),
-                Tables\Columns\TextColumn::make('remarks')
-                    ->limit(40)
-                    ->wrap()
-                    ->toggleable(),
+                    ->placeholder('System')
+                    ->width('140px'),
             ])
-            ->defaultSort('checked_in_at', 'desc')
-            ->modifyQueryUsing(fn ($query) => $query->with(['room', 'checkedInByUser', 'checkedOutByUser']))
-            ->filters([])
-            ->actions([
-                Tables\Actions\ViewAction::make(),
-                Tables\Actions\EditAction::make(),
-            ]);
+            ->filters([
+                Tables\Filters\SelectFilter::make('event')
+                    ->label('Event Type')
+                    ->options(fn () => collect([
+                        'reservation_created',
+                        'reservation_approved',
+                        'reservation_declined',
+                        'reservation_cancelled',
+                        'reservation_checked_out',
+                        'checkin_hold_prepared',
+                        'checkin_hold_released',
+                        'checkin_hold_expired',
+                        'checkin_finalized',
+                        'guest_checked_in',
+                        'guest_checked_out',
+                        'room_assignment_removed',
+                    ])->mapWithKeys(fn ($e) => [$e => ReservationLog::eventLabel($e)])->all()),
+            ])
+            ->actions([])
+            ->bulkActions([]);
     }
 }

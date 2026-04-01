@@ -11,7 +11,6 @@ class RoomAssignment extends Model
         'reservation_id',
         'guest_id',
         'room_id',
-        'bed_id',
         'assigned_by',
         'assigned_at',
         'checked_in_at',
@@ -26,6 +25,7 @@ class RoomAssignment extends Model
         'guest_first_name',
         'guest_middle_initial',
         'guest_gender',
+        'guest_age',
         'guest_full_address',
         'guest_contact_number',
         'id_type',
@@ -44,6 +44,7 @@ class RoomAssignment extends Model
         'payment_mode_other',
         'payment_amount',
         'payment_or_number',
+        'or_date',
     ];
 
     protected function casts(): array
@@ -58,6 +59,7 @@ class RoomAssignment extends Model
             'is_student' => 'boolean',
             'is_senior_citizen' => 'boolean',
             'is_pwd' => 'boolean',
+            'guest_age' => 'integer',
             'additional_requests' => 'array',
             'payment_amount' => 'decimal:2',
         ];
@@ -65,16 +67,7 @@ class RoomAssignment extends Model
 
     protected static function booted(): void
     {
-        static::creating(function (self $assignment) {
-            // Auto-derive room_id from the selected bed when not explicitly provided
-            if ($assignment->bed_id && empty($assignment->room_id)) {
-                $assignment->room_id = Bed::find($assignment->bed_id)?->room_id;
-            }
-
-            // Note: Occupancy validation is handled at the form level in RoomAssignmentsRelationManager
-            // Model-level validation is disabled to allow bulk creation during check-in
-            // Admin users have full flexibility to assign beds to any room type as needed
-        });
+        // No bed-derived room_id logic needed — room_id must always be set explicitly
     }
 
     public function reservation(): BelongsTo
@@ -90,11 +83,6 @@ class RoomAssignment extends Model
     public function room(): BelongsTo
     {
         return $this->belongsTo(Room::class);
-    }
-
-    public function bed(): BelongsTo
-    {
-        return $this->belongsTo(Bed::class);
     }
 
     public function assignedByUser(): BelongsTo

@@ -16,7 +16,7 @@ class UserResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-users';
 
-    protected static ?string $navigationGroup = 'Configuration';
+    protected static ?string $navigationGroup = 'Administration';
 
     protected static ?int $navigationSort = 2;
 
@@ -84,6 +84,8 @@ class UserResource extends Resource
                                         Forms\Components\Toggle::make('permissions.reservations_create')->label('Create')->inline(false),
                                         Forms\Components\Toggle::make('permissions.reservations_edit')->label('Edit')->inline(false),
                                         Forms\Components\Toggle::make('permissions.reservations_delete')->label('Delete')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.reservation_discount_settings_view')->label('View Discount Config')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.reservation_discount_settings_edit')->label('Edit Discount Config')->inline(false),
                                     ])->columns(4),
 
                                 Forms\Components\Fieldset::make('Rooms')
@@ -118,12 +120,12 @@ class UserResource extends Resource
                                         Forms\Components\Toggle::make('permissions.amenities_delete')->label('Delete')->inline(false),
                                     ])->columns(4),
 
-                                Forms\Components\Fieldset::make('Services')
+                                Forms\Components\Fieldset::make('Add-Ons')
                                     ->schema([
-                                        Forms\Components\Toggle::make('permissions.services_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.services_create')->label('Create')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.services_edit')->label('Edit')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.services_delete')->label('Delete')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.addons_view')->label('View')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.addons_create')->label('Create')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.addons_edit')->label('Edit')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.addons_delete')->label('Delete')->inline(false),
                                     ])->columns(4),
 
                                 Forms\Components\Fieldset::make('Users')
@@ -134,12 +136,10 @@ class UserResource extends Resource
                                         Forms\Components\Toggle::make('permissions.users_delete')->label('Delete')->inline(false),
                                     ])->columns(4),
 
-                                Forms\Components\Fieldset::make('Settings & Stay Logs')
+                                Forms\Components\Fieldset::make('Stay Logs')
                                     ->schema([
-                                        Forms\Components\Toggle::make('permissions.settings_view')->label('View Settings')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.settings_edit')->label('Edit Settings')->inline(false),
                                         Forms\Components\Toggle::make('permissions.stay_logs_view')->label('View Stay Logs')->inline(false),
-                                    ])->columns(4),
+                                    ])->columns(1),
                             ])
                             ->hidden(fn ($get) => !$get('use_custom_permissions')),
                     ])

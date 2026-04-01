@@ -16,10 +16,12 @@ class Reservation extends Model
         'guest_first_name',
         'guest_middle_initial',
         'guest_gender',
+        'guest_age',
         'guest_email',
         'guest_phone',
         'guest_address',
         'preferred_room_type_id',
+        'billing_guest_id',
         'check_in_date',
         'check_out_date',
         'number_of_occupants',
@@ -33,6 +35,10 @@ class Reservation extends Model
         'checkin_hold_started_at',
         'checkin_hold_expires_at',
         'checkin_hold_by',
+        'addons_total',
+        'payments_total',
+        'balance_due',
+        'payment_status',
         'reviewed_by',
         'reviewed_at',
     ];
@@ -40,11 +46,15 @@ class Reservation extends Model
     protected function casts(): array
     {
         return [
+            'guest_age' => 'integer',
             'check_in_date' => 'date',
             'check_out_date' => 'date',
             'checkin_hold_payload' => 'array',
             'checkin_hold_started_at' => 'datetime',
             'checkin_hold_expires_at' => 'datetime',
+            'addons_total' => 'decimal:2',
+            'payments_total' => 'decimal:2',
+            'balance_due' => 'decimal:2',
             'reviewed_at' => 'datetime',
         ];
     }
@@ -95,19 +105,63 @@ class Reservation extends Model
         return $this->belongsTo(User::class, 'reviewed_by');
     }
 
+    public function billingGuest(): BelongsTo
+    {
+        return $this->belongsTo(Guest::class, 'billing_guest_id');
+    }
+
     public function roomAssignments(): HasMany
     {
         return $this->hasMany(RoomAssignment::class);
     }
 
-    public function messages(): HasMany
-    {
-        return $this->hasMany(Message::class);
-    }
-
     public function guests(): HasMany
     {
         return $this->hasMany(Guest::class);
+    }
+
+    public function checkInSnapshots(): HasMany
+    {
+        return $this->hasMany(CheckInSnapshot::class);
+    }
+
+    public function charges(): HasMany
+    {
+        return $this->hasMany(ReservationCharge::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(ReservationPayment::class);
+    }
+
+    public function logs(): HasMany
+    {
+        return $this->hasMany(ReservationLog::class)->orderBy('logged_at', 'desc');
+    }
+
+    public function refreshFinancialSummary(): void
+    {
+        $chargesTotal = (float) $this->charges()->sum('amount');
+        $addonsTotal = (float) $this->charges()->where('charge_type', 'addon')->sum('amount');
+        $paymentsTotal = (float) $this->payments()->where('status', 'posted')->sum('amount');
+        $balanceDue = $chargesTotal - $paymentsTotal;
+
+        $paymentStatus = 'pending';
+        if ($chargesTotal <= 0 && $paymentsTotal <= 0) {
+            $paymentStatus = 'pending';
+        } elseif ($balanceDue <= 0) {
+            $paymentStatus = 'paid';
+        } elseif ($paymentsTotal > 0) {
+            $paymentStatus = 'partially_paid';
+        }
+
+        $this->update([
+            'addons_total' => $addonsTotal,
+            'payments_total' => $paymentsTotal,
+            'balance_due' => max(0, $balanceDue),
+            'payment_status' => $paymentStatus,
+        ]);
     }
 
     public function getNightsAttribute(): int

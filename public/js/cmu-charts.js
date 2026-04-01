@@ -115,16 +115,36 @@ window.printReport = function() {
     setTimeout(function() { window.print(); }, 300);
 };
 
-// Print report without charts: hide chart containers during print
+// Print report without charts: open a popup with only the report content to avoid blank first page
 window.printReportNoCharts = function() {
-    var els = document.querySelectorAll('.chart-container');
-    els.forEach(function(el) { el.classList.add('no-print'); });
-    // give the DOM a moment to apply the class before printing
-    setTimeout(function() {
-        try { window.print(); } catch(e) { console.error('print failed', e); }
-        // restore after a short delay (print dialog may block, but we attempt cleanup)
-        setTimeout(function() { els.forEach(function(el) { el.classList.remove('no-print'); }); }, 500);
-    }, 150);
+    var area = document.getElementById('report-printable-area');
+    if (!area) { window.print(); return; }
+
+    // Collect all <style> tags from the current page
+    var styles = '';
+    document.querySelectorAll('style').forEach(function(s) { styles += s.outerHTML; });
+    // Also collect print-relevant link stylesheets (skip non-print media)
+    document.querySelectorAll('link[rel="stylesheet"]').forEach(function(l) {
+        styles += '<link rel="stylesheet" href="' + l.href + '">';
+    });
+
+    // Clone content; remove .no-print elements from the clone
+    var clone = area.cloneNode(true);
+    clone.querySelectorAll('.no-print').forEach(function(el) { el.remove(); });
+    // Make print-header visible in the popup
+    var ph = clone.querySelector('.print-header');
+    if (ph) { ph.style.display = 'block'; }
+
+    var win = window.open('', '_blank', 'width=1200,height=800');
+    win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8">');
+    win.document.write('<title>Report</title>');
+    win.document.write(styles);
+    win.document.write('<style>body{background:white;color:black;font-size:10pt;}@page{size:A4 landscape;margin:1.5cm;}.no-print{display:none!important;}.print-header{display:block!important;}.chart-container{display:none!important;}</style>');
+    win.document.write('</head><body>');
+    win.document.write(clone.outerHTML);
+    win.document.write('<scr' + 'ipt>window.onload=function(){window.print();window.onafterprint=function(){window.close();};}' + '</' + 'script>');
+    win.document.write('</body></html>');
+    win.document.close();
 };
 
 // Ensure charts initialize on first load and after Livewire updates

@@ -10,6 +10,8 @@ use App\Models\Amenity;
 use App\Models\Service;
 use App\Models\Reservation;
 use App\Models\RoomAssignment;
+use App\Models\CheckInSnapshot;
+use App\Models\ReservationPayment;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
@@ -54,7 +56,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Fan', 'description' => 'Electric fan'],
         ])->map(fn ($a) => Amenity::create($a));
 
-        // Create Services
+        // Create Add-Ons
         $services = collect([
             [
                 'name' => 'Extra Towels', 
@@ -279,7 +281,42 @@ class DatabaseSeeder extends Seeder
             'checked_in_by' => $staff1->id,
             'checked_out_at' => Carbon::today()->subDays(4)->setTime(10, 30),
             'checked_out_by' => $staff2->id,
+            'status' => 'checked_out',
+            'payment_mode' => 'Cash',
+            'payment_amount' => 4500.00,
+            'payment_or_number' => 'OR20260001',
+            'or_date' => Carbon::today()->subDays(7)->toDateString(),
             'remarks' => 'Smooth check-in and check-out.',
+        ]);
+        ReservationPayment::create([
+            'reservation_id' => $res1->id,
+            'amount' => 4500.00,
+            'payment_mode' => 'Cash',
+            'reference_no' => 'OR20260001',
+            'or_date' => Carbon::today()->subDays(7)->toDateString(),
+            'status' => 'posted',
+            'received_by' => $staff1->id,
+            'received_at' => Carbon::today()->subDays(7)->setTime(14, 0),
+            'remarks' => 'Seeded payment',
+            'meta' => ['source' => 'DatabaseSeeder'],
+        ]);
+        CheckInSnapshot::create([
+            'reservation_id' => $res1->id,
+            'guest_id' => null,
+            'id_type' => 'National ID',
+            'id_number' => 'SEED-0001',
+            'nationality' => 'Filipino',
+            'purpose_of_stay' => 'Academic',
+            'detailed_checkin_datetime' => Carbon::today()->subDays(7)->setTime(14, 0),
+            'detailed_checkout_datetime' => Carbon::today()->subDays(4)->setTime(10, 30),
+            'payment_mode' => 'Cash',
+            'payment_amount' => 4500.00,
+            'payment_or_number' => 'OR20260001',
+            'or_date' => Carbon::today()->subDays(7)->toDateString(),
+            'additional_requests' => [],
+            'remarks' => 'Seeded snapshot',
+            'captured_by' => $staff1->id,
+            'captured_at' => Carbon::today()->subDays(7)->setTime(14, 0),
         ]);
 
         // 2. Currently checked in
@@ -309,7 +346,42 @@ class DatabaseSeeder extends Seeder
             'assigned_at' => Carbon::today()->subDays(3),
             'checked_in_at' => Carbon::today()->subDays(2)->setTime(15, 0),
             'checked_in_by' => $staff1->id,
+            'status' => 'checked_in',
+            'payment_mode' => 'Card',
+            'payment_amount' => 6000.00,
+            'payment_or_number' => 'OR20260002',
+            'or_date' => Carbon::today()->subDays(2)->toDateString(),
             'remarks' => 'Guest arrived with 2 occupants, extra pillows provided.',
+        ]);
+        ReservationPayment::create([
+            'reservation_id' => $res2->id,
+            'amount' => 6000.00,
+            'payment_mode' => 'Card',
+            'reference_no' => 'OR20260002',
+            'or_date' => Carbon::today()->subDays(2)->toDateString(),
+            'status' => 'posted',
+            'received_by' => $staff1->id,
+            'received_at' => Carbon::today()->subDays(2)->setTime(15, 0),
+            'remarks' => 'Seeded payment',
+            'meta' => ['source' => 'DatabaseSeeder'],
+        ]);
+        CheckInSnapshot::create([
+            'reservation_id' => $res2->id,
+            'guest_id' => null,
+            'id_type' => 'Passport',
+            'id_number' => 'SEED-0002',
+            'nationality' => 'Filipino',
+            'purpose_of_stay' => 'Official',
+            'detailed_checkin_datetime' => Carbon::today()->subDays(2)->setTime(15, 0),
+            'detailed_checkout_datetime' => null,
+            'payment_mode' => 'Card',
+            'payment_amount' => 6000.00,
+            'payment_or_number' => 'OR20260002',
+            'or_date' => Carbon::today()->subDays(2)->toDateString(),
+            'additional_requests' => ['extra_pillow'],
+            'remarks' => 'Seeded snapshot',
+            'captured_by' => $staff1->id,
+            'captured_at' => Carbon::today()->subDays(2)->setTime(15, 0),
         ]);
         $rooms[12]->update(['status' => 'occupied']);
 
@@ -338,6 +410,41 @@ class DatabaseSeeder extends Seeder
             'assigned_at' => Carbon::today()->subDays(2),
             'checked_in_at' => Carbon::today()->subDay()->setTime(13, 30),
             'checked_in_by' => $staff2->id,
+            'status' => 'checked_in',
+            'payment_mode' => 'Cash',
+            'payment_amount' => 2200.00,
+            'payment_or_number' => 'OR20260003',
+            'or_date' => Carbon::today()->subDay()->toDateString(),
+        ]);
+        ReservationPayment::create([
+            'reservation_id' => $res3->id,
+            'amount' => 2200.00,
+            'payment_mode' => 'Cash',
+            'reference_no' => 'OR20260003',
+            'or_date' => Carbon::today()->subDay()->toDateString(),
+            'status' => 'posted',
+            'received_by' => $staff2->id,
+            'received_at' => Carbon::today()->subDay()->setTime(13, 30),
+            'remarks' => 'Seeded payment',
+            'meta' => ['source' => 'DatabaseSeeder'],
+        ]);
+        CheckInSnapshot::create([
+            'reservation_id' => $res3->id,
+            'guest_id' => null,
+            'id_type' => 'Driver License',
+            'id_number' => 'SEED-0003',
+            'nationality' => 'Filipino',
+            'purpose_of_stay' => 'Personal',
+            'detailed_checkin_datetime' => Carbon::today()->subDay()->setTime(13, 30),
+            'detailed_checkout_datetime' => null,
+            'payment_mode' => 'Cash',
+            'payment_amount' => 2200.00,
+            'payment_or_number' => 'OR20260003',
+            'or_date' => Carbon::today()->subDay()->toDateString(),
+            'additional_requests' => [],
+            'remarks' => 'Seeded snapshot',
+            'captured_by' => $staff2->id,
+            'captured_at' => Carbon::today()->subDay()->setTime(13, 30),
         ]);
         $rooms[0]->update(['status' => 'occupied']);
 

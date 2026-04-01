@@ -3,7 +3,9 @@
 namespace App\Filament\Pages;
 
 use App\Models\Reservation;
+use App\Models\ReservationPayment;
 use App\Models\Room;
+use App\Models\RoomAssignment;
 use App\Models\RoomType;
 use Filament\Pages\Page;
 use Illuminate\Support\Carbon;
@@ -16,16 +18,32 @@ class Reports extends Page
     protected static ?int $navigationSort = 1;
     protected static string $view = 'filament.pages.reports';
 
-    public string $reportType = 'reservation_summary';
+    public string $reportType = 'monthly_or_report';
     public ?string $dateFrom = null;
     public ?string $dateTo = null;
     public ?string $reservationStatus = null;
+    public ?string $monthPeriod = null;
 
     public function mount(): void
     {
         $this->dateFrom = Carbon::today()->subDays(30)->format('Y-m-d');
         $this->dateTo = Carbon::today()->format('Y-m-d');
         $this->reservationStatus = null; // All statuses
+        $this->monthPeriod = Carbon::today()->format('Y-m');
+    }
+
+    public function updatedMonthPeriod(?string $value): void
+    {
+        if (! $value) {
+            return;
+        }
+
+        $monthStart = Carbon::createFromFormat('Y-m', $value)->startOfMonth();
+        $monthEnd = $monthStart->copy()->endOfMonth();
+
+        // Keep the date range in sync so print headers and period metadata stay consistent.
+        $this->dateFrom = $monthStart->format('Y-m-d');
+        $this->dateTo = $monthEnd->format('Y-m-d');
     }
 
     public function getReportDataProperty(): array
@@ -36,8 +54,238 @@ class Reports extends Page
             'room_utilization' => $this->getRoomUtilization(),
             'stay_logs' => $this->getStayLogs(),
             'reservation_list' => $this->getReservationList(),
+            'monthly_or_report' => $this->getMonthlyOrReport(),
             default => [],
         };
+    }
+
+    protected function getMonthlyOrReport(): array
+    {
+        $month = $this->monthPeriod
+            ? Carbon::createFromFormat('Y-m', $this->monthPeriod)
+            : Carbon::today();
+
+        $from = $month->copy()->startOfMonth()->startOfDay();
+        $to = $month->copy()->endOfMonth()->endOfDay();
+
+        // Keep shared period values aligned with this report's selected month.
+        $this->dateFrom = $from->format('Y-m-d');
+        $this->dateTo = $to->format('Y-m-d');
+
+        // Get all reservations with check-ins in this month
+        $reservations = Reservation::query()
+            ->with(['roomAssignments.room.roomType', 'payments', 'guests', 'checkInSnapshots', 'charges'])
+            ->whereIn('status', ['checked_in', 'checked_out'])
+            ->whereHas('roomAssignments', function ($q) use ($from, $to) {
+                $q->whereNotNull('checked_in_at')
+                    ->whereBetween('checked_in_at', [$from, $to]);
+            })
+            ->get();
+
+        $rowsByDate = [];
+        $totalDomesticMale = 0;
+        $totalDomesticFemale = 0;
+        $totalInternationalMale = 0;
+        $totalInternationalFemale = 0;
+        $grandTotal = 0;
+
+        foreach ($reservations as $reservation) {
+            $assignments = $reservation->roomAssignments()
+                ->whereNotNull('checked_in_at')
+                ->whereBetween('checked_in_at', [$from, $to])
+                ->with('room.roomType')
+                ->get();
+
+            if ($assignments->isEmpty()) continue;
+
+            $firstAssignment = $assignments->first();
+            $orDate = $firstAssignment->or_date 
+                ? Carbon::parse($firstAssignment->or_date)
+                : Carbon::parse($firstAssignment->checked_in_at);
+            
+            $dateKey = $orDate->toDateString();
+
+            // Calculate number of nights
+            $checkIn = Carbon::parse($firstAssignment->checked_in_at ?? $reservation->check_in_date);
+            $checkOut = $firstAssignment->checked_out_at 
+                ? Carbon::parse($firstAssignment->checked_out_at)
+                : Carbon::parse($reservation->check_out_date);
+            $nights = max(1, $checkIn->diffInDays($checkOut));
+
+            // Guest name (lastname first)
+            $guestName = trim(($reservation->guest_last_name ?? '') . ', ' . ($reservation->guest_first_name ?? ''));
+            if (empty(trim($guestName, ', '))) {
+                $guestName = $reservation->guest_name ?? 'Unknown Guest';
+            }
+
+            // Discount / ID info
+            $snapshot        = $reservation->checkInSnapshots->sortByDesc('id')->first();
+            $discountCharge  = $reservation->charges->where('charge_type', 'discount')->sortByDesc('id')->first();
+            $hasDiscount     = $discountCharge !== null;
+            $guestIdNumber   = $hasDiscount ? ($snapshot?->id_number ?? '') : '';
+
+            // Common OR info for all lines of this reservation
+            $orNumber        = $firstAssignment->payment_or_number ?? '-';
+            $orDateFormatted = $orDate->format('m/d/Y');
+            $rfNumber        = $reservation->reference_number ?? '-';
+
+            // Count overall pax (for date-group subtotals and report footer)
+            $domesticMale = 0; $domesticFemale = 0;
+            $internationalMale = 0; $internationalFemale = 0;
+            foreach ($assignments as $assignment) {
+                $gender      = $assignment->guest_gender ?? $reservation->guest_gender ?? 'Other';
+                $nationality = $assignment->nationality ?? 'Filipino';
+                $isDomestic  = stripos($nationality, 'filipino') !== false || stripos($nationality, 'philippine') !== false;
+                if ($isDomestic  && strtolower($gender) === 'male')   $domesticMale++;
+                elseif ($isDomestic  && strtolower($gender) === 'female') $domesticFemale++;
+                elseif (!$isDomestic && strtolower($gender) === 'male')   $internationalMale++;
+                elseif (!$isDomestic && strtolower($gender) === 'female') $internationalFemale++;
+            }
+            $totalDomesticMale      += $domesticMale;
+            $totalDomesticFemale    += $domesticFemale;
+            $totalInternationalMale += $internationalMale;
+            $totalInternationalFemale += $internationalFemale;
+            $maleCount   = $domesticMale   + $internationalMale;
+            $femaleCount = $domesticFemale + $internationalFemale;
+
+            // Amount actually paid (OR total for this reservation)
+            $amountPaid  = (float) ($firstAssignment->payment_amount ?? 0);
+            $grandTotal += $amountPaid;
+
+            // ---- Build per-line sub-rows ----
+            $reservationLines = [];
+            $isFirstLine      = true;
+
+            // One line per unique room
+            foreach ($assignments->unique('room_id') as $asgmt) {
+                $room     = $asgmt->room;
+                $roomType = $room?->roomType ?? null;
+                if (! $room || ! $roomType) continue;
+
+                $rate = (float) $roomType->base_rate;
+
+                // Pax in this specific room
+                $roomAsgmts = $assignments->where('room_id', $room->id);
+                $roomMale = 0; $roomFemale = 0;
+                foreach ($roomAsgmts as $ra) {
+                    $g = strtolower($ra->guest_gender ?? $reservation->guest_gender ?? '');
+                    if ($g === 'male')   $roomMale++;
+                    elseif ($g === 'female') $roomFemale++;
+                }
+
+                // Line amount
+                if ($roomType->pricing_type === 'per_person') {
+                    $guestCount = max(1, $roomAsgmts->count());
+                    $lineAmount = $rate * $guestCount * $nights;
+                } else {
+                    $lineAmount = $rate * $nights;
+                }
+
+                $reservationLines[] = [
+                    'guest_name'      => $isFirstLine ? $guestName : '***',
+                    'guest_id_number' => $isFirstLine ? $guestIdNumber : '',
+                    'nights'          => $nights,
+                    'room_particulars'=> $roomType->name . ' #' . $room->room_number,
+                    'rate'            => number_format($rate, 2),
+                    'male_count'      => $roomMale,
+                    'female_count'    => $roomFemale,
+                    'rf_number'       => $rfNumber,
+                    'amount'          => $lineAmount,
+                    'or_number'       => $orNumber,
+                    'or_date'         => $orDateFormatted,
+                    'total'           => null,
+                    'show_total'      => false,
+                ];
+                $isFirstLine = false;
+            }
+
+            // One line per add-on charge
+            foreach ($reservation->charges->where('charge_type', 'addon') as $charge) {
+                $qty = (int) max(1, $charge->qty ?? 1);
+                // Strip leading multiplier prefix (e.g. "3x ") so the Particulars column isn't redundant with the Qty column
+                $particulars = preg_replace('/^\d+x\s+/', '', $charge->description);
+                $reservationLines[] = [
+                    'guest_name'      => '***',
+                    'guest_id_number' => '',
+                    'nights'          => $qty,
+                    'room_particulars'=> $particulars,
+                    'rate'            => number_format((float) $charge->unit_price, 2),
+                    'male_count'      => null,
+                    'female_count'    => null,
+                    'rf_number'       => $rfNumber,
+                    'amount'          => (float) $charge->amount,
+                    'or_number'       => $orNumber,
+                    'or_date'         => $orDateFormatted,
+                    'total'           => null,
+                    'show_total'      => false,
+                ];
+            }
+
+            // If no lines were built (no room data), add a fallback line
+            if (empty($reservationLines)) {
+                $reservationLines[] = [
+                    'guest_name'      => $guestName,
+                    'guest_id_number' => $guestIdNumber,
+                    'nights'          => $nights,
+                    'room_particulars'=> '-',
+                    'rate'            => '-',
+                    'male_count'      => $maleCount,
+                    'female_count'    => $femaleCount,
+                    'rf_number'       => $rfNumber,
+                    'amount'          => $amountPaid,
+                    'or_number'       => $orNumber,
+                    'or_date'         => $orDateFormatted,
+                    'total'           => null,
+                    'show_total'      => false,
+                ];
+            }
+
+            // Total (payment amount) shown only on the first line
+            $reservationLines[0]['total']      = $amountPaid;
+            $reservationLines[0]['show_total'] = true;
+
+            // Add all lines to the date group
+            if (!isset($rowsByDate[$dateKey])) {
+                $rowsByDate[$dateKey] = [
+                    'date'         => $orDate->format('m/d/Y'),
+                    'date_sort'    => $dateKey,
+                    'rows'         => [],
+                    'total_male'   => 0,
+                    'total_female' => 0,
+                    'total_amount' => 0,
+                ];
+            }
+
+            foreach ($reservationLines as $line) {
+                $rowsByDate[$dateKey]['rows'][] = $line;
+            }
+
+            $rowsByDate[$dateKey]['total_male']   += $maleCount;
+            $rowsByDate[$dateKey]['total_female']  += $femaleCount;
+            $rowsByDate[$dateKey]['total_amount']  += $amountPaid;
+        }
+
+        // Sort by date
+        $rowsByDate = collect($rowsByDate)
+            ->sortBy('date_sort')
+            ->values()
+            ->toArray();
+
+        $totalPax = $totalDomesticMale + $totalDomesticFemale + $totalInternationalMale + $totalInternationalFemale;
+
+        return [
+            'type' => 'monthly_or_report',
+            'month_label' => $month->format('F Y'),
+            'rows_by_date' => $rowsByDate,
+            'grand_total' => $grandTotal,
+            'total_domestic_male' => $totalDomesticMale,
+            'total_domestic_female' => $totalDomesticFemale,
+            'total_international_male' => $totalInternationalMale,
+            'total_international_female' => $totalInternationalFemale,
+            'total_male' => $totalDomesticMale + $totalInternationalMale,
+            'total_female' => $totalDomesticFemale + $totalInternationalFemale,
+            'total_pax' => $totalPax,
+        ];
     }
 
     protected function getReservationSummary(): array
@@ -189,8 +437,8 @@ class Reports extends Page
                     'reference' => $assign->reservation->reference_number ?? 'N/A',
                     'room' => $assign->room->room_number ?? 'N/A',
                     'room_type' => $assign->room->roomType->name ?? 'N/A',
-                    'checked_in' => $assign->checked_in_at ? Carbon::parse($assign->checked_in_at)->format('M d, Y h:i A') : '-',
-                    'checked_out' => $assign->checked_out_at ? Carbon::parse($assign->checked_out_at)->format('M d, Y h:i A') : 'Still checked in',
+                    'checked_in' => $assign->checked_in_at ? Carbon::parse($assign->checked_in_at)->format('M d, Y') : '-',
+                    'checked_out' => $assign->checked_out_at ? Carbon::parse($assign->checked_out_at)->format('M d, Y') : 'Still checked in',
                     'checked_in_by' => $assign->assignedByUser->name ?? '-',
                     'checked_out_by' => optional($assign->checkedOutByUser)->name ?? '-',
                     // Ensure nights is always an integer

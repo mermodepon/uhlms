@@ -77,7 +77,7 @@ class GuestsRelationManager extends RelationManager
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Added')
-                    ->dateTime()
+                    ->date()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])

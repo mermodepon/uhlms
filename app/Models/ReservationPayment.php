@@ -1,0 +1,41 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class ReservationPayment extends Model
+{
+    protected $fillable = [
+        'reservation_id',
+        'amount',
+        'payment_mode',
+        'reference_no',
+        'or_date',
+        'status',
+        'received_by',
+        'received_at',
+        'remarks',
+        'meta',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'amount' => 'decimal:2',
+            'received_at' => 'datetime',
+            'meta' => 'array',
+        ];
+    }
+
+    public function reservation(): BelongsTo
+    {
+        return $this->belongsTo(Reservation::class);
+    }
+
+    public function receivedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'received_by');
+    }
+}

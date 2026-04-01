@@ -23,7 +23,12 @@
             </form>
         </div>
 
-        @if($reference && !$reservation)
+        @if($reference && !$reservation && $expired)
+            <div class="bg-amber-50 border border-amber-200 text-amber-800 px-6 py-4 rounded-xl mb-8">
+                <p class="font-medium">Tracking period has ended</p>
+                <p class="text-sm mt-1">The tracking record for reservation <strong>{{ $reference }}</strong> is no longer available. Tracking expires 14&nbsp;days after a cancellation or decline, and 30&nbsp;days after check-out.</p>
+            </div>
+        @elseif($reference && !$reservation)
             <div class="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl mb-8">
                 <p class="font-medium">Reservation not found</p>
                 <p class="text-sm mt-1">No reservation matches the reference number "{{ $reference }}". Please check and try again.</p>
@@ -31,6 +36,49 @@
         @endif
 
         @if($reservation)
+            @php
+                // --- Privacy masking ---
+
+                // Name: show first name, mask remaining parts (first letter + ***)
+                $maskName = function($name) {
+                    $parts = explode(' ', trim($name));
+                    if (count($parts) <= 1) return $parts[0];
+                    $first = array_shift($parts);
+                    $masked = array_map(
+                        fn($p) => strlen($p) > 0 ? mb_substr($p, 0, 1) . str_repeat('*', min(max(mb_strlen($p) - 1, 2), 4)) : $p,
+                        $parts
+                    );
+                    return $first . ' ' . implode(' ', $masked);
+                };
+
+                $maskedName = $maskName($reservation->guest_name);
+
+                // Email: first char of local part + *** @ domain
+                $emailParts = explode('@', $reservation->guest_email, 2);
+                $maskedEmail = mb_substr($emailParts[0], 0, 1)
+                    . str_repeat('*', min(max(mb_strlen($emailParts[0]) - 1, 3), 5))
+                    . '@' . ($emailParts[1] ?? '');
+
+                // Phone: mask all digits except the last 4
+                $maskedPhone = null;
+                if ($reservation->guest_phone) {
+                    $digitCount = preg_match_all('/\d/', $reservation->guest_phone);
+                    $digitIndex = 0;
+                    $maskedPhone = preg_replace_callback('/\d/', function($m) use (&$digitIndex, $digitCount) {
+                        $digitIndex++;
+                        return ($digitIndex <= $digitCount - 4) ? '*' : $m[0];
+                    }, $reservation->guest_phone);
+                }
+
+                // Room number: show first char, mask the rest
+                $maskRoom = fn($num) => mb_substr($num, 0, 1) . str_repeat('*', min(max(mb_strlen($num) - 1, 2), 3));
+
+                // Assignment name masking
+                $maskAssignmentName = fn($a) => $maskName(
+                    trim($a->guest_first_name . ' ' . $a->guest_last_name) ?: $reservation->guest_name
+                );
+            @endphp
+
             {{-- Status Timeline --}}
             <div class="bg-white rounded-xl shadow-md p-6 mb-8">
                 <div class="flex justify-between items-center mb-6">
@@ -105,32 +153,26 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div class="bg-white rounded-xl shadow-md p-6">
                     <h3 class="font-bold text-[#00491E] mb-4">Guest Information</h3>
+                    <p class="text-xs text-gray-400 mb-3">Some details are partially masked for privacy.</p>
                     <dl class="space-y-2 text-sm">
                         <div class="flex justify-between">
                             <dt class="text-gray-500">Name</dt>
-                            <dd class="font-medium">{{ $reservation->guest_name }}</dd>
+                            <dd class="font-medium">{{ $maskedName }}</dd>
                         </div>
                         <div class="flex justify-between">
                             <dt class="text-gray-500">Email</dt>
-                            <dd>{{ $reservation->guest_email }}</dd>
+                            <dd>{{ $maskedEmail }}</dd>
                         </div>
                         @if($reservation->guest_phone)
                             <div class="flex justify-between">
                                 <dt class="text-gray-500">Phone</dt>
-                                <dd>{{ $reservation->guest_phone }}</dd>
+                                <dd>{{ $maskedPhone }}</dd>
                             </div>
                         @endif
                         @if($reservation->guest_gender)
                             <div class="flex justify-between">
                                 <dt class="text-gray-500">Gender</dt>
-                                <dd>
-                                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
-                                        {{ $reservation->guest_gender === 'Male' ? 'bg-blue-100 text-blue-800' : '' }}
-                                        {{ $reservation->guest_gender === 'Female' ? 'bg-pink-100 text-pink-800' : '' }}
-                                        {{ $reservation->guest_gender === 'Other' ? 'bg-gray-100 text-gray-800' : '' }}">
-                                        {{ $reservation->guest_gender }}
-                                    </span>
-                                </dd>
+                                <dd class="font-medium">{{ $reservation->guest_gender }}</dd>
                             </div>
                         @endif
                     </dl>
@@ -201,17 +243,14 @@
                                     <tr class="border-b border-gray-100 hover:bg-gray-50 transition">
                                         <td class="py-3 px-4">
                                             <span class="font-medium text-[#00491E]">
-                                                {{ trim($assignment->guest_first_name . ' ' . $assignment->guest_last_name) ?: $reservation->guest_name }}
+                                                {{ $maskAssignmentName($assignment) }}
                                             </span>
                                         </td>
                                         <td class="py-3 px-4">
                                             <div>
-                                                <span class="font-semibold">Room {{ $assignment->room->room_number }}</span>
+                                                <span class="font-semibold">Room {{ $maskRoom($assignment->room->room_number) }}</span>
                                                 <span class="text-gray-500 text-xs ml-1">({{ $assignment->room->roomType->name ?? 'Unknown' }})</span>
                                             </div>
-                                            @if($assignment->bed_id && $assignment->bed)
-                                                <span class="text-gray-600 text-xs">Bed: {{ $assignment->bed->bed_number ?? 'N/A' }}</span>
-                                            @endif
                                         </td>
                                         <td class="py-3 px-4">
                                             @if($assignment->checked_out_at || $assignment->status === 'checked_out')
@@ -253,7 +292,7 @@
                     ->map(fn($group) => [
                         'room' => $group->first()->room,
                         'remarks' => $group->first()->remarks,
-                        'guests' => $group->map(fn($a) => trim($a->guest_first_name . ' ' . $a->guest_last_name))->filter()->all()
+                        'guests' => $group->map(fn($a) => $maskName(trim($a->guest_first_name . ' ' . $a->guest_last_name)))->filter()->all()
                     ]);
             @endphp
             @if($remarksGrouped->isNotEmpty())
@@ -263,7 +302,7 @@
                         @foreach($remarksGrouped as $note)
                             <div class="border-l-4 border-[#00491E] bg-blue-50 p-4 rounded">
                                 <p class="text-sm font-medium text-[#00491E]">
-                                    Room {{ $note['room']->room_number }}
+                                    Room {{ $maskRoom($note['room']->room_number) }}
                                     @if(!empty($note['guests']))
                                         <span class="text-gray-600 font-normal text-xs ml-2">({{ implode(', ', $note['guests']) }})</span>
                                     @endif

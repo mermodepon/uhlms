@@ -3,32 +3,27 @@
 namespace App\Providers;
 
 use App\Models\Amenity;
-use App\Models\Bed;
 use App\Models\Floor;
-use App\Models\Message;
 use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
 use App\Models\Service;
-use App\Models\Setting;
 use App\Models\User;
 use App\Observers\AmenityObserver;
-use App\Observers\BedObserver;
-use App\Observers\MessageObserver;
 use App\Observers\ReservationObserver;
 use App\Observers\RoomObserver;
 use App\Observers\RoomAssignmentObserver;
 use App\Observers\RoomTypeObserver;
-use App\Observers\SettingObserver;
 use App\Policies\AmenityPolicy;
 use App\Policies\FloorPolicy;
 use App\Policies\ReservationPolicy;
 use App\Policies\RoomPolicy;
 use App\Policies\RoomTypePolicy;
 use App\Policies\ServicePolicy;
-use App\Policies\SettingPolicy;
 use App\Policies\UserPolicy;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\DateTimePicker;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -67,15 +62,17 @@ class AppServiceProvider extends ServiceProvider
             DB::disableQueryLog();
         }
 
+        // ── Global date picker defaults ─────────────────────────────
+        // Sunday-first week (7) consistent across all calendars.
+        DatePicker::configureUsing(fn (DatePicker $picker) => $picker->firstDayOfWeek(7));
+        DateTimePicker::configureUsing(fn (DateTimePicker $picker) => $picker->firstDayOfWeek(7));
+
         // Register model observers for notification system
         Amenity::observe(AmenityObserver::class);
-        Bed::observe(BedObserver::class);
-        Message::observe(MessageObserver::class);
         Reservation::observe(ReservationObserver::class);
         Room::observe(RoomObserver::class);
         RoomAssignment::observe(RoomAssignmentObserver::class);
         RoomType::observe(RoomTypeObserver::class);
-        Setting::observe(SettingObserver::class);
 
         // Register authorization policies
         Gate::policy(Reservation::class, ReservationPolicy::class);
@@ -85,6 +82,5 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Amenity::class, AmenityPolicy::class);
         Gate::policy(Service::class, ServicePolicy::class);
         Gate::policy(User::class, UserPolicy::class);
-        Gate::policy(Setting::class, SettingPolicy::class);
     }
 }

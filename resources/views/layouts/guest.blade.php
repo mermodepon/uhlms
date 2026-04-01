@@ -4,17 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     @php
-        use App\Models\Setting;
-        $siteTitle = Setting::get('site_title', 'CMU University Homestay');
-            $maintenanceMode = Setting::get('maintenance_mode');
-            $maintenanceMessage = Setting::get('maintenance_message');
-            $highContrast = Setting::get('accessibility_high_contrast');
-            $largeText = Setting::get('accessibility_large_text');
-        $siteTagline = Setting::get('site_tagline', 'Lodging Management System');
-        $siteLogo = Setting::get('site_logo');
-        $logoSrc = $siteLogo ? asset('storage/' . $siteLogo) : asset('images/uh_logo.jpg');
-        $themeColor = Setting::get('theme_color', '#FFC600');
-        $themeFont = Setting::get('theme_font', 'sans');
+        $siteTitle    = 'CMU University Homestay';
+        $siteTagline  = 'Lodging Management System';
+        $logoSrc      = asset('images/uh_logo.jpg');
+        $themeColor   = '#FFC600';
+        $themeFont    = 'sans';
+        $maintenanceMode    = false;
+        $maintenanceMessage = null;
+        $highContrast = false;
+        $largeText    = false;
     @endphp
     <title>@yield('title', $siteTitle) - {{ $siteTagline }}</title>
     <link rel="icon" type="image/png" href="{{ $logoSrc }}">
@@ -89,8 +87,8 @@
 <body class="min-h-screen bg-gray-50 flex flex-col">
     {{-- Announcement Bar --}}
     @php
-        $showAnnouncement = Setting::get('show_announcement');
-        $announcementText = Setting::get('announcement_text');
+        $showAnnouncement = false;
+        $announcementText = null;
     @endphp
         @if($maintenanceMode && $maintenanceMessage)
             <div class="w-full bg-red-700 py-2 px-4 text-center font-bold text-base shadow-md" style="color:#FFC600; text-shadow: 0 1px 2px rgba(0,0,0,0.6);">
@@ -122,7 +120,6 @@
                     <a href="{{ route('guest.virtual-tours') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.virtual-tours') ? 'text-[#FFC600]' : '' }}">Virtual Tours</a>
                     <a href="{{ route('guest.reserve') }}" class="bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold transition-all duration-200 hover:bg-white hover:text-[#00491E] hover:scale-105 active:scale-95 {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">Reserve Now</a>
                     <a href="{{ route('guest.track') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.track') ? 'text-[#FFC600]' : '' }}">Track Status</a>
-                    <a href="{{ route('guest.messages') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.messages') ? 'text-[#FFC600]' : '' }}">Contact Us</a>
                 </div>
                 {{-- Mobile menu button --}}
                 <div class="md:hidden flex items-center">
@@ -142,7 +139,6 @@
                 <a href="{{ route('guest.virtual-tours') }}" class="block text-white hover:text-[#FFC600] py-2">Virtual Tours</a>
                 <a href="{{ route('guest.reserve') }}" class="block text-[#FFC600] font-bold py-2">Reserve Now</a>
                 <a href="{{ route('guest.track') }}" class="block text-white hover:text-[#FFC600] py-2">Track Status</a>
-                <a href="{{ route('guest.messages') }}" class="block text-white hover:text-[#FFC600] py-2">Contact Us</a>
             </div>
         </div>
     </nav>
@@ -168,30 +164,12 @@
                 <div>
                     <h3 class="text-[var(--cmu-yellow)] font-bold text-lg mb-3">{{ $siteTitle }}</h3>
                     <p class="text-gray-300 text-sm">
-                        {!! nl2br(e(Setting::get('contact_address', 'Central Mindanao University
-Musuan, Maramag, Bukidnon
-Philippines'))) !!}
+                        Central Mindanao University<br>Musuan, Maramag, Bukidnon<br>Philippines
                     </p>
                     <p class="text-gray-300 text-sm mt-2">
-                        <span class="font-semibold">Phone:</span> {{ Setting::get('contact_phone', '') }}<br>
-                        <span class="font-semibold">Email:</span> {{ Setting::get('contact_email', '') }}
+                        <span class="font-semibold">Phone:</span> <br>
+                        <span class="font-semibold">Email:</span>
                     </p>
-                    @if(Setting::get('contact_map_embed'))
-                        <div class="mt-2">
-                            <iframe src="{{ Setting::get('contact_map_embed') }}" width="100%" height="80" style="border:0;" allowfullscreen="" loading="lazy"></iframe>
-                        </div>
-                    @endif
-                    <div class="flex gap-2 mt-3">
-                        @if(Setting::get('social_facebook'))
-                            <a href="{{ Setting::get('social_facebook') }}" target="_blank" class="text-[#FFC600] hover:text-white"><i class="fab fa-facebook"></i> Facebook</a>
-                        @endif
-                        @if(Setting::get('social_instagram'))
-                            <a href="{{ Setting::get('social_instagram') }}" target="_blank" class="text-[#FFC600] hover:text-white"><i class="fab fa-instagram"></i> Instagram</a>
-                        @endif
-                        @if(Setting::get('social_twitter'))
-                            <a href="{{ Setting::get('social_twitter') }}" target="_blank" class="text-[#FFC600] hover:text-white"><i class="fab fa-twitter"></i> Twitter</a>
-                        @endif
-                    </div>
                 </div>
                 <div>
                     <h3 class="text-[#FFC600] font-bold text-lg mb-3">Quick Links</h3>
@@ -200,7 +178,6 @@ Philippines'))) !!}
                         <li><a href="{{ route('guest.virtual-tours') }}" class="text-gray-300 hover:text-[#FFC600] transition">Virtual Tours</a></li>
                         <li><a href="{{ route('guest.reserve') }}" class="text-gray-300 hover:text-[#FFC600] transition">Make a Reservation</a></li>
                         <li><a href="{{ route('guest.track') }}" class="text-gray-300 hover:text-[#FFC600] transition">Track Reservation</a></li>
-                        <li><a href="{{ route('guest.messages') }}" class="text-gray-300 hover:text-[#FFC600] transition">Contact Us</a></li>
                     </ul>
                 </div>
                 <div>

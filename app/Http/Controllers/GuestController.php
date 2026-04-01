@@ -44,17 +44,17 @@ class GuestController extends Controller
         $roomType->load('amenities');
         $roomType->loadCount(['rooms', 'availableRooms']);
         
-        // Load rooms with bed availability for dormitory display
+        // Load rooms with slot availability
         $rooms = $roomType->rooms()
-            ->with('beds')
+            ->withCount(['roomAssignments as checked_in_count' => fn ($q) => $q->where('status', 'checked_in')])
             ->orderBy('room_number')
             ->get()
             ->map(function ($room) {
-                $totalBeds = $room->beds->count();
-                $availableBeds = $room->beds->where('status', 'available')->count();
+                $totalBeds     = $room->capacity ?? 0;
+                $availableBeds = max(0, $totalBeds - ($room->checked_in_count ?? 0));
                 return (object)[
-                    'room' => $room,
-                    'total_beds' => $totalBeds,
+                    'room'           => $room,
+                    'total_beds'     => $totalBeds,
                     'available_beds' => $availableBeds,
                     'occupancy_rate' => $totalBeds > 0 ? round((($totalBeds - $availableBeds) / $totalBeds) * 100) : 0,
                 ];
@@ -83,13 +83,13 @@ class GuestController extends Controller
     public function reserveForm()
     {
         $roomTypes = RoomType::where('is_active', true)
-            ->with('rooms.beds')
+            ->with('rooms')
             ->withCount('availableRooms')
             ->get()
             ->each(function ($roomType) {
-                // Calculate bed availability for dormitory types
-                $roomType->total_beds = $roomType->rooms->sum(fn($r) => $r->beds->count());
-                $roomType->available_beds = $roomType->rooms->sum(fn($r) => $r->beds->where('status', 'available')->count());
+                // Calculate slot availability based on capacity vs active assignments
+                $roomType->total_beds     = $roomType->rooms->sum('capacity');
+                $roomType->available_beds = $roomType->rooms->sum(fn ($r) => max(0, ($r->capacity ?? 0) - $r->roomAssignments()->where('status', 'checked_in')->count()));
             });
 
         return view('guest.reserve', compact('roomTypes'));
@@ -107,6 +107,7 @@ class GuestController extends Controller
             'guest_gender' => 'required|in:Male,Female,Other',
             'guest_email' => 'required|email|max:255',
             'guest_phone' => 'nullable|string|max:20',
+            'guest_age' => 'nullable|integer|min:1|max:120',
             'guest_address' => 'nullable|string|max:1000',
             'preferred_room_type_id' => 'required|exists:room_types,id',
             'check_in_date' => 'required|date|after_or_equal:today',
@@ -138,26 +139,45 @@ class GuestController extends Controller
     public function track(Request $request)
     {
         $reservation = null;
-        $reference = $request->get('reference') ?? session('reference_number');
+        $expired     = false;
+        $reference   = $request->get('reference') ?? session('reference_number');
+
+        // Expiry windows (in days) for terminal statuses.
+        $expiryDays = [
+            'checked_out' => 30,
+            'declined'    => 14,
+            'cancelled'   => 14,
+        ];
 
         if ($reference) {
             $reservation = Reservation::where('reference_number', $reference)
-                ->with(['preferredRoomType', 'roomAssignments.room', 'roomAssignments.bed', 'roomAssignments.room.roomType'])
+                ->with(['preferredRoomType', 'roomAssignments.room', 'roomAssignments.room.roomType'])
                 ->first();
 
-            // Safety net: if reservation is checked out, close any lingering open assignments.
-            if ($reservation && $reservation->status === 'checked_out') {
-                RoomAssignment::where('reservation_id', $reservation->id)
-                    ->whereNull('checked_out_at')
-                    ->update([
-                        'status' => 'checked_out',
-                        'checked_out_at' => now(),
-                    ]);
+            if ($reservation) {
+                // Check whether the tracking window has expired for terminal statuses.
+                if (isset($expiryDays[$reservation->status])) {
+                    $daysSince = $reservation->updated_at->diffInDays(now());
+                    if ($daysSince >= $expiryDays[$reservation->status]) {
+                        $expired     = true;
+                        $reservation = null;
+                    }
+                }
 
-                $reservation->load(['preferredRoomType', 'roomAssignments.room', 'roomAssignments.bed', 'roomAssignments.room.roomType']);
+                // Safety net: if reservation is checked out, close any lingering open assignments.
+                if ($reservation && $reservation->status === 'checked_out') {
+                    RoomAssignment::where('reservation_id', $reservation->id)
+                        ->whereNull('checked_out_at')
+                        ->update([
+                            'status'         => 'checked_out',
+                            'checked_out_at' => now(),
+                        ]);
+
+                    $reservation->load(['preferredRoomType', 'roomAssignments.room', 'roomAssignments.room.roomType']);
+                }
             }
         }
 
-        return view('guest.track', compact('reservation', 'reference'));
+        return view('guest.track', compact('reservation', 'reference', 'expired'));
     }
 }

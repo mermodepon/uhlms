@@ -61,7 +61,7 @@
                 </div>
                 <p class="text-sm text-blue-700 dark:text-blue-400">
                     View-only access to room management resources. Can create and edit reservations
-                    but cannot delete them. No access to users, settings, or system configuration.
+                    but cannot delete them. No access to user management or administrative configuration pages.
                 </p>
             </div>
 
@@ -141,7 +141,7 @@
                             'Edit'   => [true,  true,  false],
                             'Delete' => [true,  true,  false],
                         ],
-                        'Services' => [
+                        'Add-Ons' => [
                             'View'   => [true,  true,  true],
                             'Create' => [true,  true,  false],
                             'Edit'   => [true,  true,  false],
@@ -152,10 +152,6 @@
                             'Create' => [true,  true,  false],
                             'Edit'   => [true,  true,  false],
                             'Delete' => [true,  true,  false],
-                        ],
-                        'Settings' => [
-                            'View'   => [true,  true,  false],
-                            'Edit'   => [true,  true,  false],
                         ],
                         'Stay Logs' => [
                             'View'   => [true,  true,  true],

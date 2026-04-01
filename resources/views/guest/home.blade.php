@@ -5,13 +5,11 @@
 @section('content')
     {{-- Hero Section --}}
     @php
-        use App\Models\Setting;
-        $heroBanner = Setting::get('hero_banner');
-        $heroSrc = $heroBanner ? asset('storage/' . $heroBanner) : asset('images/uh_banner.png');
-        $heroEmbed = Setting::get('hero_banner_embed');
-        $heroEmbedEnabled = Setting::get('hero_banner_embed_enabled');
-        $welcomeMessage = Setting::get('welcome_message', 'Comfortable and affordable lodging for visiting scholars, faculty, students, and guests of Central Mindanao University.');
-        $siteTitle = Setting::get('site_title', 'University Homestay');
+        $heroSrc          = asset('images/uh_banner.png');
+        $heroEmbed        = null;
+        $heroEmbedEnabled = false;
+        $welcomeMessage   = 'Comfortable and affordable lodging for visiting scholars, faculty, students, and guests of Central Mindanao University.';
+        $siteTitle        = 'University Homestay';
     @endphp
     <section class="relative bg-gradient-to-br from-[#00491E] via-[#02681E] to-[#00491E] text-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
@@ -49,9 +47,9 @@
 
     {{-- About & Amenities --}}
     @php
-        $aboutText = Setting::get('about_text');
-        $showAmenities = Setting::get('show_amenities');
-        $amenities = json_decode(Setting::get('amenities', '[]'), true) ?? [];
+        $aboutText     = null;
+        $showAmenities = false;
+        $amenities     = [];
     @endphp
     @if($aboutText)
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -140,8 +138,8 @@
 
     {{-- Booking Policy & FAQ --}}
     @php
-        $bookingPolicy = Setting::get('booking_policy');
-        $faq = json_decode(Setting::get('faq', '[]'), true) ?? [];
+        $bookingPolicy = null;
+        $faq           = [];
     @endphp
     @if($bookingPolicy)
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

@@ -145,21 +145,7 @@
                         <div class="mb-6 space-y-2 max-h-48 overflow-y-auto">
                             <h3 class="text-sm font-semibold text-gray-700 mb-3">Rooms & Availability</h3>
                             @foreach($rooms as $item)
-                                @php
-                                    $genderClass = [
-                                        'male' => 'bg-blue-50 border-blue-200',
-                                        'female' => 'bg-pink-50 border-pink-200',
-                                        'any' => 'bg-purple-50 border-purple-200'
-                                    ][$item->room->gender_type] ?? 'bg-gray-50 border-gray-200';
-                                    
-                                    $genderBadge = [
-                                        'male' => ['🔵 Male Only', 'bg-blue-100 text-blue-800'],
-                                        'female' => ['🌸 Female Only', 'bg-pink-100 text-pink-800'],
-                                        'any' => ['👥 Co-ed', 'bg-purple-100 text-purple-800']
-                                    ][$item->room->gender_type] ?? ['Mixed', 'bg-gray-100 text-gray-800'];
-                                @endphp
-                                
-                                <div class="flex items-center justify-between p-3 rounded-lg border {{ $genderClass }}">
+                                <div class="flex items-center justify-between p-3 rounded-lg border bg-gray-50 border-gray-200">
                                     <div class="flex-1">
                                         <p class="text-sm font-medium text-gray-900">{{ $item->room->room_number }}</p>
                                         <div class="flex items-center gap-2 mt-1">
@@ -175,9 +161,6 @@
                                                     <span class="text-[#02681E] font-semibold">{{ $item->available_beds }}</span>/{{ $item->total_beds }} beds
                                                 </span>
                                             @endif
-                                            <span class="text-xs px-2 py-0.5 rounded-full {{ $genderBadge[1] }}">
-                                                {{ $genderBadge[0] }}
-                                            </span>
                                         </div>
                                         @if($isPrivate)
                                             <p class="text-xs {{ $item->room->status === 'available' ? 'text-green-600' : 'text-red-600' }} mt-1">

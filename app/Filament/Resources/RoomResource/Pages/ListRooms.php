@@ -10,6 +10,21 @@ class ListRooms extends ListRecords
 {
     protected static string $resource = RoomResource::class;
 
+    public function mount(): void
+    {
+        parent::mount();
+
+        if ($status = request()->query('status')) {
+            $this->tableFilters ??= [];
+            $this->tableFilters['status'] = ['value' => $status];
+        }
+
+        if (request()->boolean('has_occupants')) {
+            $this->tableFilters ??= [];
+            $this->tableFilters['has_occupants'] = ['enabled' => true];
+        }
+    }
+
     protected function getHeaderActions(): array
     {
         return [

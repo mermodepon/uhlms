@@ -75,7 +75,7 @@ class AdminPanelProvider extends PanelProvider
                     ->icon('heroicon-o-home-modern'),
                 NavigationGroup::make('Reports')
                     ->icon('heroicon-o-chart-bar'),
-                NavigationGroup::make('Configuration')
+                NavigationGroup::make('Administration')
                     ->icon('heroicon-o-cog-6-tooth')
                     ->collapsed(),
             ])

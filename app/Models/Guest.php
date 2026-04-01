@@ -18,6 +18,8 @@ class Guest extends Model
         'age',
         'gender',
         'contact_number',
+        'id_type',
+        'id_number',
         'notes',
     ];
 

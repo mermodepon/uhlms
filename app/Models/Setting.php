@@ -10,39 +10,37 @@ class Setting extends Model
     protected $fillable = ['key', 'value'];
 
     /**
-     * Cache TTL in seconds (1 hour). Settings rarely change.
+     * Cache TTL in seconds (1 hour).
      */
-    private const CACHE_TTL = 3600;
+    const CACHE_TTL = 3600;
 
     /**
-     * Get a setting value with caching to avoid repeated DB queries.
+     * Get a setting value by key, with optional default.
      */
-    public static function get(string $key, $default = null)
+    public static function get(string $key, mixed $default = null): mixed
     {
-        return Cache::remember("setting.{$key}", self::CACHE_TTL, function () use ($key, $default) {
-            $setting = self::where('key', $key)->first();
-            return $setting?->value ?? $default;
+        return Cache::remember("setting_{$key}", self::CACHE_TTL, function () use ($key, $default) {
+            $setting = static::where('key', $key)->first();
+
+            return $setting ? $setting->value : $default;
         });
     }
 
     /**
-     * Set a setting value and bust the cache.
+     * Set (upsert) a setting value by key and flush its cache.
      */
-    public static function set(string $key, $value): void
+    public static function set(string $key, mixed $value): void
     {
-        self::updateOrCreate(
-            ['key' => $key],
-            ['value' => $value]
-        );
-
-        Cache::forget("setting.{$key}");
+        static::updateOrCreate(['key' => $key], ['value' => $value]);
+        Cache::forget("setting_{$key}");
     }
 
     /**
-     * Clear all setting caches (useful after bulk updates).
+     * Flush the cache for every setting key stored in the table.
      */
-    public static function clearCache(): void
+    public static function clearAllCaches(): void
     {
-        self::pluck('key')->each(fn ($key) => Cache::forget("setting.{$key}"));
+        static::all()->each(fn ($s) => Cache::forget("setting_{$s->key}"));
     }
+
 }

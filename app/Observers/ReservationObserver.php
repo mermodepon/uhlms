@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\Notification;
 use App\Models\Reservation;
+use App\Models\ReservationLog;
 use App\Models\RoomAssignment;
 use App\Models\User;
 use App\Notifications\NotificationHelper;
@@ -15,6 +16,12 @@ class ReservationObserver
     public function created(Reservation $reservation): void
     {
         $this->clearReservationCalendarCache($reservation);
+
+        ReservationLog::record(
+            $reservation,
+            'reservation_created',
+            "Reservation #{$reservation->reference_number} created for {$reservation->guest_name}."
+        );
 
         // Notify all admins/staff of new reservation
         NotificationHelper::notifyAllStaff(
@@ -61,9 +68,37 @@ class ReservationObserver
                         'checked_out_by' => auth()->id(),
                         'remarks' => 'Auto-closed: reservation status changed to ' . $newStatus,
                     ]);
-                    // Note: When assignment is updated with checked_out_at, the RoomAssignmentObserver
-                    // will automatically free the bed and update the room status via BedObserver
+                    // Note: RoomAssignmentObserver will automatically update the room status
                 }
+            }
+
+            // Log meaningful status transitions
+            $logEvent = match (true) {
+                $oldStatus === 'pending'         && $newStatus === 'approved'    => 'reservation_approved',
+                $newStatus === 'declined'                                        => 'reservation_declined',
+                $newStatus === 'cancelled'                                       => 'reservation_cancelled',
+                $oldStatus === 'checked_in'      && $newStatus === 'checked_out' => 'reservation_checked_out',
+                $oldStatus === 'pending_payment' && $newStatus === 'approved'    => 'checkin_hold_released',
+                default                                                          => null,
+            };
+
+            if ($logEvent) {
+                $description = match ($logEvent) {
+                    'reservation_approved'    => "Reservation #{$reservation->reference_number} approved.",
+                    'reservation_declined'    => "Reservation #{$reservation->reference_number} declined.",
+                    'reservation_cancelled'   => "Reservation #{$reservation->reference_number} cancelled."
+                        . ($reservation->admin_notes ? " Reason: {$reservation->admin_notes}" : ''),
+                    'reservation_checked_out' => "Reservation #{$reservation->reference_number} checked out.",
+                    'checkin_hold_released'   => "Payment hold released. Reservation #{$reservation->reference_number} returned to approved.",
+                    default                   => "Status changed from {$oldStatus} to {$newStatus}.",
+                };
+
+                ReservationLog::record(
+                    $reservation,
+                    $logEvent,
+                    $description,
+                    ['from' => $oldStatus, 'to' => $newStatus]
+                );
             }
 
             // Notify all admins of status change
@@ -78,19 +113,27 @@ class ReservationObserver
         }
     }
 
+    public function deleting(Reservation $reservation): void
+    {
+        // Capture room IDs *before* the DB cascade removes the assignments.
+        // We need these in deleted() to recalculate statuses after the cascade.
+        $reservation->_affectedRoomIds = RoomAssignment::where('reservation_id', $reservation->id)
+            ->pluck('room_id')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     public function deleted(Reservation $reservation): void
     {
         $this->clearReservationCalendarCache($reservation);
 
-        // Close any open assignments when reservation is deleted
-        RoomAssignment::where('reservation_id', $reservation->id)
-            ->whereNotNull('checked_in_at')
-            ->whereNull('checked_out_at')
-            ->update([
-                'checked_out_at' => now(),
-                'checked_out_by' => auth()->id(),
-                'remarks' => 'Auto-closed: reservation was deleted',
-            ]);
+        // After the cascade has removed the room_assignments, recalculate the
+        // status of every room that was used by this reservation.
+        foreach ($reservation->_affectedRoomIds ?? [] as $roomId) {
+            $room = \App\Models\Room::with('roomType')->find($roomId);
+            $room?->recalculateStatus();
+        }
 
         NotificationHelper::notifyAllStaff(
             'Reservation Deleted',
