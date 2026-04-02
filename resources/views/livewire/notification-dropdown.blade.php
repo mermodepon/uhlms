@@ -1,4 +1,4 @@
-<div class="relative" wire:poll.5s="checkForNewNotifications">
+<div class="relative" wire:poll.30s.visible="checkForNewNotifications">
     <!-- Dropdown Toggle Button -->
     <button 
         wire:click="toggleDropdown"

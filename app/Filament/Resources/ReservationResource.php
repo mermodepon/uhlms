@@ -1526,6 +1526,7 @@ class ReservationResource extends Resource
     public static function getRelations(): array
     {
         return [
+            ReservationResource\RelationManagers\GuestsRelationManager::class,
             ReservationResource\RelationManagers\RoomAssignmentsRelationManager::class,
             ReservationResource\RelationManagers\StayLogsRelationManager::class,
         ];
