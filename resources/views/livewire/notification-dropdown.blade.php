@@ -89,8 +89,8 @@
             </div>
 
             <!-- Footer -->
-            <div class="p-4 border-t border-gray-200 text-center bg-gray-50">
-                <a href="/admin/notifications" class="text-orange-600 hover:text-orange-700 text-sm font-semibold inline-flex items-center gap-1">
+            <div class="p-3 border-t border-gray-200 text-center bg-gray-50">
+                <a href="/admin/notifications" class="inline-flex items-center justify-center gap-1 w-full px-4 py-2 text-sm font-semibold rounded-lg transition shadow-sm" style="color: #FFFFFF !important; background-color: #00491E !important;">
                     View all notifications
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>

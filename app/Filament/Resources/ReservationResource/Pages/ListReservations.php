@@ -6,11 +6,18 @@ use App\Filament\Resources\ReservationResource;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 
+use Filament\Support\Enums\MaxWidth;
+
 class ListReservations extends ListRecords
 {
     protected static string $resource = ReservationResource::class;
 
     protected static ?string $pollingInterval = null;
+
+    public function getMaxContentWidth(): MaxWidth
+    {
+        return MaxWidth::Full;
+    }
 
     public function mount(): void
     {

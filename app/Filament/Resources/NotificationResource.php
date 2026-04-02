@@ -48,6 +48,9 @@ class NotificationResource extends Resource
                             ->disabled(),
                         Forms\Components\Toggle::make('is_read')
                             ->label('Read'),
+                        Forms\Components\DateTimePicker::make('created_at')
+                            ->label('Date & Time')
+                            ->disabled(),
                     ]),
             ]);
     }
@@ -109,7 +112,6 @@ class NotificationResource extends Resource
                     ->label('Read Status'),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make()
                     ->successNotificationTitle('Notification deleted'),
             ])
@@ -133,7 +135,6 @@ class NotificationResource extends Resource
         return [
             'index' => Pages\ListNotifications::route('/'),
             'view' => Pages\ViewNotification::route('/{record}'),
-            'edit' => Pages\EditNotification::route('/{record}/edit'),
         ];
     }
 
