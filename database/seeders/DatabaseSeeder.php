@@ -24,6 +24,27 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // ─── Truncate all tables for clean reseed ─────────────────────────
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        DB::table('check_in_snapshots')->truncate();
+        DB::table('reservation_payments')->truncate();
+        DB::table('reservation_charges')->truncate();
+        DB::table('room_assignments')->truncate();
+        DB::table('guests')->truncate();
+        DB::table('reservation_logs')->truncate();
+        DB::table('notifications')->truncate();
+        DB::table('reservations')->truncate();
+        DB::table('rooms')->truncate();
+        DB::table('floors')->truncate();
+        DB::table('amenity_room_type')->truncate();
+        DB::table('room_types')->truncate();
+        DB::table('services')->truncate();
+        DB::table('amenities')->truncate();
+        DB::table('settings')->truncate();
+        DB::table('users')->truncate();
+        DB::table('reservation_sequences')->truncate();
+        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
         // ─── Users ────────────────────────────────────────────────────────
         $superAdmin = User::create([
             'name' => 'Super Admin',
@@ -1414,7 +1435,7 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // ═══════════════════════════════════════════════════════════════════
-        // ─── Bulk Reservations (16 – 115) ────────────────────────────────
+        // ─── Bulk Reservations (16 – 100) ────────────────────────────────
         // ═══════════════════════════════════════════════════════════════════
 
         $staffPool = [$staff1, $staff2, $staff3, $admin];
@@ -1433,6 +1454,68 @@ class DatabaseSeeder extends Seeder
             $family->id => [$rooms[14], $rooms[15]],
             $dormitory->id => [$rooms[5]], // skip $rooms[6]=107 (inactive)
         ];
+
+        // Room capacity lookup
+        $roomCapacityMap = [];
+        foreach ($rooms as $r) {
+            $roomCapacityMap[$r->id] = $r->capacity;
+        }
+        $dormRoomIds = [$rooms[5]->id, $rooms[6]->id];
+
+        // Track room schedules: roomId => [ ['in' => Carbon, 'out' => Carbon, 'occupants' => int], ... ]
+        // Seed with manual reservation assignments
+        $roomSchedule = [];
+        $roomSchedule[$rooms[7]->id][] = ['in' => Carbon::today()->subDays(7), 'out' => Carbon::today()->subDays(4), 'occupants' => 1];    // res1  – Room 201
+        $roomSchedule[$rooms[12]->id][] = ['in' => Carbon::today()->subDays(2), 'out' => Carbon::today()->addDays(3), 'occupants' => 2];   // res2  – Room 301
+        $roomSchedule[$rooms[0]->id][] = ['in' => Carbon::today()->subDay(), 'out' => Carbon::today()->addDays(2), 'occupants' => 1];       // res3  – Room 101
+        $roomSchedule[$rooms[14]->id][] = ['in' => Carbon::today()->subDay(), 'out' => Carbon::today()->addDays(4), 'occupants' => 3];      // res4  – Room 303
+        $roomSchedule[$rooms[5]->id][] = ['in' => Carbon::today()->subDays(5), 'out' => Carbon::today()->subDays(3), 'occupants' => 4];     // res5  – Room 106
+        $roomSchedule[$rooms[3]->id][] = ['in' => Carbon::today()->subDays(10), 'out' => Carbon::today()->subDays(8), 'occupants' => 1];    // res13 – Room 104
+        $roomSchedule[$rooms[8]->id][] = ['in' => Carbon::today(), 'out' => Carbon::today()->addDays(2), 'occupants' => 1];                  // res15 – Room 202
+
+        // Helper: check if a room can accommodate occupants for a date range
+        $canAssignRoom = function ($roomId, Carbon $checkIn, Carbon $checkOut, int $occupants) use (&$roomSchedule, $roomCapacityMap, $dormRoomIds) {
+            $capacity = $roomCapacityMap[$roomId] ?? 0;
+            if ($occupants > $capacity) {
+                return false;
+            }
+
+            $isDorm = in_array($roomId, $dormRoomIds);
+            $bookings = $roomSchedule[$roomId] ?? [];
+
+            if (! $isDorm) {
+                // Private room: no overlapping reservations allowed
+                foreach ($bookings as $booking) {
+                    if ($checkIn->lt($booking['out']) && $booking['in']->lt($checkOut)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            // Dorm room: check max concurrent occupants on any day in range
+            $day = $checkIn->copy();
+            while ($day->lt($checkOut)) {
+                $totalOccupants = $occupants;
+                foreach ($bookings as $booking) {
+                    if ($day->gte($booking['in']) && $day->lt($booking['out'])) {
+                        $totalOccupants += $booking['occupants'];
+                    }
+                }
+                if ($totalOccupants > $capacity) {
+                    return false;
+                }
+                $day->addDay();
+            }
+
+            return true;
+        };
+
+        // Helper: record a room assignment in the schedule
+        $recordRoomBooking = function ($roomId, Carbon $checkIn, Carbon $checkOut, int $occupants) use (&$roomSchedule) {
+            $roomSchedule[$roomId][] = ['in' => $checkIn->copy(), 'out' => $checkOut->copy(), 'occupants' => $occupants];
+        };
 
         $filipinoLastNames = [
             'Reyes', 'Cruz', 'Bautista', 'Ocampo', 'Mendoza', 'Garcia', 'Torres',
@@ -1474,13 +1557,16 @@ class DatabaseSeeder extends Seeder
         ];
         $nationalities = ['Filipino', 'Filipino', 'Filipino', 'Filipino', 'Filipino', 'Filipino', 'Filipino', 'Filipino', 'American', 'Korean', 'Japanese', 'Chinese', 'Australian'];
         $paymentModes = ['Cash', 'Card', 'Bank Transfer', 'GCash'];
+        $specialRequestPool = [
+            'Need extra pillows', 'Late checkout requested', 'Quiet room preferred',
+            'Ground floor preferred', 'Near elevator please', 'Extra towels needed',
+            'Attending university conference', 'Student group from CMU',
+            'Require accessible room', 'Celebrating anniversary',
+            'Will arrive late evening', 'Need parking space',
+            'Attending university seminar', 'Faculty training workshop',
+        ];
 
-        $statuses = ['pending', 'approved', 'pending_payment', 'declined', 'cancelled', 'checked_in', 'checked_out'];
-
-        $seqNum = 15;
-
-        for ($i = 16; $i <= 115; $i++) {
-            $seqNum++;
+        for ($i = 16; $i <= 100; $i++) {
             $refNum = '2026-'.str_pad($i, 4, '0', STR_PAD_LEFT);
 
             // Weighted status distribution for realistic data
@@ -1519,7 +1605,7 @@ class DatabaseSeeder extends Seeder
             $rate = $roomTypeRates[$roomType->id];
             $isDorm = $roomType->id === $dormitory->id;
 
-            // Occupancy
+            // Occupancy – capped to room capacity
             if ($isDorm) {
                 $numOccupants = rand(2, 6);
             } elseif ($roomType->id === $family->id) {
@@ -1532,7 +1618,7 @@ class DatabaseSeeder extends Seeder
             $numMale = $isMale ? rand(1, $numOccupants) : rand(0, max(0, $numOccupants - 1));
             $numFemale = $numOccupants - $numMale;
 
-            // Date logic – spread across past and future to create overlapping days
+            // Date logic – spread across past and future
             if (in_array($status, ['checked_out'])) {
                 $checkInOffset = rand(-60, -3);
                 $nights = rand(1, 5);
@@ -1601,6 +1687,27 @@ class DatabaseSeeder extends Seeder
             $discountAmount = ($roomCharge * $discountPercent) / 100;
             $totalDue = $roomCharge - $discountAmount;
 
+            // Addon chance
+            $addonTotal = 0;
+            $addonCode = null;
+            $addonName = null;
+            $addonPrice = 0;
+            if (rand(1, 5) === 1 && in_array($status, ['checked_in', 'checked_out'])) {
+                $addonOptions = [
+                    ['code' => 'extra_bed', 'name' => 'Extra Bed', 'price' => 200.00],
+                    ['code' => 'iron_rental', 'name' => 'Iron Rental', 'price' => 50.00],
+                    ['code' => 'early_checkin', 'name' => 'Early Check-in', 'price' => 300.00],
+                    ['code' => 'late_checkout', 'name' => 'Late Check-out', 'price' => 300.00],
+                    ['code' => 'hair_dryer', 'name' => 'Hair Dryer', 'price' => 30.00],
+                ];
+                $picked = $addonOptions[array_rand($addonOptions)];
+                $addonCode = $picked['code'];
+                $addonName = $picked['name'];
+                $addonPrice = $picked['price'];
+                $addonTotal = $addonPrice;
+                $totalDue += $addonTotal;
+            }
+
             // Payment amounts based on status
             $paymentAmount = 0;
             $balanceDue = 0;
@@ -1631,15 +1738,26 @@ class DatabaseSeeder extends Seeder
 
             $specialRequests = null;
             if (rand(1, 4) === 1) {
-                $requests = [
-                    'Need extra pillows', 'Late checkout requested', 'Quiet room preferred',
-                    'Ground floor preferred', 'Near elevator please', 'Extra towels needed',
-                    'Attending university conference', 'Student group from CMU',
-                    'Require accessible room', 'Celebrating anniversary',
-                    'Will arrive late evening', 'Need parking space',
-                    'Vegetarian meals requested', 'Connecting rooms if possible',
+                $specialRequests = $specialRequestPool[array_rand($specialRequestPool)];
+            }
+
+            $adminNotes = null;
+            if ($status === 'declined') {
+                $declineReasons = [
+                    'No rooms available for requested dates.',
+                    'Requested room type fully booked.',
+                    'Duplicate reservation detected.',
+                    'Incomplete guest information provided.',
                 ];
-                $specialRequests = $requests[array_rand($requests)];
+                $adminNotes = $declineReasons[array_rand($declineReasons)];
+            } elseif ($status === 'cancelled') {
+                $cancelReasons = [
+                    'Guest cancelled due to change of plans.',
+                    'Event postponed – guest no longer needs accommodation.',
+                    'Guest found alternative lodging.',
+                    'Travel plans cancelled.',
+                ];
+                $adminNotes = $cancelReasons[array_rand($cancelReasons)];
             }
 
             $res = Reservation::create([
@@ -1661,15 +1779,18 @@ class DatabaseSeeder extends Seeder
                 'purpose' => $purpose,
                 'special_requests' => $specialRequests,
                 'status' => $status,
+                'admin_notes' => $adminNotes,
                 'reviewed_by' => $reviewedBy,
                 'reviewed_at' => $reviewedAt,
-                'addons_total' => 0,
+                'addons_total' => $addonTotal,
                 'payments_total' => $paymentAmount,
                 'balance_due' => $balanceDue,
                 'payment_status' => $paymentStatus,
             ]);
 
             // Create primary guest
+            $idType = $idTypes[array_rand($idTypes)];
+            $idNumber = 'ID-2026-'.str_pad($i, 4, '0', STR_PAD_LEFT);
             $guest = Guest::create([
                 'reservation_id' => $res->id,
                 'full_name' => "{$firstName} {$middleInit} {$lastName}",
@@ -1680,8 +1801,8 @@ class DatabaseSeeder extends Seeder
                 'age' => $age,
                 'gender' => $gender,
                 'contact_number' => $phone,
-                'id_type' => $idTypes[array_rand($idTypes)],
-                'id_number' => 'ID-2026-'.str_pad($i, 4, '0', STR_PAD_LEFT),
+                'id_type' => $idType,
+                'id_number' => $idNumber,
             ]);
 
             // Add companion guests for multi-occupancy
@@ -1704,10 +1825,29 @@ class DatabaseSeeder extends Seeder
 
             $res->update(['billing_guest_id' => $guest->id]);
 
-            // For checked_in / checked_out – create full records
+            // For checked_in / checked_out – create full records with capacity-aware room assignment
             if (in_array($status, ['checked_in', 'checked_out'])) {
                 $availableRooms = $roomsByType[$roomType->id] ?? [];
-                $room = $availableRooms[array_rand($availableRooms)];
+
+                // Find a room that can accommodate this reservation without exceeding capacity
+                $assignedRoom = null;
+                $shuffledRooms = $availableRooms;
+                shuffle($shuffledRooms);
+                foreach ($shuffledRooms as $candidateRoom) {
+                    if ($canAssignRoom($candidateRoom->id, $checkIn, $checkOut, $numOccupants)) {
+                        $assignedRoom = $candidateRoom;
+                        break;
+                    }
+                }
+
+                // If no room is available, skip room assignment for this reservation
+                if (! $assignedRoom) {
+                    continue;
+                }
+
+                // Record the booking in the schedule
+                $recordRoomBooking($assignedRoom->id, $checkIn, $checkOut, $numOccupants);
+
                 $assigner = $staffPool[array_rand($staffPool)];
                 $nationality = $nationalities[array_rand($nationalities)];
                 $payMode = $paymentModes[array_rand($paymentModes)];
@@ -1726,7 +1866,7 @@ class DatabaseSeeder extends Seeder
                 RoomAssignment::create([
                     'reservation_id' => $res->id,
                     'guest_id' => $guest->id,
-                    'room_id' => $room->id,
+                    'room_id' => $assignedRoom->id,
                     'assigned_by' => $assigner->id,
                     'assigned_at' => $checkIn->copy()->subDay(),
                     'checked_in_at' => $checkedInAt,
@@ -1741,8 +1881,8 @@ class DatabaseSeeder extends Seeder
                     'guest_age' => $age,
                     'guest_full_address' => $address,
                     'guest_contact_number' => $phone,
-                    'id_type' => $guest->id_type,
-                    'id_number' => $guest->id_number,
+                    'id_type' => $idType,
+                    'id_number' => $idNumber,
                     'is_student' => $isStudent,
                     'is_senior_citizen' => $isSenior,
                     'is_pwd' => $isPwd,
@@ -1756,7 +1896,7 @@ class DatabaseSeeder extends Seeder
                     'payment_amount' => $paymentAmount,
                     'payment_or_number' => $orNumber,
                     'or_date' => $orDate,
-                    'remarks' => "Bulk seeded reservation #{$i}.",
+                    'remarks' => "Reservation #{$i}.",
                 ]);
 
                 // Room rate charge
@@ -1771,6 +1911,22 @@ class DatabaseSeeder extends Seeder
                     'amount' => $roomCharge,
                     'created_by' => $assigner->id,
                 ]);
+
+                // Addon charge
+                if ($addonTotal > 0) {
+                    ReservationCharge::create([
+                        'reservation_id' => $res->id,
+                        'charge_type' => 'addon',
+                        'scope_type' => 'reservation',
+                        'scope_id' => $res->id,
+                        'description' => $addonName,
+                        'qty' => 1,
+                        'unit_price' => $addonPrice,
+                        'amount' => $addonPrice,
+                        'meta' => ['service_code' => $addonCode],
+                        'created_by' => $assigner->id,
+                    ]);
+                }
 
                 // Discount charge
                 if ($discountAmount > 0) {
@@ -1811,517 +1967,6 @@ class DatabaseSeeder extends Seeder
                 CheckInSnapshot::create([
                     'reservation_id' => $res->id,
                     'guest_id' => $guest->id,
-                    'id_type' => $guest->id_type,
-                    'id_number' => $guest->id_number,
-                    'nationality' => $nationality,
-                    'purpose_of_stay' => ucfirst($purpose),
-                    'detailed_checkin_datetime' => $checkedInAt,
-                    'detailed_checkout_datetime' => $checkedOutAt,
-                    'payment_mode' => $payMode,
-                    'payment_amount' => $paymentAmount,
-                    'payment_or_number' => $orNumber,
-                    'or_date' => $orDate,
-                    'additional_requests' => [],
-                    'remarks' => "Seeded reservation #{$i}",
-                    'captured_by' => $assigner->id,
-                    'captured_at' => $checkedInAt,
-                ]);
-            }
-        }
-
-        // ═══════════════════════════════════════════════════════════════════
-        // ─── Bulk Reservations Batch 2 (116 – 1000) ─────────────────────
-        //     Includes multi-room reservations by a single guest
-        // ═══════════════════════════════════════════════════════════════════
-
-        // All available room objects indexed by type for multi-room picks
-        $allRoomsByType = [
-            $standard->id => [$rooms[0], $rooms[1], $rooms[3], $rooms[4]], // skip 102 (maintenance)
-            $deluxe->id => [$rooms[7], $rooms[8], $rooms[9], $rooms[10], $rooms[11]],
-            $suite->id => [$rooms[12], $rooms[13]],
-            $family->id => [$rooms[14], $rooms[15]],
-            $dormitory->id => [$rooms[5]], // skip 107 (inactive)
-        ];
-
-        $specialRequestPool = [
-            'Need extra pillows', 'Late checkout requested', 'Quiet room preferred',
-            'Require accessible room', 'Will arrive late evening', 'Need parking space',
-            'Attending university seminar', 'Faculty training workshop',
-            'Visiting research fellow', 'Government delegation visit',
-            'Student orientation group', 'Alumni reunion event',
-            'Medical mission accommodations', 'Extension service team',
-            'Board exam reviewees', 'Internship placement group',
-        ];
-
-        for ($i = 116; $i <= 1000; $i++) {
-            $seqNum++;
-            $refNum = '2026-'.str_pad($i, 4, '0', STR_PAD_LEFT);
-
-            // Weighted status distribution
-            $statusRoll = rand(1, 100);
-            if ($statusRoll <= 25) {
-                $status = 'checked_out';
-            } elseif ($statusRoll <= 42) {
-                $status = 'checked_in';
-            } elseif ($statusRoll <= 55) {
-                $status = 'approved';
-            } elseif ($statusRoll <= 75) {
-                $status = 'pending';
-            } elseif ($statusRoll <= 82) {
-                $status = 'pending_payment';
-            } elseif ($statusRoll <= 91) {
-                $status = 'declined';
-            } else {
-                $status = 'cancelled';
-            }
-
-            $isMale = rand(0, 1) === 1;
-            $firstName = $isMale
-                ? $filipinoFirstNamesMale[array_rand($filipinoFirstNamesMale)]
-                : $filipinoFirstNamesFemale[array_rand($filipinoFirstNamesFemale)];
-            $lastName = $filipinoLastNames[array_rand($filipinoLastNames)];
-            $middleInit = $middleInitials[array_rand($middleInitials)];
-            $gender = $isMale ? 'Male' : 'Female';
-            $age = rand(18, 75);
-            $address = $addresses[array_rand($addresses)];
-            $purpose = $purposes[array_rand($purposes)];
-            $email = strtolower($firstName).'.'.strtolower(str_replace(' ', '', $lastName)).$i.'@email.com';
-            $phone = '09'.rand(10, 99).rand(1000000, 9999999);
-
-            // Decide if this is a multi-room reservation (~20% chance for checked_in/checked_out)
-            $isMultiRoom = in_array($status, ['checked_in', 'checked_out']) && rand(1, 5) === 1;
-
-            // Pick room type(s)
-            $roomType = $roomTypes[array_rand($roomTypes)];
-            $rate = $roomTypeRates[$roomType->id];
-            $isDorm = $roomType->id === $dormitory->id;
-
-            // For multi-room: pick a 2nd room type (can be same or different)
-            $roomType2 = null;
-            $rate2 = 0;
-            $isDorm2 = false;
-            if ($isMultiRoom) {
-                // Pick from non-dorm types for 2nd room to keep it realistic
-                $nonDormTypes = [$standard, $deluxe, $suite, $family];
-                $roomType2 = $nonDormTypes[array_rand($nonDormTypes)];
-                $rate2 = $roomTypeRates[$roomType2->id];
-                $isDorm2 = false;
-            }
-
-            // Occupancy
-            if ($isDorm) {
-                $numOccupants = rand(2, 7);
-            } elseif ($roomType->id === $family->id || $isMultiRoom) {
-                $numOccupants = rand(3, 6);
-            } elseif ($roomType->id === $suite->id) {
-                $numOccupants = rand(1, 3);
-            } else {
-                $numOccupants = rand(1, 2);
-            }
-            $numMale = $isMale ? rand(1, $numOccupants) : rand(0, max(0, $numOccupants - 1));
-            $numFemale = $numOccupants - $numMale;
-
-            // Date logic
-            if ($status === 'checked_out') {
-                $checkInOffset = rand(-90, -2);
-                $nights = rand(1, 7);
-                $checkIn = Carbon::today()->addDays($checkInOffset);
-                $checkOut = $checkIn->copy()->addDays($nights);
-                if ($checkOut->gt(Carbon::today())) {
-                    $checkOut = Carbon::today()->subDay();
-                    $nights = max(1, $checkIn->diffInDays($checkOut));
-                }
-            } elseif ($status === 'checked_in') {
-                $checkInOffset = rand(-4, 0);
-                $nights = rand(1, 8);
-                $checkIn = Carbon::today()->addDays($checkInOffset);
-                $checkOut = $checkIn->copy()->addDays($nights);
-                if ($checkOut->lte(Carbon::today())) {
-                    $checkOut = Carbon::today()->addDays(rand(1, 4));
-                    $nights = max(1, $checkIn->diffInDays($checkOut));
-                }
-            } elseif (in_array($status, ['approved', 'pending_payment'])) {
-                $checkInOffset = rand(0, 40);
-                $nights = rand(1, 5);
-                $checkIn = Carbon::today()->addDays($checkInOffset);
-                $checkOut = $checkIn->copy()->addDays($nights);
-            } elseif ($status === 'pending') {
-                $checkInOffset = rand(1, 60);
-                $nights = rand(1, 7);
-                $checkIn = Carbon::today()->addDays($checkInOffset);
-                $checkOut = $checkIn->copy()->addDays($nights);
-            } else {
-                $checkInOffset = rand(-15, 25);
-                $nights = rand(1, 4);
-                $checkIn = Carbon::today()->addDays($checkInOffset);
-                $checkOut = $checkIn->copy()->addDays($nights);
-            }
-
-            // Discount logic
-            $isStudent = ($age <= 25 && rand(1, 3) === 1);
-            $isSenior = ($age >= 60 && rand(1, 2) === 1);
-            $isPwd = (rand(1, 10) === 1);
-            $discountTypes = [];
-            $discountPercent = 0;
-            if ($isStudent) {
-                $discountTypes[] = 'Student (10%)';
-                $discountPercent += 10;
-            }
-            if ($isSenior) {
-                $discountTypes[] = 'Senior Citizen (20%)';
-                $discountPercent += 20;
-            }
-            if ($isPwd) {
-                $discountTypes[] = 'PWD (20%)';
-                $discountPercent += 20;
-            }
-            $discountPercent = min($discountPercent, 100);
-
-            // Compute charges for room 1
-            if ($isDorm) {
-                $roomCharge = $rate * $numOccupants * $nights;
-                $chargeDesc = "Dormitory – {$numOccupants} persons × {$nights} night(s) × ₱".number_format($rate, 2);
-                $chargeQty = $numOccupants * $nights;
-            } else {
-                $roomCharge = $rate * $nights;
-                $chargeDesc = "{$roomType->name} – {$nights} night(s) × ₱".number_format($rate, 2);
-                $chargeQty = $nights;
-            }
-
-            // Compute charges for room 2 (if multi-room)
-            $roomCharge2 = 0;
-            $chargeDesc2 = '';
-            $chargeQty2 = 0;
-            if ($isMultiRoom && $roomType2) {
-                $roomCharge2 = $rate2 * $nights;
-                $chargeDesc2 = "{$roomType2->name} – {$nights} night(s) × ₱".number_format($rate2, 2);
-                $chargeQty2 = $nights;
-            }
-
-            $totalRoomCharge = $roomCharge + $roomCharge2;
-            $discountAmount = ($totalRoomCharge * $discountPercent) / 100;
-            $totalDue = $totalRoomCharge - $discountAmount;
-
-            // Addon chance
-            $addonTotal = 0;
-            $addonCode = null;
-            $addonName = null;
-            $addonPrice = 0;
-            if (rand(1, 5) === 1 && in_array($status, ['checked_in', 'checked_out'])) {
-                $addonOptions = [
-                    ['code' => 'extra_bed', 'name' => 'Extra Bed', 'price' => 200.00],
-                    ['code' => 'iron_rental', 'name' => 'Iron Rental', 'price' => 50.00],
-                    ['code' => 'early_checkin', 'name' => 'Early Check-in', 'price' => 300.00],
-                    ['code' => 'late_checkout', 'name' => 'Late Check-out', 'price' => 300.00],
-                    ['code' => 'hair_dryer', 'name' => 'Hair Dryer', 'price' => 30.00],
-                ];
-                $picked = $addonOptions[array_rand($addonOptions)];
-                $addonCode = $picked['code'];
-                $addonName = $picked['name'];
-                $addonPrice = $picked['price'];
-                $addonTotal = $addonPrice;
-                $totalDue += $addonTotal;
-            }
-
-            // Payment amounts
-            $paymentAmount = 0;
-            $balanceDue = 0;
-            $paymentStatus = 'unpaid';
-            if ($status === 'checked_out') {
-                $paymentAmount = $totalDue;
-                $balanceDue = 0;
-                $paymentStatus = 'paid';
-            } elseif ($status === 'checked_in') {
-                if (rand(1, 4) === 1) {
-                    $paymentAmount = round($totalDue * rand(30, 70) / 100, 2);
-                    $balanceDue = round($totalDue - $paymentAmount, 2);
-                    $paymentStatus = 'partially_paid';
-                } else {
-                    $paymentAmount = $totalDue;
-                    $balanceDue = 0;
-                    $paymentStatus = 'paid';
-                }
-            }
-
-            $reviewedBy = null;
-            $reviewedAt = null;
-            if (in_array($status, ['approved', 'checked_in', 'checked_out', 'declined', 'cancelled', 'pending_payment'])) {
-                $reviewer = $staffPool[array_rand($staffPool)];
-                $reviewedBy = $reviewer->id;
-                $reviewedAt = $checkIn->copy()->subDays(rand(1, 5));
-            }
-
-            $specialRequests = rand(1, 3) === 1 ? $specialRequestPool[array_rand($specialRequestPool)] : null;
-            $adminNotes = null;
-            if ($status === 'declined') {
-                $declineReasons = [
-                    'No rooms available for requested dates.',
-                    'Requested room type fully booked.',
-                    'Duplicate reservation detected.',
-                    'Incomplete guest information provided.',
-                ];
-                $adminNotes = $declineReasons[array_rand($declineReasons)];
-            } elseif ($status === 'cancelled') {
-                $cancelReasons = [
-                    'Guest cancelled due to change of plans.',
-                    'Event postponed – guest no longer needs accommodation.',
-                    'Guest found alternative lodging.',
-                    'Travel plans cancelled.',
-                ];
-                $adminNotes = $cancelReasons[array_rand($cancelReasons)];
-            } elseif ($isMultiRoom) {
-                $adminNotes = 'Multi-room reservation – group booking.';
-            }
-
-            $res = Reservation::create([
-                'reference_number' => $refNum,
-                'guest_last_name' => $lastName,
-                'guest_first_name' => $firstName,
-                'guest_middle_initial' => $middleInit,
-                'guest_email' => $email,
-                'guest_phone' => $phone,
-                'guest_address' => $address,
-                'guest_gender' => $gender,
-                'guest_age' => $age,
-                'num_male_guests' => $numMale,
-                'num_female_guests' => $numFemale,
-                'preferred_room_type_id' => $roomType->id,
-                'check_in_date' => $checkIn,
-                'check_out_date' => $checkOut,
-                'number_of_occupants' => $numOccupants,
-                'purpose' => $purpose,
-                'special_requests' => $specialRequests,
-                'status' => $status,
-                'admin_notes' => $adminNotes,
-                'reviewed_by' => $reviewedBy,
-                'reviewed_at' => $reviewedAt,
-                'addons_total' => $addonTotal,
-                'payments_total' => $paymentAmount,
-                'balance_due' => $balanceDue,
-                'payment_status' => $paymentStatus,
-            ]);
-
-            // Primary guest
-            $idType = $idTypes[array_rand($idTypes)];
-            $idNumber = 'ID-2026-'.str_pad($i, 4, '0', STR_PAD_LEFT);
-            $guest = Guest::create([
-                'reservation_id' => $res->id,
-                'full_name' => "{$firstName} {$middleInit} {$lastName}",
-                'first_name' => $firstName,
-                'last_name' => $lastName,
-                'middle_initial' => $middleInit,
-                'relationship_to_primary' => 'self',
-                'age' => $age,
-                'gender' => $gender,
-                'contact_number' => $phone,
-                'id_type' => $idType,
-                'id_number' => $idNumber,
-            ]);
-
-            // Companion guests
-            $companionGuests = [];
-            for ($g = 2; $g <= $numOccupants; $g++) {
-                $compMale = rand(0, 1) === 1;
-                $compFirst = $compMale
-                    ? $filipinoFirstNamesMale[array_rand($filipinoFirstNamesMale)]
-                    : $filipinoFirstNamesFemale[array_rand($filipinoFirstNamesFemale)];
-                $relationships = ['Spouse', 'Sibling', 'Child', 'Colleague', 'Friend', 'Relative'];
-                $compGuest = Guest::create([
-                    'reservation_id' => $res->id,
-                    'full_name' => "{$compFirst} {$lastName}",
-                    'first_name' => $compFirst,
-                    'last_name' => $lastName,
-                    'relationship_to_primary' => $relationships[array_rand($relationships)],
-                    'age' => rand(10, 70),
-                    'gender' => $compMale ? 'Male' : 'Female',
-                ]);
-                $companionGuests[] = $compGuest;
-            }
-
-            $res->update(['billing_guest_id' => $guest->id]);
-
-            // Full records for checked_in / checked_out
-            if (in_array($status, ['checked_in', 'checked_out'])) {
-                $availableRooms1 = $allRoomsByType[$roomType->id] ?? [];
-                $room = $availableRooms1[array_rand($availableRooms1)];
-                $assigner = $staffPool[array_rand($staffPool)];
-                $nationality = $nationalities[array_rand($nationalities)];
-                $payMode = $paymentModes[array_rand($paymentModes)];
-                $orNumber = 'OR-2026-'.str_pad($i, 4, '0', STR_PAD_LEFT);
-                $orDate = $checkIn->toDateString();
-
-                $checkedInAt = $checkIn->copy()->setTime(rand(8, 17), rand(0, 59));
-                $checkedOutAt = null;
-                $assignmentStatus = 'checked_in';
-                if ($status === 'checked_out') {
-                    $checkedOutAt = $checkOut->copy()->setTime(rand(8, 12), rand(0, 59));
-                    $assignmentStatus = 'checked_out';
-                }
-
-                // Room 1 assignment
-                RoomAssignment::create([
-                    'reservation_id' => $res->id,
-                    'guest_id' => $guest->id,
-                    'room_id' => $room->id,
-                    'assigned_by' => $assigner->id,
-                    'assigned_at' => $checkIn->copy()->subDay(),
-                    'checked_in_at' => $checkedInAt,
-                    'checked_in_by' => $assigner->id,
-                    'checked_out_at' => $checkedOutAt,
-                    'checked_out_by' => $checkedOutAt ? $staffPool[array_rand($staffPool)]->id : null,
-                    'status' => $assignmentStatus,
-                    'guest_last_name' => $lastName,
-                    'guest_first_name' => $firstName,
-                    'guest_middle_initial' => $middleInit,
-                    'guest_gender' => $gender,
-                    'guest_age' => $age,
-                    'guest_full_address' => $address,
-                    'guest_contact_number' => $phone,
-                    'id_type' => $idType,
-                    'id_number' => $idNumber,
-                    'is_student' => $isStudent,
-                    'is_senior_citizen' => $isSenior,
-                    'is_pwd' => $isPwd,
-                    'nationality' => $nationality,
-                    'purpose_of_stay' => ucfirst($purpose),
-                    'num_male_guests' => $numMale,
-                    'num_female_guests' => $numFemale,
-                    'detailed_checkin_datetime' => $checkedInAt,
-                    'detailed_checkout_datetime' => $checkedOutAt,
-                    'payment_mode' => $payMode,
-                    'payment_amount' => $paymentAmount,
-                    'payment_or_number' => $orNumber,
-                    'or_date' => $orDate,
-                    'remarks' => $isMultiRoom ? "Multi-room reservation #{$i} – Room 1." : "Reservation #{$i}.",
-                ]);
-
-                // Room 2 assignment (multi-room)
-                if ($isMultiRoom && $roomType2) {
-                    $availableRooms2 = $allRoomsByType[$roomType2->id] ?? [];
-                    $room2 = $availableRooms2[array_rand($availableRooms2)];
-                    // Assign to a companion guest if available, otherwise primary
-                    $room2Guest = ! empty($companionGuests) ? $companionGuests[0] : $guest;
-
-                    RoomAssignment::create([
-                        'reservation_id' => $res->id,
-                        'guest_id' => $room2Guest->id,
-                        'room_id' => $room2->id,
-                        'assigned_by' => $assigner->id,
-                        'assigned_at' => $checkIn->copy()->subDay(),
-                        'checked_in_at' => $checkedInAt,
-                        'checked_in_by' => $assigner->id,
-                        'checked_out_at' => $checkedOutAt,
-                        'checked_out_by' => $checkedOutAt ? $staffPool[array_rand($staffPool)]->id : null,
-                        'status' => $assignmentStatus,
-                        'guest_last_name' => $room2Guest->last_name,
-                        'guest_first_name' => $room2Guest->first_name,
-                        'guest_middle_initial' => $room2Guest->middle_initial,
-                        'guest_gender' => $room2Guest->gender,
-                        'guest_age' => $room2Guest->age,
-                        'guest_full_address' => $address,
-                        'guest_contact_number' => $room2Guest->contact_number ?? $phone,
-                        'id_type' => $room2Guest->id_type ?? $idType,
-                        'id_number' => $room2Guest->id_number ?? $idNumber,
-                        'is_student' => $isStudent,
-                        'is_senior_citizen' => $isSenior,
-                        'is_pwd' => $isPwd,
-                        'nationality' => $nationality,
-                        'purpose_of_stay' => ucfirst($purpose),
-                        'num_male_guests' => $numMale,
-                        'num_female_guests' => $numFemale,
-                        'detailed_checkin_datetime' => $checkedInAt,
-                        'detailed_checkout_datetime' => $checkedOutAt,
-                        'payment_mode' => $payMode,
-                        'payment_amount' => 0,
-                        'payment_or_number' => $orNumber,
-                        'or_date' => $orDate,
-                        'remarks' => "Multi-room reservation #{$i} – Room 2.",
-                    ]);
-                }
-
-                // Room rate charge 1
-                ReservationCharge::create([
-                    'reservation_id' => $res->id,
-                    'charge_type' => 'room_rate',
-                    'scope_type' => 'reservation',
-                    'scope_id' => $res->id,
-                    'description' => $chargeDesc,
-                    'qty' => $chargeQty,
-                    'unit_price' => $rate,
-                    'amount' => $roomCharge,
-                    'created_by' => $assigner->id,
-                ]);
-
-                // Room rate charge 2 (multi-room)
-                if ($isMultiRoom && $roomCharge2 > 0) {
-                    ReservationCharge::create([
-                        'reservation_id' => $res->id,
-                        'charge_type' => 'room_rate',
-                        'scope_type' => 'reservation',
-                        'scope_id' => $res->id,
-                        'description' => $chargeDesc2,
-                        'qty' => $chargeQty2,
-                        'unit_price' => $rate2,
-                        'amount' => $roomCharge2,
-                        'created_by' => $assigner->id,
-                    ]);
-                }
-
-                // Addon charge
-                if ($addonTotal > 0) {
-                    ReservationCharge::create([
-                        'reservation_id' => $res->id,
-                        'charge_type' => 'addon',
-                        'scope_type' => 'reservation',
-                        'scope_id' => $res->id,
-                        'description' => $addonName,
-                        'qty' => 1,
-                        'unit_price' => $addonPrice,
-                        'amount' => $addonPrice,
-                        'meta' => ['service_code' => $addonCode],
-                        'created_by' => $assigner->id,
-                    ]);
-                }
-
-                // Discount charge
-                if ($discountAmount > 0) {
-                    ReservationCharge::create([
-                        'reservation_id' => $res->id,
-                        'charge_type' => 'discount',
-                        'scope_type' => 'reservation',
-                        'scope_id' => $res->id,
-                        'description' => 'Discount: '.implode(' + ', $discountTypes),
-                        'qty' => 1,
-                        'unit_price' => -$discountAmount,
-                        'amount' => -$discountAmount,
-                        'meta' => [
-                            'discount_types' => $discountTypes,
-                            'discount_percent' => $discountPercent,
-                            'subtotal_before_discount' => $totalRoomCharge,
-                        ],
-                        'created_by' => $assigner->id,
-                    ]);
-                }
-
-                // Payment record
-                if ($paymentAmount > 0) {
-                    ReservationPayment::create([
-                        'reservation_id' => $res->id,
-                        'amount' => $paymentAmount,
-                        'payment_mode' => $payMode,
-                        'reference_no' => $orNumber,
-                        'or_date' => $orDate,
-                        'status' => 'posted',
-                        'received_by' => $assigner->id,
-                        'received_at' => $checkedInAt,
-                        'remarks' => $paymentStatus === 'paid' ? 'Full payment' : 'Partial payment',
-                    ]);
-                }
-
-                // Check-in snapshot
-                CheckInSnapshot::create([
-                    'reservation_id' => $res->id,
-                    'guest_id' => $guest->id,
                     'id_type' => $idType,
                     'id_number' => $idNumber,
                     'nationality' => $nationality,
@@ -2333,7 +1978,7 @@ class DatabaseSeeder extends Seeder
                     'payment_or_number' => $orNumber,
                     'or_date' => $orDate,
                     'additional_requests' => $addonCode ? [$addonCode] : [],
-                    'remarks' => $isMultiRoom ? "Multi-room reservation #{$i}" : "Reservation #{$i}",
+                    'remarks' => "Reservation #{$i}",
                     'captured_by' => $assigner->id,
                     'captured_at' => $checkedInAt,
                 ]);
@@ -2343,7 +1988,7 @@ class DatabaseSeeder extends Seeder
         // ─── Reservation Sequence ────────────────────────────────────────
         DB::table('reservation_sequences')->updateOrInsert(
             ['year' => Carbon::today()->year],
-            ['last_sequence' => 1000],
+            ['last_sequence' => 100],
         );
     }
 }
