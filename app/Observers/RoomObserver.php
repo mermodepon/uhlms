@@ -14,8 +14,9 @@ class RoomObserver
             "Room {$room->room_number} ({$room->roomType->name}) has been added to the system.",
             'success',
             'room',
-            '/admin/rooms/'.$room->id,
-            auth()->id()
+            url('/admin/rooms?tableSearch='.urlencode($room->room_number)),
+            auth()->id(),
+            'rooms_view'
         );
     }
 
@@ -32,8 +33,9 @@ class RoomObserver
                 "Room {$room->room_number} status changed from {$oldStatus} to {$newStatus}.",
                 $this->getStatusNotificationType($newStatus),
                 'room',
-                '/admin/rooms/'.$room->id,
-                auth()->id()
+                url('/admin/rooms?tableSearch='.urlencode($room->room_number)),
+                auth()->id(),
+                'rooms_view'
             );
         }
 
@@ -46,8 +48,9 @@ class RoomObserver
                 "Room {$room->room_number} has been {$status}.",
                 $isActive ? 'success' : 'warning',
                 'room',
-                '/admin/rooms/'.$room->id,
-                auth()->id()
+                url('/admin/rooms?tableSearch='.urlencode($room->room_number)),
+                auth()->id(),
+                'rooms_view'
             );
         }
     }
@@ -60,7 +63,8 @@ class RoomObserver
             'danger',
             'room',
             null,
-            auth()->id()
+            auth()->id(),
+            'rooms_view'
         );
     }
 

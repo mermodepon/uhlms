@@ -2,9 +2,9 @@
 
 namespace Tests\Unit\Models;
 
-use App\Models\Notification;
 use App\Models\Reservation;
 use App\Models\User;
+use App\Notifications\FilamentDatabaseNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -191,24 +191,21 @@ class UserTest extends TestCase
     {
         $user = $this->createUser();
 
-        Notification::create([
-            'title' => 'Read',
-            'message' => 'msg',
-            'type' => 'info',
-            'notifiable_type' => User::class,
-            'notifiable_id' => $user->id,
-            'is_read' => true,
-        ]);
+        // Send a notification (will be unread by default)
+        $user->notify(new FilamentDatabaseNotification(
+            title: 'Unread',
+            body: 'msg',
+            type: 'info',
+        ));
 
-        Notification::create([
-            'title' => 'Unread',
-            'message' => 'msg',
-            'type' => 'info',
-            'notifiable_type' => User::class,
-            'notifiable_id' => $user->id,
-            'is_read' => false,
-        ]);
+        // Mark one as read
+        $user->notify(new FilamentDatabaseNotification(
+            title: 'Read',
+            body: 'msg',
+            type: 'info',
+        ));
+        $user->notifications()->latest()->first()->markAsRead();
 
-        $this->assertEquals(1, $user->unread_notification_count);
+        $this->assertEquals(1, $user->unreadNotifications()->count());
     }
 }

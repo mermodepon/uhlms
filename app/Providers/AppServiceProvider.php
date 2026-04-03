@@ -11,10 +11,12 @@ use App\Models\RoomType;
 use App\Models\Service;
 use App\Models\User;
 use App\Observers\AmenityObserver;
+use App\Observers\FloorObserver;
 use App\Observers\ReservationObserver;
 use App\Observers\RoomAssignmentObserver;
 use App\Observers\RoomObserver;
 use App\Observers\RoomTypeObserver;
+use App\Observers\ServiceObserver;
 use App\Policies\AmenityPolicy;
 use App\Policies\FloorPolicy;
 use App\Policies\ReservationPolicy;
@@ -69,10 +71,12 @@ class AppServiceProvider extends ServiceProvider
 
         // Register model observers for notification system
         Amenity::observe(AmenityObserver::class);
+        Floor::observe(FloorObserver::class);
         Reservation::observe(ReservationObserver::class);
         Room::observe(RoomObserver::class);
         RoomAssignment::observe(RoomAssignmentObserver::class);
         RoomType::observe(RoomTypeObserver::class);
+        Service::observe(ServiceObserver::class);
 
         // Register authorization policies
         Gate::policy(Reservation::class, ReservationPolicy::class);

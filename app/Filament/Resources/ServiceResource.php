@@ -6,9 +6,11 @@ use App\Filament\Resources\ServiceResource\Pages;
 use App\Models\Service;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class ServiceResource extends Resource
 {
@@ -82,7 +84,85 @@ class ServiceResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+
+                    // ── Deactivate (admin+) ──────────────────────────
+                    Tables\Actions\BulkAction::make('bulk_deactivate')
+                        ->label('Deactivate')
+                        ->icon('heroicon-o-x-mark')
+                        ->color('gray')
+                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Deactivate selected add-ons')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records) {
+                            $count = 0;
+                            foreach ($records as $record) {
+                                if (! $record->is_active) {
+                                    continue;
+                                }
+                                $record->update(['is_active' => false]);
+                                $count++;
+                            }
+                            Notification::make()
+                                ->title("{$count} add-on(s) deactivated")
+                                ->success()
+                                ->send();
+                        }),
+
+                    // ── Activate (admin+) ────────────────────────────
+                    Tables\Actions\BulkAction::make('bulk_activate')
+                        ->label('Activate')
+                        ->icon('heroicon-o-check-badge')
+                        ->color('success')
+                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Activate selected add-ons')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records) {
+                            $count = 0;
+                            foreach ($records as $record) {
+                                if ($record->is_active) {
+                                    continue;
+                                }
+                                $record->update(['is_active' => true]);
+                                $count++;
+                            }
+                            Notification::make()
+                                ->title("{$count} add-on(s) activated")
+                                ->success()
+                                ->send();
+                        }),
+
+                    // ── Bulk Delete (super_admin + password) ─────────
+                    Tables\Actions\BulkAction::make('bulk_delete')
+                        ->label('Delete selected')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->visible(fn () => auth()->user()->isSuperAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Delete selected add-ons')
+                        ->modalDescription('This action is permanent. Enter your password to confirm.')
+                        ->modalSubmitActionLabel('Delete permanently')
+                        ->deselectRecordsAfterCompletion()
+                        ->form([
+                            Forms\Components\TextInput::make('password')
+                                ->label('Confirm your password')
+                                ->password()
+                                ->revealable()
+                                ->required()
+                                ->rule('current_password'),
+                        ])
+                        ->action(function (Collection $records) {
+                            $deleted = 0;
+                            foreach ($records as $record) {
+                                $record->delete();
+                                $deleted++;
+                            }
+                            Notification::make()
+                                ->title("{$deleted} add-on(s) deleted")
+                                ->success()
+                                ->send();
+                        }),
                 ]),
             ]);
     }

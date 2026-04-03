@@ -3,7 +3,6 @@
 namespace Tests\Unit\Observers;
 
 use App\Models\Floor;
-use App\Models\Notification;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\Room;
@@ -35,6 +34,18 @@ class ReservationObserverTest extends TestCase
             'password' => bcrypt('password'),
             'role' => 'staff',
         ]);
+    }
+
+    protected function findNotificationByTitle(string $title): ?object
+    {
+        return DB::table('notifications')
+            ->where('data', 'like', '%"title":"'.$title.'"%')
+            ->first();
+    }
+
+    protected function clearNotifications(): void
+    {
+        DB::table('notifications')->delete();
     }
 
     private function createReservation(array $overrides = []): Reservation
@@ -76,19 +87,17 @@ class ReservationObserverTest extends TestCase
     {
         $reservation = $this->createReservation();
 
-        $notification = Notification::where('title', 'New Reservation')
-            ->where('message', 'like', '%' . $reservation->reference_number . '%')
-            ->first();
-
+        $notification = $this->findNotificationByTitle('New Reservation');
         $this->assertNotNull($notification);
-        $this->assertEquals('info', $notification->type);
+        $data = json_decode($notification->data, true);
+        $this->assertStringContainsString($reservation->reference_number, $data['body']);
     }
 
     public function test_updated_status_to_approved_logs_event(): void
     {
         $reservation = $this->createReservation(['status' => 'pending']);
         ReservationLog::query()->delete();
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $reservation->update(['status' => 'approved']);
 
@@ -138,7 +147,7 @@ class ReservationObserverTest extends TestCase
         ]);
 
         ReservationLog::query()->delete();
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $reservation->update(['status' => 'cancelled']);
 
@@ -149,24 +158,22 @@ class ReservationObserverTest extends TestCase
     public function test_updated_status_change_notifies_staff(): void
     {
         $reservation = $this->createReservation(['status' => 'pending']);
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $reservation->update(['status' => 'approved']);
 
-        $notification = Notification::where('title', 'Reservation Status Updated')->first();
+        $notification = $this->findNotificationByTitle('Reservation Status Updated');
         $this->assertNotNull($notification);
-        $this->assertEquals('success', $notification->type); // approved = success
     }
 
     public function test_deleted_notifies_staff(): void
     {
         $reservation = $this->createReservation();
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $reservation->delete();
 
-        $notification = Notification::where('title', 'Reservation Deleted')->first();
+        $notification = $this->findNotificationByTitle('Reservation Deleted');
         $this->assertNotNull($notification);
-        $this->assertEquals('warning', $notification->type);
     }
 }

@@ -76,9 +76,11 @@ class CheckInService
                     ->where('id', $roomId)
                     ->where('is_active', true)
                     ->when(
-                        ! $useHeldLocks,
-                        fn ($query) => $query->where('status', 'available'),
-                        fn ($query) => $query->whereIn('status', ['available', 'reserved'])
+                        $useHeldLocks,
+                        fn ($query) => $query->whereIn('status', ['available', 'reserved']),
+                        fn ($query) => $mode === 'dorm'
+                            ? $query->whereIn('status', ['available', 'occupied'])
+                            : $query->where('status', 'available')
                     )
                     ->first() : null;
 
@@ -87,6 +89,17 @@ class CheckInService
                     $roomErrors[] = 'No available room for entry #'.($entryIndex + 1).'.';
 
                     continue;
+                }
+
+                // For dorm rooms, also verify the room has available capacity
+                if (! $useHeldLocks && $mode === 'dorm') {
+                    $room->loadMissing('roomType');
+                    if ($room->isFull()) {
+                        $allSucceeded = false;
+                        $roomErrors[] = "Room {$room->room_number} has no available slots (capacity: {$room->capacity}).";
+
+                        continue;
+                    }
                 }
 
                 $entryGuests = $entry['guests'] ?? [];
@@ -246,8 +259,17 @@ class CheckInService
                     throw new \RuntimeException('No available room found for entry #'.($entryIndex + 1).'.');
                 }
 
-                if ($room->status !== 'available') {
-                    throw new \RuntimeException("Room {$room->room_number} is no longer available.");
+                $room->loadMissing('roomType');
+                if ($mode === 'dorm') {
+                    // Dorm rooms can accept guests while occupied, as long as they're not full or in maintenance/inactive
+                    if (in_array($room->status, ['maintenance', 'inactive', 'reserved'], true) || $room->isFull()) {
+                        throw new \RuntimeException("Room {$room->room_number} is no longer available.");
+                    }
+                } else {
+                    // Private rooms must be fully available
+                    if ($room->status !== 'available') {
+                        throw new \RuntimeException("Room {$room->room_number} is no longer available.");
+                    }
                 }
 
                 $entryGuests = collect($entry['guests'] ?? [])
@@ -547,10 +569,10 @@ class CheckInService
             foreach ($entries as $entry) {
                 $roomId = $entry['room_id'] ?? null;
                 if ($roomId) {
-                    Room::query()
-                        ->where('id', $roomId)
-                        ->where('status', 'reserved')
-                        ->update(['status' => 'available']);
+                    $room = Room::with('roomType')->where('id', $roomId)->where('status', 'reserved')->first();
+                    if ($room) {
+                        $room->recalculateStatus();
+                    }
                 }
             }
         });

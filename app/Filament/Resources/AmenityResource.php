@@ -6,9 +6,11 @@ use App\Filament\Resources\AmenityResource\Pages;
 use App\Models\Amenity;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class AmenityResource extends Resource
 {
@@ -68,8 +70,86 @@ class AmenityResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make()
-                        ->successNotificationTitle('Amenities deleted'),
+
+                    // ── Deactivate (admin+) ──────────────────────────
+                    Tables\Actions\BulkAction::make('bulk_deactivate')
+                        ->label('Deactivate')
+                        ->icon('heroicon-o-x-mark')
+                        ->color('gray')
+                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Deactivate selected amenities')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records) {
+                            $count = 0;
+                            foreach ($records as $record) {
+                                if (! $record->is_active) {
+                                    continue;
+                                }
+                                $record->update(['is_active' => false]);
+                                $count++;
+                            }
+                            Notification::make()
+                                ->title("{$count} amenity/amenities deactivated")
+                                ->success()
+                                ->send();
+                        }),
+
+                    // ── Activate (admin+) ────────────────────────────
+                    Tables\Actions\BulkAction::make('bulk_activate')
+                        ->label('Activate')
+                        ->icon('heroicon-o-check-badge')
+                        ->color('success')
+                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Activate selected amenities')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records) {
+                            $count = 0;
+                            foreach ($records as $record) {
+                                if ($record->is_active) {
+                                    continue;
+                                }
+                                $record->update(['is_active' => true]);
+                                $count++;
+                            }
+                            Notification::make()
+                                ->title("{$count} amenity/amenities activated")
+                                ->success()
+                                ->send();
+                        }),
+
+                    // ── Bulk Delete (super_admin + password) ─────────
+                    Tables\Actions\BulkAction::make('bulk_delete')
+                        ->label('Delete selected')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->visible(fn () => auth()->user()->isSuperAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Delete selected amenities')
+                        ->modalDescription('This action is permanent. Pivot associations with room types will be detached. Enter your password to confirm.')
+                        ->modalSubmitActionLabel('Delete permanently')
+                        ->deselectRecordsAfterCompletion()
+                        ->form([
+                            Forms\Components\TextInput::make('password')
+                                ->label('Confirm your password')
+                                ->password()
+                                ->revealable()
+                                ->required()
+                                ->rule('current_password'),
+                        ])
+                        ->action(function (Collection $records) {
+                            $deleted = 0;
+                            foreach ($records as $record) {
+                                $record->roomTypes()->detach();
+                                $record->delete();
+                                $deleted++;
+                            }
+                            Notification::make()
+                                ->title("{$deleted} amenity/amenities deleted")
+                                ->success()
+                                ->send();
+                        }),
                 ]),
             ]);
     }

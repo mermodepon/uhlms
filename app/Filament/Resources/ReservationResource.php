@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ReservationResource\Pages;
 use App\Models\Guest;
+use App\Models\ForceDeletionLog;
 use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomAssignment;
@@ -19,7 +20,9 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\HtmlString;
 
 class ReservationResource extends Resource
@@ -644,7 +647,23 @@ class ReservationResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->wrap()
-                    ->width('130px'),
+                    ->width('130px')
+                    ->getStateUsing(function (Reservation $record) {
+                        // Show actual room type from assignment when checked in/out
+                        if (in_array($record->status, ['checked_in', 'checked_out', 'pending_payment'], true)) {
+                            $actualType = $record->roomAssignments
+                                ->pluck('room.roomType.name')
+                                ->filter()
+                                ->unique()
+                                ->implode(', ');
+
+                            if (filled($actualType)) {
+                                return $actualType;
+                            }
+                        }
+
+                        return $record->preferredRoomType?->name;
+                    }),
                 Tables\Columns\TextColumn::make('room_display')
                     ->label('Room')
                     ->badge()
@@ -730,7 +749,7 @@ class ReservationResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->defaultSort('created_at', 'desc')
-            ->modifyQueryUsing(fn ($query) => $query->with(['roomAssignments.room', 'preferredRoomType', 'charges', 'payments', 'billingGuest']))
+            ->modifyQueryUsing(fn ($query) => $query->with(['roomAssignments.room.roomType', 'preferredRoomType', 'charges', 'payments', 'billingGuest']))
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->options([
@@ -952,13 +971,26 @@ class ReservationResource extends Resource
 
                                                     $query = Room::query()
                                                         ->with('roomType')
-                                                        ->where('is_active', true);
+                                                        ->where('is_active', true)
+                                                        ->whereHas('roomType', function ($q) use ($mode) {
+                                                            // Filter rooms to match the selected room mode
+                                                            if ($mode === 'private') {
+                                                                $q->where('room_sharing_type', 'private');
+                                                            } else {
+                                                                $q->where('room_sharing_type', '!=', 'private');
+                                                            }
+                                                        });
 
-                                                    // Dorm mode: room must have free slots
-                                                    // Private mode: room must be available
                                                     if ($mode === 'dorm') {
-                                                        $query->where('status', '!=', 'full');
+                                                        // Dorm: room must be available or occupied (not full), exclude maintenance/inactive/reserved
+                                                        $query->whereIn('status', ['available', 'occupied'])
+                                                            ->whereRaw('capacity > (
+                                                                SELECT COUNT(*) FROM room_assignments
+                                                                WHERE room_assignments.room_id = rooms.id
+                                                                AND room_assignments.status = ?
+                                                            )', ['checked_in']);
                                                     } else {
+                                                        // Private: room must be fully available
                                                         $query->where('status', 'available');
                                                     }
 
@@ -1508,12 +1540,242 @@ class ReservationResource extends Resource
                                 'reviewed_at' => now(),
                             ]);
                         }),
+
+                    // Force Delete action (super_admin only)
+                    Tables\Actions\Action::make('force_delete')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->visible(fn () => auth()->user()->isSuperAdmin())
+                        ->modalHeading('Force Delete Reservation')
+                        ->modalDescription(fn (Reservation $record) => new HtmlString(
+                            '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px;margin-bottom:12px;">'
+                            .'<strong style="color:#dc2626;">WARNING: This action is irreversible.</strong><br>'
+                            .'This will permanently delete reservation <strong>'.$record->reference_number.'</strong> ('
+                            .e($record->guest_name).') and all associated data:'
+                            .'<ul style="margin:8px 0 0 16px;color:#991b1b;">'
+                            .'<li>'.$record->guests()->count().' guest record(s)</li>'
+                            .'<li>'.$record->roomAssignments()->count().' room assignment(s)</li>'
+                            .'<li>'.$record->charges()->count().' charge(s)</li>'
+                            .'<li>'.$record->payments()->count().' payment(s)</li>'
+                            .'<li>'.$record->logs()->count().' log(s)</li>'
+                            .'<li>'.$record->checkInSnapshots()->count().' check-in snapshot(s)</li>'
+                            .'</ul></div>'
+                        ))
+                        ->modalSubmitActionLabel('Force Delete')
+                        ->form([
+                            Forms\Components\TextInput::make('password')
+                                ->label('Confirm your password')
+                                ->password()
+                                ->required()
+                                ->rules(['current_password']),
+                            Forms\Components\Textarea::make('reason')
+                                ->label('Reason for deletion (will be logged)')
+                                ->required()
+                                ->minLength(10)
+                                ->rows(2)
+                                ->placeholder('Explain why this reservation must be permanently deleted...'),
+                        ])
+                        ->action(function (Reservation $record, array $data) {
+                            $relatedCounts = [
+                                'guests' => $record->guests()->count(),
+                                'room_assignments' => $record->roomAssignments()->count(),
+                                'charges' => $record->charges()->count(),
+                                'payments' => $record->payments()->count(),
+                                'logs' => $record->logs()->count(),
+                                'snapshots' => $record->checkInSnapshots()->count(),
+                            ];
+
+                            // Save a snapshot of the reservation data before deletion
+                            $snapshot = $record->toArray();
+
+                            // Write to force_deletion_logs table (persists after reservation is deleted)
+                            ForceDeletionLog::create([
+                                'reference_number' => $record->reference_number,
+                                'guest_name' => $record->guest_name,
+                                'status' => $record->status,
+                                'check_in_date' => $record->check_in_date,
+                                'check_out_date' => $record->check_out_date,
+                                'reason' => $data['reason'],
+                                'deleted_by' => auth()->id(),
+                                'deleted_by_name' => auth()->user()->name,
+                                'related_counts' => $relatedCounts,
+                                'reservation_snapshot' => $snapshot,
+                            ]);
+
+                            // Also log to application log file as backup
+                            Log::warning('FORCE DELETE RESERVATION', [
+                                'reference_number' => $record->reference_number,
+                                'guest_name' => $record->guest_name,
+                                'status' => $record->status,
+                                'deleted_by' => auth()->user()->name.' (ID: '.auth()->id().')',
+                                'reason' => $data['reason'],
+                                'related_counts' => $relatedCounts,
+                            ]);
+
+                            // Cascade delete all related records
+                            $record->checkInSnapshots()->delete();
+                            $record->roomAssignments()->delete();
+                            $record->charges()->delete();
+                            $record->payments()->delete();
+                            $record->logs()->delete();
+                            $record->guests()->delete();
+                            $record->delete();
+
+                            Notification::make()
+                                ->title('Reservation force-deleted')
+                                ->body("Reservation {$record->reference_number} has been permanently deleted and logged.")
+                                ->warning()
+                                ->send();
+                        }),
                 ]),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make()
-                        ->successNotificationTitle('Reservations deleted'),
+
+                    // ── Bulk Approve (admin+) ─────────────────────────
+                    Tables\Actions\BulkAction::make('bulk_approve')
+                        ->label('Approve selected')
+                        ->icon('heroicon-o-check-circle')
+                        ->color('success')
+                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Approve selected reservations')
+                        ->modalDescription('Only reservations with status "Pending" will be approved. Others will be skipped.')
+                        ->modalSubmitActionLabel('Approve')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records) {
+                            $count = 0;
+                            foreach ($records as $record) {
+                                if ($record->status !== 'pending') {
+                                    continue;
+                                }
+                                $record->update([
+                                    'status' => 'approved',
+                                    'reviewed_by' => auth()->id(),
+                                    'reviewed_at' => now(),
+                                ]);
+                                $count++;
+                            }
+                            Notification::make()
+                                ->title("{$count} reservation(s) approved")
+                                ->success()
+                                ->send();
+                        }),
+
+                    // ── Bulk Decline (admin+) ─────────────────────────
+                    Tables\Actions\BulkAction::make('bulk_decline')
+                        ->label('Decline selected')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
+                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Decline selected reservations')
+                        ->modalDescription('Only reservations with status "Pending" will be declined. Others will be skipped.')
+                        ->modalSubmitActionLabel('Decline')
+                        ->deselectRecordsAfterCompletion()
+                        ->form([
+                            Forms\Components\Textarea::make('admin_notes')
+                                ->label('Reason for declining')
+                                ->placeholder('Optional reason...')
+                                ->rows(2),
+                        ])
+                        ->action(function (Collection $records, array $data) {
+                            $count = 0;
+                            foreach ($records as $record) {
+                                if ($record->status !== 'pending') {
+                                    continue;
+                                }
+                                $record->update([
+                                    'status' => 'declined',
+                                    'admin_notes' => $data['admin_notes'] ?? null,
+                                    'reviewed_by' => auth()->id(),
+                                    'reviewed_at' => now(),
+                                ]);
+                                $count++;
+                            }
+                            Notification::make()
+                                ->title("{$count} reservation(s) declined")
+                                ->success()
+                                ->send();
+                        }),
+
+                    // ── Bulk Cancel (admin+) ──────────────────────────
+                    Tables\Actions\BulkAction::make('bulk_cancel')
+                        ->label('Cancel selected')
+                        ->icon('heroicon-o-no-symbol')
+                        ->color('warning')
+                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Cancel selected reservations')
+                        ->modalDescription('Only reservations with status "Pending" or "Approved" will be cancelled. Checked-in reservations will be skipped.')
+                        ->modalSubmitActionLabel('Cancel reservations')
+                        ->deselectRecordsAfterCompletion()
+                        ->form([
+                            Forms\Components\Textarea::make('admin_notes')
+                                ->label('Reason for cancellation')
+                                ->placeholder('Optional reason...')
+                                ->rows(2),
+                        ])
+                        ->action(function (Collection $records, array $data) {
+                            $count = 0;
+                            foreach ($records as $record) {
+                                if (! in_array($record->status, ['pending', 'approved'])) {
+                                    continue;
+                                }
+                                $record->update([
+                                    'status' => 'cancelled',
+                                    'admin_notes' => $data['admin_notes'] ?? null,
+                                    'reviewed_by' => auth()->id(),
+                                    'reviewed_at' => now(),
+                                ]);
+                                $count++;
+                            }
+                            Notification::make()
+                                ->title("{$count} reservation(s) cancelled")
+                                ->success()
+                                ->send();
+                        }),
+
+                    // ── Bulk Delete (super_admin only + password) ─────
+                    Tables\Actions\BulkAction::make('bulk_delete')
+                        ->label('Delete selected')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->visible(fn () => auth()->user()->isSuperAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Delete selected reservations')
+                        ->modalDescription('This action is permanent and cannot be undone. Checked-in reservations will be skipped. Enter your password to confirm.')
+                        ->modalSubmitActionLabel('Delete permanently')
+                        ->deselectRecordsAfterCompletion()
+                        ->form([
+                            Forms\Components\TextInput::make('password')
+                                ->label('Confirm your password')
+                                ->password()
+                                ->revealable()
+                                ->required()
+                                ->rule('current_password'),
+                        ])
+                        ->action(function (Collection $records) {
+                            $skipped = 0;
+                            $deleted = 0;
+                            foreach ($records as $record) {
+                                if ($record->status === 'checked_in') {
+                                    $skipped++;
+                                    continue;
+                                }
+                                $record->delete();
+                                $deleted++;
+                            }
+                            $msg = "{$deleted} reservation(s) deleted";
+                            if ($skipped > 0) {
+                                $msg .= ". {$skipped} checked-in reservation(s) were skipped.";
+                            }
+                            Notification::make()
+                                ->title($msg)
+                                ->success()
+                                ->send();
+                        }),
                 ]),
             ])
             ->striped()
@@ -1526,7 +1788,6 @@ class ReservationResource extends Resource
     public static function getRelations(): array
     {
         return [
-            ReservationResource\RelationManagers\GuestsRelationManager::class,
             ReservationResource\RelationManagers\RoomAssignmentsRelationManager::class,
             ReservationResource\RelationManagers\StayLogsRelationManager::class,
         ];

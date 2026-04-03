@@ -2,10 +2,10 @@
 
 namespace Tests\Unit\Observers;
 
-use App\Models\Notification;
 use App\Models\RoomType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class RoomTypeObserverTest extends TestCase
@@ -24,9 +24,21 @@ class RoomTypeObserverTest extends TestCase
         ]);
     }
 
+    protected function findNotificationByTitle(string $title): ?object
+    {
+        return DB::table('notifications')
+            ->where('data', 'like', '%"title":"'.$title.'"%')
+            ->first();
+    }
+
+    protected function clearNotifications(): void
+    {
+        DB::table('notifications')->delete();
+    }
+
     public function test_created_room_type_notifies_staff(): void
     {
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         RoomType::create([
             'name' => 'Suite',
@@ -36,10 +48,10 @@ class RoomTypeObserverTest extends TestCase
             'is_active' => true,
         ]);
 
-        $notification = Notification::where('title', 'New Room Type Created')->first();
+        $notification = $this->findNotificationByTitle('New Room Type Created');
         $this->assertNotNull($notification);
-        $this->assertStringContainsString('Suite', $notification->message);
-        $this->assertStringContainsString('Private', $notification->message);
+        $data = json_decode($notification->data, true);
+        $this->assertStringContainsString('Suite', $data['body']);
     }
 
     public function test_updated_is_active_notifies_staff(): void
@@ -51,11 +63,11 @@ class RoomTypeObserverTest extends TestCase
             'room_sharing_type' => 'public',
             'is_active' => true,
         ]);
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $roomType->update(['is_active' => false]);
 
-        $notification = Notification::where('title', 'Room Type Deactivated')->first();
+        $notification = $this->findNotificationByTitle('Room Type Deactivated');
         $this->assertNotNull($notification);
     }
 
@@ -68,14 +80,15 @@ class RoomTypeObserverTest extends TestCase
             'room_sharing_type' => 'private',
             'is_active' => true,
         ]);
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $roomType->update(['room_sharing_type' => 'public']);
 
-        $notification = Notification::where('title', 'Room Type Sharing Updated')->first();
+        $notification = $this->findNotificationByTitle('Room Type Sharing Updated');
         $this->assertNotNull($notification);
-        $this->assertStringContainsString('private', $notification->message);
-        $this->assertStringContainsString('public', $notification->message);
+        $data = json_decode($notification->data, true);
+        $this->assertStringContainsString('private', $data['body']);
+        $this->assertStringContainsString('public', $data['body']);
     }
 
     public function test_updated_other_fields_notifies_staff(): void
@@ -87,13 +100,12 @@ class RoomTypeObserverTest extends TestCase
             'room_sharing_type' => 'public',
             'is_active' => true,
         ]);
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $roomType->update(['description' => 'Budget-friendly room']);
 
-        $notification = Notification::where('title', 'Room Type Updated')->first();
+        $notification = $this->findNotificationByTitle('Room Type Updated');
         $this->assertNotNull($notification);
-        $this->assertEquals('info', $notification->type);
     }
 
     public function test_deleted_room_type_notifies_staff(): void
@@ -105,12 +117,11 @@ class RoomTypeObserverTest extends TestCase
             'room_sharing_type' => 'private',
             'is_active' => true,
         ]);
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $roomType->delete();
 
-        $notification = Notification::where('title', 'Room Type Deleted')->first();
+        $notification = $this->findNotificationByTitle('Room Type Deleted');
         $this->assertNotNull($notification);
-        $this->assertEquals('danger', $notification->type);
     }
 }

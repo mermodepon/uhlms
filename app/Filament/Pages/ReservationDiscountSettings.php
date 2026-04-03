@@ -2,9 +2,9 @@
 
 namespace App\Filament\Pages;
 
-use App\Models\Notification as NotificationModel;
 use App\Models\Setting;
 use App\Models\User;
+use App\Notifications\NotificationHelper;
 use Filament\Actions\Action;
 use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -135,31 +135,28 @@ class ReservationDiscountSettings extends Page implements HasForms
 
             $recipients = User::whereIn('role', ['admin', 'staff'])
                 ->where('id', '!=', $actor?->id)
-                ->get();
+                ->get()
+                ->filter(fn (User $user) => $user->hasPermission('reservation_discount_settings_view'))
+                ->pluck('id')
+                ->toArray();
 
-            foreach ($recipients as $user) {
-                NotificationModel::createNotification(
-                    $user,
-                    'Discount Configuration Updated',
-                    "{$actorName} updated reservation discount percentages.",
-                    'info',
-                    'setting',
-                    '/admin/reservation-discount-settings',
-                    $actor?->id
-                );
-            }
+            NotificationHelper::notifyUsers(
+                $recipients,
+                'Discount Configuration Updated',
+                "{$actorName} updated reservation discount percentages.",
+                'info',
+                'setting',
+                url('/admin/reservation-discount-settings')
+            );
 
-            NotificationModel::createNotification(
+            NotificationHelper::notifyUser(
                 $actor,
                 'Discount Configuration Saved',
                 'You updated reservation discount percentages.',
                 'success',
                 'setting',
-                '/admin/reservation-discount-settings',
-                $actor?->id
+                url('/admin/reservation-discount-settings')
             );
-
-            $this->dispatch('notificationCreated');
         }
 
         Notification::make()

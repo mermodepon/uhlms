@@ -32,7 +32,6 @@ class DatabaseSeeder extends Seeder
         DB::table('room_assignments')->truncate();
         DB::table('guests')->truncate();
         DB::table('reservation_logs')->truncate();
-        DB::table('notifications')->truncate();
         DB::table('reservations')->truncate();
         DB::table('rooms')->truncate();
         DB::table('floors')->truncate();
@@ -1840,8 +1839,12 @@ class DatabaseSeeder extends Seeder
                     }
                 }
 
-                // If no room is available, skip room assignment for this reservation
+                // If no room is available, downgrade status so it's not checked_in without a room
                 if (! $assignedRoom) {
+                    $res->update([
+                        'status' => 'approved',
+                        'payment_status' => 'pending',
+                    ]);
                     continue;
                 }
 

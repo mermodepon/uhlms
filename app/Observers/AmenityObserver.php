@@ -14,8 +14,9 @@ class AmenityObserver
             "Amenity \"{$amenity->name}\" has been added to the system.",
             'success',
             'amenity',
-            '/admin/amenities/'.$amenity->id,
-            auth()->id()
+            url('/admin/amenities?tableSearch='.urlencode($amenity->name)),
+            auth()->id(),
+            'amenities_view'
         );
     }
 
@@ -31,8 +32,9 @@ class AmenityObserver
                 "Amenity \"{$amenity->name}\" has been {$status}.",
                 $changes['is_active'] ? 'success' : 'warning',
                 'amenity',
-                '/admin/amenities/'.$amenity->id,
-                auth()->id()
+                url('/admin/amenities?tableSearch='.urlencode($amenity->name)),
+                auth()->id(),
+                'amenities_view'
             );
         } elseif (count(array_diff_key($changes, ['updated_at' => null])) > 0) {
             NotificationHelper::notifyAllStaff(
@@ -40,8 +42,9 @@ class AmenityObserver
                 "Amenity \"{$amenity->name}\" details have been updated.",
                 'info',
                 'amenity',
-                '/admin/amenities/'.$amenity->id,
-                auth()->id()
+                url('/admin/amenities?tableSearch='.urlencode($amenity->name)),
+                auth()->id(),
+                'amenities_view'
             );
         }
     }
@@ -54,7 +57,8 @@ class AmenityObserver
             'danger',
             'amenity',
             null,
-            auth()->id()
+            auth()->id(),
+            'amenities_view'
         );
     }
 }

@@ -38,10 +38,8 @@ class AdminPanelProvider extends PanelProvider
                 // Render the view to a raw HTML string so Filament injects scripts/styles unescaped
                 fn () => view('filament.custom-theme')->render(),
             )
-            ->renderHook(
-                'panels::topbar.end',
-                fn () => view('filament.notification-center')->render(),
-            )
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('60s')
             ->renderHook(
                 'panels::body.end',
                 fn (): string => <<<'HTML'

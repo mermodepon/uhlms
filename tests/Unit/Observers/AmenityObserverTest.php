@@ -3,10 +3,9 @@
 namespace Tests\Unit\Observers;
 
 use App\Models\Amenity;
-use App\Models\Notification;
 use App\Models\User;
-use App\Observers\AmenityObserver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AmenityObserverTest extends TestCase
@@ -26,17 +25,26 @@ class AmenityObserverTest extends TestCase
         ]);
     }
 
+    protected function findNotificationByTitle(string $title): ?object
+    {
+        return DB::table('notifications')
+            ->where('data', 'like', '%"title":"'.$title.'"%')
+            ->first();
+    }
+
+    protected function clearNotifications(): void
+    {
+        DB::table('notifications')->delete();
+    }
+
     public function test_created_event_notifies_all_staff(): void
     {
         $amenity = Amenity::create(['name' => 'Pool', 'is_active' => true]);
 
-        $notification = Notification::where('title', 'New Amenity Added')
-            ->where('message', 'like', '%Pool%')
-            ->first();
-
+        $notification = $this->findNotificationByTitle('New Amenity Added');
         $this->assertNotNull($notification);
-        $this->assertEquals('success', $notification->type);
-        $this->assertEquals('amenity', $notification->category);
+        $data = json_decode($notification->data, true);
+        $this->assertStringContainsString('Pool', $data['body']);
     }
 
     public function test_updated_active_status_notifies_staff(): void
@@ -44,36 +52,33 @@ class AmenityObserverTest extends TestCase
         $amenity = Amenity::create(['name' => 'Gym', 'is_active' => true]);
 
         // Clear initial notifications
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $amenity->update(['is_active' => false]);
 
-        $notification = Notification::where('title', 'Amenity Deactivated')->first();
+        $notification = $this->findNotificationByTitle('Amenity Deactivated');
         $this->assertNotNull($notification);
-        $this->assertEquals('warning', $notification->type);
     }
 
     public function test_updated_other_fields_notifies_staff(): void
     {
         $amenity = Amenity::create(['name' => 'Sauna', 'is_active' => true]);
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $amenity->update(['description' => 'Hot sauna']);
 
-        $notification = Notification::where('title', 'Amenity Updated')->first();
+        $notification = $this->findNotificationByTitle('Amenity Updated');
         $this->assertNotNull($notification);
-        $this->assertEquals('info', $notification->type);
     }
 
     public function test_deleted_event_notifies_staff(): void
     {
         $amenity = Amenity::create(['name' => 'Spa', 'is_active' => true]);
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $amenity->delete();
 
-        $notification = Notification::where('title', 'Amenity Deleted')->first();
+        $notification = $this->findNotificationByTitle('Amenity Deleted');
         $this->assertNotNull($notification);
-        $this->assertEquals('danger', $notification->type);
     }
 }

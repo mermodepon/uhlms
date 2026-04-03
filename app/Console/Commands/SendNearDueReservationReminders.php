@@ -53,7 +53,9 @@ class SendNearDueReservationReminders extends Command
                 $message,
                 'warning',
                 'reservation',
-                url('/admin/reservations/'.$reservation->id)
+                url('/admin/reservations?tableSearch='.urlencode($reservation->reference_number)),
+                null,
+                'reservations_view'
             );
         }
 

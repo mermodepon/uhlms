@@ -2,8 +2,8 @@
 
 namespace App\Notifications;
 
-use App\Models\Notification as NotificationModel;
 use App\Models\User;
+use App\Notifications\FilamentDatabaseNotification;
 use Illuminate\Support\Facades\Cache;
 
 class NotificationHelper
@@ -16,13 +16,33 @@ class NotificationHelper
     {
         return Cache::remember('system.staff_users', 900, function () {
             return User::whereIn('role', ['super_admin', 'admin', 'staff'])
-                ->select('id', 'name', 'email')
+                ->select('id', 'name', 'email', 'role', 'permissions')
                 ->get();
         });
     }
 
     /**
-     * Create a notification for all staff members
+     * Send a Filament database notification to a user.
+     */
+    protected static function sendFilamentNotification(
+        User $user,
+        string $title,
+        string $message,
+        string $type = 'info',
+        ?string $actionUrl = null
+    ): void {
+        $user->notify(new FilamentDatabaseNotification(
+            title: $title,
+            body: $message,
+            type: $type,
+            actionUrl: $actionUrl,
+        ));
+    }
+
+    /**
+     * Create a notification for all staff members.
+     * When $requiredPermission is provided, only users who have that
+     * permission will receive the notification (super_admin always passes).
      */
     public static function notifyAllStaff(
         string $title,
@@ -30,19 +50,15 @@ class NotificationHelper
         string $type = 'info',
         ?string $category = null,
         ?string $actionUrl = null,
-        ?int $createdBy = null
+        ?int $createdBy = null,
+        ?string $requiredPermission = null
     ): void {
         $staff = self::getStaffUsers();
         foreach ($staff as $user) {
-            NotificationModel::createNotification(
-                $user,
-                $title,
-                $message,
-                $type,
-                $category,
-                $actionUrl,
-                $createdBy ?? auth()->id()
-            );
+            if ($requiredPermission && ! $user->hasPermission($requiredPermission)) {
+                continue;
+            }
+            self::sendFilamentNotification($user, $title, $message, $type, $actionUrl);
         }
     }
 
@@ -56,15 +72,8 @@ class NotificationHelper
         string $type = 'info',
         ?string $category = null,
         ?string $actionUrl = null
-    ): NotificationModel {
-        return NotificationModel::createNotification(
-            $user,
-            $title,
-            $message,
-            $type,
-            $category,
-            $actionUrl
-        );
+    ): void {
+        self::sendFilamentNotification($user, $title, $message, $type, $actionUrl);
     }
 
     /**
@@ -80,14 +89,7 @@ class NotificationHelper
     ): void {
         $users = User::whereIn('id', $userIds)->get();
         foreach ($users as $user) {
-            NotificationModel::createNotification(
-                $user,
-                $title,
-                $message,
-                $type,
-                $category,
-                $actionUrl
-            );
+            self::sendFilamentNotification($user, $title, $message, $type, $actionUrl);
         }
     }
 }

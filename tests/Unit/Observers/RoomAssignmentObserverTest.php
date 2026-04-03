@@ -3,7 +3,6 @@
 namespace Tests\Unit\Observers;
 
 use App\Models\Floor;
-use App\Models\Notification;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\Room;
@@ -70,6 +69,18 @@ class RoomAssignmentObserverTest extends TestCase
         ]);
     }
 
+    protected function findNotificationByTitle(string $title): ?object
+    {
+        return DB::table('notifications')
+            ->where('data', 'like', '%"title":"'.$title.'"%')
+            ->first();
+    }
+
+    protected function clearNotifications(): void
+    {
+        DB::table('notifications')->delete();
+    }
+
     public function test_created_assignment_logs_guest_checked_in(): void
     {
         ReservationLog::query()->delete();
@@ -91,7 +102,7 @@ class RoomAssignmentObserverTest extends TestCase
 
     public function test_created_assignment_notifies_staff(): void
     {
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         RoomAssignment::create([
             'reservation_id' => $this->reservation->id,
@@ -103,7 +114,7 @@ class RoomAssignmentObserverTest extends TestCase
             'assigned_by' => auth()->id(),
         ]);
 
-        $notification = Notification::where('title', 'Room Assigned')->first();
+        $notification = $this->findNotificationByTitle('Room Assigned');
         $this->assertNotNull($notification);
     }
 
@@ -144,7 +155,7 @@ class RoomAssignmentObserverTest extends TestCase
         ]);
 
         ReservationLog::query()->delete();
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $assignment->delete();
 
@@ -164,11 +175,11 @@ class RoomAssignmentObserverTest extends TestCase
             'assigned_by' => auth()->id(),
         ]);
 
-        Notification::query()->delete();
+        $this->clearNotifications();
 
         $assignment->delete();
 
-        $notification = Notification::where('title', 'Room Assignment Removed')->first();
+        $notification = $this->findNotificationByTitle('Room Assignment Removed');
         $this->assertNotNull($notification);
     }
 }

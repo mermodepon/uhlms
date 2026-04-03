@@ -32,11 +32,38 @@ class BackupRestore extends Page
 
     public function mount(): void
     {
-        // Detect if a restore is still running from a previous page load
-        if (file_exists($this->getRestoreStatusPath())) {
-            // Status file exists = restore finished while away, will be picked up by poll
-            $this->restoreInProgress = true;
-        } elseif (file_exists(storage_path('app/backups/_restore_task.bat'))) {
+        $statusFile = $this->getRestoreStatusPath();
+        $batFile = storage_path('app/backups/_restore_task.bat');
+
+        if (file_exists($statusFile)) {
+            // A previous restore finished while the user was away.
+            // Consume the status file immediately so it doesn't look
+            // like opening the page triggered a new restore.
+            $status = trim(file_get_contents($statusFile));
+            unlink($statusFile);
+
+            // Clean up log file
+            $logFile = storage_path('app/backups/restore_log.txt');
+            if (file_exists($logFile)) {
+                unlink($logFile);
+            }
+
+            if ($status === 'SUCCESS') {
+                Log::info('Previous database restore completed successfully (detected on page load)');
+                Notification::make()
+                    ->title('Previous Restore Completed')
+                    ->body('A previously initiated database restore completed successfully.')
+                    ->success()
+                    ->send();
+            } else {
+                Log::error('Previous database restore failed (detected on page load)');
+                Notification::make()
+                    ->title('Previous Restore Failed')
+                    ->body('A previously initiated database restore failed. Check logs for details.')
+                    ->danger()
+                    ->send();
+            }
+        } elseif (file_exists($batFile)) {
             // Batch file still exists = restore is still actively running
             $this->restoreInProgress = true;
         }

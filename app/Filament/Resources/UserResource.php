@@ -6,9 +6,11 @@ use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class UserResource extends Resource
 {
@@ -215,7 +217,52 @@ class UserResource extends Resource
                             : null
                     ),
             ])
-            ->bulkActions([]);
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+
+                    // ── Bulk Delete (super_admin + password) ─────────
+                    Tables\Actions\BulkAction::make('bulk_delete')
+                        ->label('Delete selected')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->visible(fn () => auth()->user()->isSuperAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Delete selected users')
+                        ->modalDescription('This action is permanent. Users linked to reservations or assignments will be skipped. Your own account and other super admins will be skipped. Enter your password to confirm.')
+                        ->modalSubmitActionLabel('Delete permanently')
+                        ->deselectRecordsAfterCompletion()
+                        ->form([
+                            Forms\Components\TextInput::make('password')
+                                ->label('Confirm your password')
+                                ->password()
+                                ->revealable()
+                                ->required()
+                                ->rule('current_password'),
+                        ])
+                        ->action(function (Collection $records) {
+                            $deleted = 0;
+                            $skipped = 0;
+                            foreach ($records as $record) {
+                                if (
+                                    $record->id === auth()->id() ||
+                                    $record->isSuperAdmin() ||
+                                    $record->roomAssignments()->exists() ||
+                                    $record->reviewedReservations()->exists()
+                                ) {
+                                    $skipped++;
+                                    continue;
+                                }
+                                $record->delete();
+                                $deleted++;
+                            }
+                            $msg = "{$deleted} user(s) deleted";
+                            if ($skipped > 0) {
+                                $msg .= ". {$skipped} skipped (linked to data or protected).";
+                            }
+                            Notification::make()->title($msg)->success()->send();
+                        }),
+                ]),
+            ]);
     }
 
     public static function getRelations(): array

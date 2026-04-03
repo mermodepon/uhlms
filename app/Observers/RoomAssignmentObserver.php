@@ -41,8 +41,9 @@ class RoomAssignmentObserver
             $message,
             'info',
             'room_assignment',
-            '/admin/reservations/'.$assignment->reservation_id,
-            auth()->id()
+            url('/admin/reservations?tableSearch='.urlencode($reservation->reference_number ?? '')),
+            auth()->id(),
+            'reservations_view'
         );
     }
 
@@ -67,8 +68,9 @@ class RoomAssignmentObserver
                 "Assignment for reservation #{$reservation?->reference_number} has been updated (Room {$room?->room_number}).",
                 'warning',
                 'room_assignment',
-                '/admin/reservations/'.$assignment->reservation_id,
-                auth()->id()
+                url('/admin/reservations?tableSearch='.urlencode($reservation?->reference_number ?? '')),
+                auth()->id(),
+                'reservations_view'
             );
         }
 
@@ -122,7 +124,8 @@ class RoomAssignmentObserver
             'warning',
             'room_assignment',
             null,
-            auth()->id()
+            auth()->id(),
+            'reservations_view'
         );
     }
 

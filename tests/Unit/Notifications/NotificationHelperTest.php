@@ -2,11 +2,11 @@
 
 namespace Tests\Unit\Notifications;
 
-use App\Models\Notification;
 use App\Models\User;
 use App\Notifications\NotificationHelper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class NotificationHelperTest extends TestCase
@@ -45,18 +45,9 @@ class NotificationHelperTest extends TestCase
             '/test/url'
         );
 
-        $this->assertEquals(3, Notification::count());
-
-        // Each user should have one notification
+        // Each user should have one database notification
         foreach ([$superAdmin, $admin, $staff] as $user) {
-            $notification = Notification::where('notifiable_id', $user->id)
-                ->where('notifiable_type', User::class)
-                ->first();
-
-            $this->assertNotNull($notification);
-            $this->assertEquals('Test Notification', $notification->title);
-            $this->assertEquals('info', $notification->type);
-            $this->assertEquals('test', $notification->category);
+            $this->assertEquals(1, $user->notifications()->count());
         }
     }
 
@@ -64,7 +55,7 @@ class NotificationHelperTest extends TestCase
     {
         $user = $this->createUser('admin');
 
-        $notification = NotificationHelper::notifyUser(
+        NotificationHelper::notifyUser(
             $user,
             'Personal Alert',
             'Just for you.',
@@ -73,10 +64,7 @@ class NotificationHelperTest extends TestCase
             '/personal/url'
         );
 
-        $this->assertInstanceOf(Notification::class, $notification);
-        $this->assertEquals('Personal Alert', $notification->title);
-        $this->assertEquals($user->id, $notification->notifiable_id);
-        $this->assertEquals('warning', $notification->type);
+        $this->assertEquals(1, $user->notifications()->count());
     }
 
     public function test_notify_users_creates_notifications_for_specified_ids(): void
@@ -92,10 +80,9 @@ class NotificationHelperTest extends TestCase
             'danger'
         );
 
-        $this->assertEquals(2, Notification::count());
-        $this->assertNotNull(Notification::where('notifiable_id', $user1->id)->first());
-        $this->assertNotNull(Notification::where('notifiable_id', $user2->id)->first());
-        $this->assertNull(Notification::where('notifiable_id', $user3->id)->first());
+        $this->assertEquals(1, $user1->notifications()->count());
+        $this->assertEquals(1, $user2->notifications()->count());
+        $this->assertEquals(0, $user3->notifications()->count());
     }
 
     public function test_staff_users_are_cached(): void

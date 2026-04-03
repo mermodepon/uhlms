@@ -15,8 +15,9 @@ class RoomTypeObserver
             "Room Type \"{$roomType->name}\" ({$sharing}) has been added to the system.",
             'success',
             'room_type',
-            '/admin/room-types/'.$roomType->id,
-            auth()->id()
+            url('/admin/room-types?tableSearch='.urlencode($roomType->name)),
+            auth()->id(),
+            'room_types_view'
         );
     }
 
@@ -32,8 +33,9 @@ class RoomTypeObserver
                 "Room Type \"{$roomType->name}\" has been {$status}.",
                 $changes['is_active'] ? 'success' : 'warning',
                 'room_type',
-                '/admin/room-types/'.$roomType->id,
-                auth()->id()
+                url('/admin/room-types?tableSearch='.urlencode($roomType->name)),
+                auth()->id(),
+                'room_types_view'
             );
         } elseif (array_key_exists('room_sharing_type', $changes)) {
             $old = $roomType->getOriginal('room_sharing_type');
@@ -43,8 +45,9 @@ class RoomTypeObserver
                 "Room Type \"{$roomType->name}\" sharing changed from {$old} to {$new}.",
                 'info',
                 'room_type',
-                '/admin/room-types/'.$roomType->id,
-                auth()->id()
+                url('/admin/room-types?tableSearch='.urlencode($roomType->name)),
+                auth()->id(),
+                'room_types_view'
             );
         } elseif (count(array_diff_key($changes, ['updated_at' => null])) > 0) {
             NotificationHelper::notifyAllStaff(
@@ -52,8 +55,9 @@ class RoomTypeObserver
                 "Room Type \"{$roomType->name}\" details have been updated.",
                 'info',
                 'room_type',
-                '/admin/room-types/'.$roomType->id,
-                auth()->id()
+                url('/admin/room-types?tableSearch='.urlencode($roomType->name)),
+                auth()->id(),
+                'room_types_view'
             );
         }
     }
@@ -66,7 +70,8 @@ class RoomTypeObserver
             'danger',
             'room_type',
             null,
-            auth()->id()
+            auth()->id(),
+            'room_types_view'
         );
     }
 }

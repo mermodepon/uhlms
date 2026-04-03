@@ -85,9 +85,17 @@ class Room extends Model
      */
     public function isAvailable(): bool
     {
-        return $this->is_active
-            && in_array($this->status, ['available'])
-            && ! $this->isFull();
+        if (! $this->is_active || $this->isFull()) {
+            return false;
+        }
+
+        // Dorm rooms can accept guests while occupied (not yet at full capacity)
+        $this->loadMissing('roomType');
+        if (! ($this->roomType?->isPrivate() ?? false)) {
+            return in_array($this->status, ['available', 'occupied']);
+        }
+
+        return $this->status === 'available';
     }
 
     /**

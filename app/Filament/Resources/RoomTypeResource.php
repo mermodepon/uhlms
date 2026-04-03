@@ -6,9 +6,11 @@ use App\Filament\Resources\RoomTypeResource\Pages;
 use App\Models\RoomType;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class RoomTypeResource extends Resource
 {
@@ -186,8 +188,91 @@ class RoomTypeResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make()
-                        ->successNotificationTitle('Room Types deleted'),
+
+                    // ── Deactivate (admin+) ──────────────────────────
+                    Tables\Actions\BulkAction::make('bulk_deactivate')
+                        ->label('Deactivate')
+                        ->icon('heroicon-o-x-mark')
+                        ->color('gray')
+                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Deactivate selected room types')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records) {
+                            $count = 0;
+                            foreach ($records as $record) {
+                                if (! $record->is_active) {
+                                    continue;
+                                }
+                                $record->update(['is_active' => false]);
+                                $count++;
+                            }
+                            Notification::make()
+                                ->title("{$count} room type(s) deactivated")
+                                ->success()
+                                ->send();
+                        }),
+
+                    // ── Activate (admin+) ────────────────────────────
+                    Tables\Actions\BulkAction::make('bulk_activate')
+                        ->label('Activate')
+                        ->icon('heroicon-o-check-badge')
+                        ->color('success')
+                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Activate selected room types')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records) {
+                            $count = 0;
+                            foreach ($records as $record) {
+                                if ($record->is_active) {
+                                    continue;
+                                }
+                                $record->update(['is_active' => true]);
+                                $count++;
+                            }
+                            Notification::make()
+                                ->title("{$count} room type(s) activated")
+                                ->success()
+                                ->send();
+                        }),
+
+                    // ── Bulk Delete (super_admin + password) ─────────
+                    Tables\Actions\BulkAction::make('bulk_delete')
+                        ->label('Delete selected')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->visible(fn () => auth()->user()->isSuperAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Delete selected room types')
+                        ->modalDescription('This action is permanent. Room types with linked rooms will be skipped. Enter your password to confirm.')
+                        ->modalSubmitActionLabel('Delete permanently')
+                        ->deselectRecordsAfterCompletion()
+                        ->form([
+                            Forms\Components\TextInput::make('password')
+                                ->label('Confirm your password')
+                                ->password()
+                                ->revealable()
+                                ->required()
+                                ->rule('current_password'),
+                        ])
+                        ->action(function (Collection $records) {
+                            $deleted = 0;
+                            $skipped = 0;
+                            foreach ($records as $record) {
+                                if ($record->rooms()->exists()) {
+                                    $skipped++;
+                                    continue;
+                                }
+                                $record->delete();
+                                $deleted++;
+                            }
+                            $msg = "{$deleted} room type(s) deleted";
+                            if ($skipped > 0) {
+                                $msg .= ". {$skipped} skipped (have linked rooms).";
+                            }
+                            Notification::make()->title($msg)->success()->send();
+                        }),
                 ]),
             ]);
     }

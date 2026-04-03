@@ -27,8 +27,9 @@ class ReservationObserver
             "Reservation #{$reservation->reference_number} from {$reservation->guest_name} has been created.",
             'info',
             'reservation',
-            '/admin/reservations/'.$reservation->id,
-            auth()->id()
+            url('/admin/reservations?tableSearch='.urlencode($reservation->reference_number)),
+            auth()->id(),
+            'reservations_view'
         );
     }
 
@@ -105,8 +106,9 @@ class ReservationObserver
                 "Reservation #{$reservation->reference_number} status changed from {$oldStatus} to {$newStatus}.",
                 $this->getStatusNotificationType($newStatus),
                 'reservation',
-                '/admin/reservations/'.$reservation->id,
-                auth()->id()
+                url('/admin/reservations?tableSearch='.urlencode($reservation->reference_number)),
+                auth()->id(),
+                'reservations_view'
             );
         }
     }
@@ -139,7 +141,8 @@ class ReservationObserver
             'warning',
             'reservation',
             null,
-            auth()->id()
+            auth()->id(),
+            'reservations_view'
         );
     }
 
