@@ -161,7 +161,7 @@
                 </div>
             </div>
             {{-- Secondary header (print) --}}
-            <div style="text-align: center; margin-top: 14px; line-height: 1.8;">
+            <div style="text-align: center; margin-top: 14px; margin-bottom: 20px; line-height: 1.8;">
                 <div style="font-size: 12pt; font-weight: bold; letter-spacing: 0.05em;">UNIVERSITY HOMESTAY</div>
                 <div style="font-size: 12pt; font-weight: bold; letter-spacing: 0.05em;">
                     @switch($reportType)

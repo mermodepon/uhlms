@@ -84,18 +84,12 @@ class StatsOverview extends BaseWidget
         $overdueUrl = $resourceIndex.'?overdue=1';
 
         return [
-            Stat::make('Occupancy Rate', $stats['occupancyRate'].'%')
-                ->description("{$stats['occupiedRooms']} of {$stats['totalRooms']} rooms occupied")
-                ->descriptionIcon('heroicon-m-home-modern')
-                ->color($stats['occupancyRate'] > 80 ? 'success' : ($stats['occupancyRate'] > 50 ? 'warning' : 'danger'))
-                ->chart([65, 70, 75, 80, 78, $stats['occupancyRate']])
-                ->url($roomIndex.'?has_occupants=1'),
-
-            Stat::make('Pending Reservations', $stats['pendingReservations'])
-                ->description('Awaiting review')
-                ->descriptionIcon('heroicon-m-clock')
-                ->color('warning')
-                ->url($pendingUrl),
+            // Row 1: Action-required items
+            Stat::make('Overdue Check-outs', $stats['overdueReservations'])
+                ->description('Still checked in past check-out date')
+                ->descriptionIcon('heroicon-m-exclamation-triangle')
+                ->color($stats['overdueReservations'] > 0 ? 'danger' : 'success')
+                ->url($overdueUrl),
 
             Stat::make('Near Due', $stats['nearDueReservations'])
                 ->description('Check-outs within 24 hours')
@@ -103,11 +97,11 @@ class StatsOverview extends BaseWidget
                 ->color($stats['nearDueReservations'] > 0 ? 'warning' : 'success')
                 ->url($nearDueUrl),
 
-            Stat::make('Approved (Awaiting Arrival)', $stats['activeReservations'])
-                ->description("{$stats['todayCheckIns']} expected check-ins today")
-                ->descriptionIcon('heroicon-m-calendar-days')
-                ->color('info')
-                ->url($activeUrl),
+            Stat::make('Pending Reservations', $stats['pendingReservations'])
+                ->description('Awaiting review')
+                ->descriptionIcon('heroicon-m-clock')
+                ->color('warning')
+                ->url($pendingUrl),
 
             Stat::make('Pending Payment', $stats['pendingPaymentReservations'])
                 ->description('Room held, awaiting payment')
@@ -115,17 +109,25 @@ class StatsOverview extends BaseWidget
                 ->color($stats['pendingPaymentReservations'] > 0 ? 'warning' : 'success')
                 ->url($pendingPaymentUrl),
 
+            // Row 2: Situational awareness
+            Stat::make('Occupancy Rate', $stats['occupancyRate'].'%')
+                ->description("{$stats['occupiedRooms']} of {$stats['totalRooms']} rooms occupied")
+                ->descriptionIcon('heroicon-m-home-modern')
+                ->color($stats['occupancyRate'] > 80 ? 'success' : ($stats['occupancyRate'] > 50 ? 'warning' : 'danger'))
+                ->chart([65, 70, 75, 80, 78, $stats['occupancyRate']])
+                ->url($roomIndex.'?has_occupants=1'),
+
             Stat::make('Currently Checked In', $stats['currentlyCheckedIn'])
                 ->description('Guests currently staying')
                 ->descriptionIcon('heroicon-m-user-group')
                 ->color('success')
                 ->url($checkedInUrl),
 
-            Stat::make('Overdue Check-outs', $stats['overdueReservations'])
-                ->description('Still checked in past check-out date')
-                ->descriptionIcon('heroicon-m-exclamation-triangle')
-                ->color($stats['overdueReservations'] > 0 ? 'danger' : 'success')
-                ->url($overdueUrl),
+            Stat::make('Approved (Awaiting Arrival)', $stats['activeReservations'])
+                ->description("{$stats['todayCheckIns']} expected check-ins today")
+                ->descriptionIcon('heroicon-m-calendar-days')
+                ->color('info')
+                ->url($activeUrl),
         ];
     }
 }

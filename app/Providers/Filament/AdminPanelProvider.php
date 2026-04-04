@@ -11,6 +11,7 @@ use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Saade\FilamentFullCalendar\FilamentFullCalendarPlugin;
 use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -33,6 +34,26 @@ class AdminPanelProvider extends PanelProvider
             ->favicon(asset('images/uh_logo.jpg'))
             ->brandLogo(fn () => view('filament.brand-logo'))
             ->darkModeBrandLogo(fn () => view('filament.brand-logo'))
+            ->renderHook(
+                'panels::topbar.start',
+                fn (): string => <<<'HTML'
+                <div
+                    x-data="{}"
+                    x-show="! $store.sidebar.isOpen"
+                    x-cloak
+                    class="fi-topbar-brand hidden items-center gap-2 lg:flex"
+                >
+                    <a href="/admin" class="flex items-center gap-2">
+                        <img src="/images/uh_logo.jpg" alt="UH Lodging Management System" style="height:1.5rem; width:auto;" />
+                        <span class="filament-brand-text text-base font-semibold text-[#FFC600] whitespace-nowrap">UH Lodging Management System</span>
+                    </a>
+                </div>
+                HTML,
+            )
+            ->renderHook(
+                'panels::topbar.end',
+                fn () => view('filament.topbar-date')->render(),
+            )
             ->renderHook(
                 'panels::head.end',
                 // Render the view to a raw HTML string so Filament injects scripts/styles unescaped
@@ -78,6 +99,11 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->globalSearch(false)
             ->sidebarCollapsibleOnDesktop()
+            ->plugin(
+                FilamentFullCalendarPlugin::make()
+                    ->selectable(false)
+                    ->editable(false)
+            )
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([

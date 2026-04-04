@@ -2,14 +2,14 @@
 /*
  * CMU Color Theme
  * Yellow: #FFC600
- * Green: #00491E
+ * Green: #003615
  * Alt Green 1: #02681E
  * Alt Green 2: #919F02
  */
 
 /* ===== Sidebar ===== */
 .fi-sidebar {
-    background-color: #00491E !important;
+    background-color: #003615 !important;
     border-right: 1px solid #02681E !important;
 }
 
@@ -18,7 +18,7 @@
 }
 
 .fi-sidebar-header {
-    background-color: #00491E !important;
+    background-color: #003615 !important;
     border-bottom: 2px solid rgba(255, 198, 0, 0.4) !important;
 }
 
@@ -32,7 +32,7 @@
 
 /* Sidebar nav */
 .fi-sidebar-nav {
-    background-color: #00491E !important;
+    background-color: #003615 !important;
 }
 
 .fi-sidebar-nav-groups {
@@ -124,6 +124,24 @@
     color: #FFC600 !important;
 }
 
+/* Sidebar group active state when collapsed (icon-only dropdown triggers) */
+.fi-sidebar-group.fi-active .fi-dropdown-trigger button {
+    background-color: rgba(255, 198, 0, 0.15) !important;
+    border-radius: 0.5rem !important;
+}
+
+.fi-sidebar-group.fi-active .fi-dropdown-trigger button svg {
+    color: #FFC600 !important;
+}
+
+.fi-sidebar-group .fi-dropdown-trigger button:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.fi-sidebar-group .fi-dropdown-trigger button:hover svg {
+    color: #FFC600 !important;
+}
+
 /* Sidebar collapse/toggle buttons */
 .fi-sidebar .fi-icon-btn {
     color: rgba(255, 255, 255, 0.7) !important;
@@ -136,7 +154,7 @@
 
 /* ===== Topbar ===== */
 .fi-topbar > nav {
-    background-color: #00491E !important;
+    background-color: #003615 !important;
     border-bottom: 3px solid #FFC600 !important;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15) !important;
 }
@@ -197,7 +215,7 @@
 
 /* ===== Login / Auth Pages ===== */
 .fi-simple-layout {
-    background: linear-gradient(145deg, #00491E 0%, #02681E 60%, #003315 100%) !important;
+    background: linear-gradient(145deg, #003615 0%, #02681E 60%, #003315 100%) !important;
 }
 
 .fi-simple-main {
@@ -206,7 +224,7 @@
 
 /* Auth page heading */
 .fi-simple-layout .fi-logo {
-    color: #00491E !important;
+    color: #003615 !important;
 }
 
 /* ===== Global accent overrides ===== */
@@ -218,18 +236,18 @@
 
 /* Dashboard heading */
 .fi-header-heading {
-    color: #00491E !important;
+    color: #003615 !important;
 }
 
 /* Table header cells */
 .fi-ta-header-cell-label {
-    color: #00491E !important;
+    color: #003615 !important;
     font-weight: 600;
 }
 
 /* Breadcrumbs */
 .fi-breadcrumbs a {
-    color: #00491E !important;
+    color: #003615 !important;
 }
 
 .fi-breadcrumbs a:hover {
@@ -254,7 +272,7 @@
 }
 
 .dark .fi-simple-layout {
-    background: linear-gradient(145deg, #001a0b 0%, #00491E 60%, #001a0b 100%) !important;
+    background: linear-gradient(145deg, #001a0b 0%, #003615 60%, #001a0b 100%) !important;
 }
 
 .dark .fi-simple-main {

@@ -12,7 +12,7 @@ class RoomStatusChart extends ChartWidget
 {
     protected static ?string $heading = 'Room Status Overview';
 
-    protected static ?int $sort = 4;
+    protected static ?int $sort = 3;
 
     // Cache chart data and poll less aggressively
     protected static ?string $pollingInterval = '60s';

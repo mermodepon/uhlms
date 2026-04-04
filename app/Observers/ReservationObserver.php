@@ -6,15 +6,11 @@ use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\RoomAssignment;
 use App\Notifications\NotificationHelper;
-use Carbon\Carbon;
-use Illuminate\Support\Facades\Cache;
 
 class ReservationObserver
 {
     public function created(Reservation $reservation): void
     {
-        $this->clearReservationCalendarCache($reservation);
-
         ReservationLog::record(
             $reservation,
             'reservation_created',
@@ -36,7 +32,6 @@ class ReservationObserver
     public function updated(Reservation $reservation): void
     {
         $changes = $reservation->getChanges();
-        $this->clearReservationCalendarCache($reservation);
 
         // Sync guest names to any existing assignments if the reservation name fields changed
         if (array_key_exists('guest_first_name', $changes) || array_key_exists('guest_last_name', $changes) || array_key_exists('guest_middle_initial', $changes)) {
@@ -126,8 +121,6 @@ class ReservationObserver
 
     public function deleted(Reservation $reservation): void
     {
-        $this->clearReservationCalendarCache($reservation);
-
         // After the cascade has removed the room_assignments, recalculate the
         // status of every room that was used by this reservation.
         foreach ($reservation->_affectedRoomIds ?? [] as $roomId) {
@@ -156,47 +149,5 @@ class ReservationObserver
         };
     }
 
-    private function clearReservationCalendarCache(Reservation $reservation): void
-    {
-        $this->forgetMonthRange(
-            $this->toCarbonDate($reservation->check_in_date),
-            $this->toCarbonDate($reservation->check_out_date)
-        );
 
-        // On update, clear cache for old dates too in case month/date range changed.
-        $this->forgetMonthRange(
-            $this->toCarbonDate($reservation->getOriginal('check_in_date')),
-            $this->toCarbonDate($reservation->getOriginal('check_out_date'))
-        );
-    }
-
-    private function forgetMonthRange(?Carbon $checkIn, ?Carbon $checkOut): void
-    {
-        if (! $checkIn || ! $checkOut) {
-            return;
-        }
-
-        if ($checkOut->lt($checkIn)) {
-            [$checkIn, $checkOut] = [$checkOut, $checkIn];
-        }
-
-        $currentMonth = $checkIn->copy()->startOfMonth();
-        $lastMonth = $checkOut->copy()->startOfMonth();
-
-        while ($currentMonth->lte($lastMonth)) {
-            Cache::forget("dashboard.calendar.{$currentMonth->year}.{$currentMonth->month}");
-            $currentMonth->addMonthNoOverflow();
-        }
-    }
-
-    private function toCarbonDate($value): ?Carbon
-    {
-        if (! $value) {
-            return null;
-        }
-
-        return $value instanceof Carbon
-            ? $value->copy()->startOfDay()
-            : Carbon::parse($value)->startOfDay();
-    }
 }

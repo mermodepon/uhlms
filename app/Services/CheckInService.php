@@ -896,25 +896,32 @@ class CheckInService
         $seniorPercent = (float) Setting::get('discount_senior_percent', 0);
         $studentPercent = (float) Setting::get('discount_student_percent', 0);
 
-        $applicableDiscounts = [];
-        $totalPercent = 0;
+        // Collect all applicable discounts and apply only the highest one
+        $candidates = [];
 
         if ($isPwd && $pwdPercent > 0) {
-            $applicableDiscounts[] = "PWD ({$pwdPercent}%)";
-            $totalPercent += $pwdPercent;
+            $candidates[] = ['label' => "PWD ({$pwdPercent}%)", 'percent' => $pwdPercent];
         }
 
         if ($isSenior && $seniorPercent > 0) {
-            $applicableDiscounts[] = "Senior Citizen ({$seniorPercent}%)";
-            $totalPercent += $seniorPercent;
+            $candidates[] = ['label' => "Senior Citizen ({$seniorPercent}%)", 'percent' => $seniorPercent];
         }
 
         if ($isStudent && $studentPercent > 0) {
-            $applicableDiscounts[] = "Student ({$studentPercent}%)";
-            $totalPercent += $studentPercent;
+            $candidates[] = ['label' => "Student ({$studentPercent}%)", 'percent' => $studentPercent];
         }
 
-        // Cap total discount at 100%
+        // Pick only the highest discount
+        $applicableDiscounts = [];
+        $totalPercent = 0;
+
+        if (! empty($candidates)) {
+            usort($candidates, fn ($a, $b) => $b['percent'] <=> $a['percent']);
+            $best = $candidates[0];
+            $applicableDiscounts[] = $best['label'];
+            $totalPercent = $best['percent'];
+        }
+
         $totalPercent = min($totalPercent, 100);
 
         $discountAmount = ($subtotal * $totalPercent) / 100;

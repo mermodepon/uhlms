@@ -183,10 +183,132 @@ class ReservationResource extends Resource
                         Forms\Components\TextInput::make('checkin_id_number')
                             ->label('ID Number')
                             ->maxLength(100),
-                        Forms\Components\TextInput::make('checkin_nationality')
+                        Forms\Components\Select::make('checkin_nationality')
                             ->label('Nationality')
                             ->default('Filipino')
-                            ->maxLength(100),
+                            ->searchable()
+                            ->options([
+                                'Afghan' => 'Afghan',
+                                'Albanian' => 'Albanian',
+                                'Algerian' => 'Algerian',
+                                'American' => 'American',
+                                'Argentinian' => 'Argentinian',
+                                'Australian' => 'Australian',
+                                'Austrian' => 'Austrian',
+                                'Bangladeshi' => 'Bangladeshi',
+                                'Belgian' => 'Belgian',
+                                'Bolivian' => 'Bolivian',
+                                'Brazilian' => 'Brazilian',
+                                'British' => 'British',
+                                'Bruneian' => 'Bruneian',
+                                'Bulgarian' => 'Bulgarian',
+                                'Cambodian' => 'Cambodian',
+                                'Cameroonian' => 'Cameroonian',
+                                'Canadian' => 'Canadian',
+                                'Chilean' => 'Chilean',
+                                'Chinese' => 'Chinese',
+                                'Colombian' => 'Colombian',
+                                'Costa Rican' => 'Costa Rican',
+                                'Croatian' => 'Croatian',
+                                'Cuban' => 'Cuban',
+                                'Czech' => 'Czech',
+                                'Danish' => 'Danish',
+                                'Dominican' => 'Dominican',
+                                'Dutch' => 'Dutch',
+                                'Ecuadorian' => 'Ecuadorian',
+                                'Egyptian' => 'Egyptian',
+                                'Emirati' => 'Emirati',
+                                'English' => 'English',
+                                'Estonian' => 'Estonian',
+                                'Ethiopian' => 'Ethiopian',
+                                'Fijian' => 'Fijian',
+                                'Filipino' => 'Filipino',
+                                'Finnish' => 'Finnish',
+                                'French' => 'French',
+                                'German' => 'German',
+                                'Ghanaian' => 'Ghanaian',
+                                'Greek' => 'Greek',
+                                'Guatemalan' => 'Guatemalan',
+                                'Haitian' => 'Haitian',
+                                'Honduran' => 'Honduran',
+                                'Hungarian' => 'Hungarian',
+                                'Icelandic' => 'Icelandic',
+                                'Indian' => 'Indian',
+                                'Indonesian' => 'Indonesian',
+                                'Iranian' => 'Iranian',
+                                'Iraqi' => 'Iraqi',
+                                'Irish' => 'Irish',
+                                'Israeli' => 'Israeli',
+                                'Italian' => 'Italian',
+                                'Jamaican' => 'Jamaican',
+                                'Japanese' => 'Japanese',
+                                'Jordanian' => 'Jordanian',
+                                'Kazakh' => 'Kazakh',
+                                'Kenyan' => 'Kenyan',
+                                'Korean' => 'Korean',
+                                'Kuwaiti' => 'Kuwaiti',
+                                'Lao' => 'Lao',
+                                'Latvian' => 'Latvian',
+                                'Lebanese' => 'Lebanese',
+                                'Libyan' => 'Libyan',
+                                'Lithuanian' => 'Lithuanian',
+                                'Malaysian' => 'Malaysian',
+                                'Mexican' => 'Mexican',
+                                'Mongolian' => 'Mongolian',
+                                'Moroccan' => 'Moroccan',
+                                'Mozambican' => 'Mozambican',
+                                'Myanmar' => 'Myanmar',
+                                'Namibian' => 'Namibian',
+                                'Nepalese' => 'Nepalese',
+                                'New Zealander' => 'New Zealander',
+                                'Nicaraguan' => 'Nicaraguan',
+                                'Nigerian' => 'Nigerian',
+                                'Norwegian' => 'Norwegian',
+                                'Omani' => 'Omani',
+                                'Pakistani' => 'Pakistani',
+                                'Palestinian' => 'Palestinian',
+                                'Panamanian' => 'Panamanian',
+                                'Papua New Guinean' => 'Papua New Guinean',
+                                'Paraguayan' => 'Paraguayan',
+                                'Peruvian' => 'Peruvian',
+                                'Polish' => 'Polish',
+                                'Portuguese' => 'Portuguese',
+                                'Qatari' => 'Qatari',
+                                'Romanian' => 'Romanian',
+                                'Russian' => 'Russian',
+                                'Rwandan' => 'Rwandan',
+                                'Saudi' => 'Saudi',
+                                'Scottish' => 'Scottish',
+                                'Senegalese' => 'Senegalese',
+                                'Serbian' => 'Serbian',
+                                'Singaporean' => 'Singaporean',
+                                'Slovak' => 'Slovak',
+                                'Slovenian' => 'Slovenian',
+                                'South African' => 'South African',
+                                'Spanish' => 'Spanish',
+                                'Sri Lankan' => 'Sri Lankan',
+                                'Sudanese' => 'Sudanese',
+                                'Swedish' => 'Swedish',
+                                'Swiss' => 'Swiss',
+                                'Syrian' => 'Syrian',
+                                'Taiwanese' => 'Taiwanese',
+                                'Tanzanian' => 'Tanzanian',
+                                'Thai' => 'Thai',
+                                'Timorese' => 'Timorese',
+                                'Trinidadian' => 'Trinidadian',
+                                'Tunisian' => 'Tunisian',
+                                'Turkish' => 'Turkish',
+                                'Ugandan' => 'Ugandan',
+                                'Ukrainian' => 'Ukrainian',
+                                'Uruguayan' => 'Uruguayan',
+                                'Uzbek' => 'Uzbek',
+                                'Venezuelan' => 'Venezuelan',
+                                'Vietnamese' => 'Vietnamese',
+                                'Welsh' => 'Welsh',
+                                'Yemeni' => 'Yemeni',
+                                'Zambian' => 'Zambian',
+                                'Zimbabwean' => 'Zimbabwean',
+                            ]),
                         Forms\Components\Select::make('checkin_purpose_of_stay')
                             ->label('Purpose of Stay')
                             ->options([
@@ -299,22 +421,29 @@ class ReservationResource extends Resource
                                 $seniorPercent = (float) Setting::get('discount_senior_percent', 0);
                                 $studentPercent = (float) Setting::get('discount_student_percent', 0);
 
-                                $discountLines = [];
-                                $totalDiscountPercent = 0;
+                                // Pick only the highest applicable discount
+                                $candidates = [];
 
                                 if ($isPwd && $pwdPercent > 0) {
-                                    $discountLines[] = "PWD: {$pwdPercent}%";
-                                    $totalDiscountPercent += $pwdPercent;
+                                    $candidates[] = ['label' => "PWD: {$pwdPercent}%", 'percent' => $pwdPercent];
                                 }
 
                                 if ($isSenior && $seniorPercent > 0) {
-                                    $discountLines[] = "Senior Citizen: {$seniorPercent}%";
-                                    $totalDiscountPercent += $seniorPercent;
+                                    $candidates[] = ['label' => "Senior Citizen: {$seniorPercent}%", 'percent' => $seniorPercent];
                                 }
 
                                 if ($isStudent && $studentPercent > 0) {
-                                    $discountLines[] = "Student: {$studentPercent}%";
-                                    $totalDiscountPercent += $studentPercent;
+                                    $candidates[] = ['label' => "Student: {$studentPercent}%", 'percent' => $studentPercent];
+                                }
+
+                                $discountLines = [];
+                                $totalDiscountPercent = 0;
+
+                                if (! empty($candidates)) {
+                                    usort($candidates, fn ($a, $b) => $b['percent'] <=> $a['percent']);
+                                    $best = $candidates[0];
+                                    $discountLines[] = $best['label'];
+                                    $totalDiscountPercent = $best['percent'];
                                 }
 
                                 $totalDiscountPercent = min($totalDiscountPercent, 100);
@@ -1139,11 +1268,133 @@ class ReservationResource extends Resource
                                         ->label('ID Number')
                                         ->required()
                                         ->maxLength(100),
-                                    Forms\Components\TextInput::make('nationality')
+                                    Forms\Components\Select::make('nationality')
                                         ->label('Nationality')
                                         ->default('Filipino')
                                         ->required()
-                                        ->maxLength(100),
+                                        ->searchable()
+                                        ->options([
+                                            'Afghan' => 'Afghan',
+                                            'Albanian' => 'Albanian',
+                                            'Algerian' => 'Algerian',
+                                            'American' => 'American',
+                                            'Argentinian' => 'Argentinian',
+                                            'Australian' => 'Australian',
+                                            'Austrian' => 'Austrian',
+                                            'Bangladeshi' => 'Bangladeshi',
+                                            'Belgian' => 'Belgian',
+                                            'Bolivian' => 'Bolivian',
+                                            'Brazilian' => 'Brazilian',
+                                            'British' => 'British',
+                                            'Bruneian' => 'Bruneian',
+                                            'Bulgarian' => 'Bulgarian',
+                                            'Cambodian' => 'Cambodian',
+                                            'Cameroonian' => 'Cameroonian',
+                                            'Canadian' => 'Canadian',
+                                            'Chilean' => 'Chilean',
+                                            'Chinese' => 'Chinese',
+                                            'Colombian' => 'Colombian',
+                                            'Costa Rican' => 'Costa Rican',
+                                            'Croatian' => 'Croatian',
+                                            'Cuban' => 'Cuban',
+                                            'Czech' => 'Czech',
+                                            'Danish' => 'Danish',
+                                            'Dominican' => 'Dominican',
+                                            'Dutch' => 'Dutch',
+                                            'Ecuadorian' => 'Ecuadorian',
+                                            'Egyptian' => 'Egyptian',
+                                            'Emirati' => 'Emirati',
+                                            'English' => 'English',
+                                            'Estonian' => 'Estonian',
+                                            'Ethiopian' => 'Ethiopian',
+                                            'Fijian' => 'Fijian',
+                                            'Filipino' => 'Filipino',
+                                            'Finnish' => 'Finnish',
+                                            'French' => 'French',
+                                            'German' => 'German',
+                                            'Ghanaian' => 'Ghanaian',
+                                            'Greek' => 'Greek',
+                                            'Guatemalan' => 'Guatemalan',
+                                            'Haitian' => 'Haitian',
+                                            'Honduran' => 'Honduran',
+                                            'Hungarian' => 'Hungarian',
+                                            'Icelandic' => 'Icelandic',
+                                            'Indian' => 'Indian',
+                                            'Indonesian' => 'Indonesian',
+                                            'Iranian' => 'Iranian',
+                                            'Iraqi' => 'Iraqi',
+                                            'Irish' => 'Irish',
+                                            'Israeli' => 'Israeli',
+                                            'Italian' => 'Italian',
+                                            'Jamaican' => 'Jamaican',
+                                            'Japanese' => 'Japanese',
+                                            'Jordanian' => 'Jordanian',
+                                            'Kazakh' => 'Kazakh',
+                                            'Kenyan' => 'Kenyan',
+                                            'Korean' => 'Korean',
+                                            'Kuwaiti' => 'Kuwaiti',
+                                            'Lao' => 'Lao',
+                                            'Latvian' => 'Latvian',
+                                            'Lebanese' => 'Lebanese',
+                                            'Libyan' => 'Libyan',
+                                            'Lithuanian' => 'Lithuanian',
+                                            'Malaysian' => 'Malaysian',
+                                            'Mexican' => 'Mexican',
+                                            'Mongolian' => 'Mongolian',
+                                            'Moroccan' => 'Moroccan',
+                                            'Mozambican' => 'Mozambican',
+                                            'Myanmar' => 'Myanmar',
+                                            'Namibian' => 'Namibian',
+                                            'Nepalese' => 'Nepalese',
+                                            'New Zealander' => 'New Zealander',
+                                            'Nicaraguan' => 'Nicaraguan',
+                                            'Nigerian' => 'Nigerian',
+                                            'Norwegian' => 'Norwegian',
+                                            'Omani' => 'Omani',
+                                            'Pakistani' => 'Pakistani',
+                                            'Palestinian' => 'Palestinian',
+                                            'Panamanian' => 'Panamanian',
+                                            'Papua New Guinean' => 'Papua New Guinean',
+                                            'Paraguayan' => 'Paraguayan',
+                                            'Peruvian' => 'Peruvian',
+                                            'Polish' => 'Polish',
+                                            'Portuguese' => 'Portuguese',
+                                            'Qatari' => 'Qatari',
+                                            'Romanian' => 'Romanian',
+                                            'Russian' => 'Russian',
+                                            'Rwandan' => 'Rwandan',
+                                            'Saudi' => 'Saudi',
+                                            'Scottish' => 'Scottish',
+                                            'Senegalese' => 'Senegalese',
+                                            'Serbian' => 'Serbian',
+                                            'Singaporean' => 'Singaporean',
+                                            'Slovak' => 'Slovak',
+                                            'Slovenian' => 'Slovenian',
+                                            'South African' => 'South African',
+                                            'Spanish' => 'Spanish',
+                                            'Sri Lankan' => 'Sri Lankan',
+                                            'Sudanese' => 'Sudanese',
+                                            'Swedish' => 'Swedish',
+                                            'Swiss' => 'Swiss',
+                                            'Syrian' => 'Syrian',
+                                            'Taiwanese' => 'Taiwanese',
+                                            'Tanzanian' => 'Tanzanian',
+                                            'Thai' => 'Thai',
+                                            'Timorese' => 'Timorese',
+                                            'Trinidadian' => 'Trinidadian',
+                                            'Tunisian' => 'Tunisian',
+                                            'Turkish' => 'Turkish',
+                                            'Ugandan' => 'Ugandan',
+                                            'Ukrainian' => 'Ukrainian',
+                                            'Uruguayan' => 'Uruguayan',
+                                            'Uzbek' => 'Uzbek',
+                                            'Venezuelan' => 'Venezuelan',
+                                            'Vietnamese' => 'Vietnamese',
+                                            'Welsh' => 'Welsh',
+                                            'Yemeni' => 'Yemeni',
+                                            'Zambian' => 'Zambian',
+                                            'Zimbabwean' => 'Zimbabwean',
+                                        ]),
                                     Forms\Components\Toggle::make('is_student')
                                         ->label('Student')
                                         ->inline(false)
@@ -1845,17 +2096,19 @@ class ReservationResource extends Resource
         $seniorPercent = (float) Setting::get('discount_senior_percent', 0);
         $studentPercent = (float) Setting::get('discount_student_percent', 0);
 
-        $totalDiscountPercent = 0;
+        // Pick only the highest applicable discount
+        $candidates = [];
         if ($isPwd && $pwdPercent > 0) {
-            $totalDiscountPercent += $pwdPercent;
+            $candidates[] = $pwdPercent;
         }
         if ($isSenior && $seniorPercent > 0) {
-            $totalDiscountPercent += $seniorPercent;
+            $candidates[] = $seniorPercent;
         }
         if ($isStudent && $studentPercent > 0) {
-            $totalDiscountPercent += $studentPercent;
+            $candidates[] = $studentPercent;
         }
 
+        $totalDiscountPercent = ! empty($candidates) ? max($candidates) : 0;
         $totalDiscountPercent = min($totalDiscountPercent, 100);
         $discountAmount = ($subtotal * $totalDiscountPercent) / 100;
         $newTotal = max(0, $subtotal - $discountAmount);
@@ -1941,22 +2194,23 @@ class ReservationResource extends Resource
 
         $subtotal = $roomSubtotal + $servicesTotal;
 
-        // Calculate discount
+        // Calculate discount - pick only the highest applicable discount
         $pwdPercent = (float) Setting::get('discount_pwd_percent', 0);
         $seniorPercent = (float) Setting::get('discount_senior_percent', 0);
         $studentPercent = (float) Setting::get('discount_student_percent', 0);
 
-        $totalDiscountPercent = 0;
+        $candidates = [];
         if ($isPwd && $pwdPercent > 0) {
-            $totalDiscountPercent += $pwdPercent;
+            $candidates[] = $pwdPercent;
         }
         if ($isSenior && $seniorPercent > 0) {
-            $totalDiscountPercent += $seniorPercent;
+            $candidates[] = $seniorPercent;
         }
         if ($isStudent && $studentPercent > 0) {
-            $totalDiscountPercent += $studentPercent;
+            $candidates[] = $studentPercent;
         }
 
+        $totalDiscountPercent = ! empty($candidates) ? max($candidates) : 0;
         $totalDiscountPercent = min($totalDiscountPercent, 100);
         $discountAmount = ($subtotal * $totalDiscountPercent) / 100;
         $grandTotal = max(0, $subtotal - $discountAmount);

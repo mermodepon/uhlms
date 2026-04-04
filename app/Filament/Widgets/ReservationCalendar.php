@@ -3,119 +3,115 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Reservation;
-use Carbon\Carbon;
-use Filament\Widgets\Widget;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Database\Eloquent\Model;
+use Saade\FilamentFullCalendar\Data\EventData;
+use Saade\FilamentFullCalendar\Widgets\FullCalendarWidget;
 
-class ReservationCalendar extends Widget
+class ReservationCalendar extends FullCalendarWidget
 {
+    protected static string $view = 'filament.widgets.reservation-calendar';
+
     protected static ?int $sort = 2;
 
     protected int|string|array $columnSpan = 'full';
 
-    protected static string $view = 'filament.widgets.reservation-calendar';
+    /**
+     * No model — we handle events manually via fetchEvents().
+     */
+    public string|null|Model $model = null;
 
-    public int $currentMonth;
+    /**
+     * Status-to-color mapping matching the existing legend / rest of the app.
+     */
+    protected static array $statusColors = [
+        'pending'         => '#fbbf24', // amber
+        'approved'        => '#3b82f6', // blue
+        'pending_payment' => '#8b5cf6', // violet
+        'checked_in'      => '#16a34a', // green
+        'checked_out'     => '#94a3b8', // slate-gray
+    ];
 
-    public int $currentYear;
+    /**
+     * Which statuses are currently visible on the calendar.
+     * Checked Out is OFF by default to reduce clutter.
+     */
+    public array $activeStatuses = ['pending', 'approved', 'pending_payment', 'checked_in'];
 
-    public function mount(): void
+    public function toggleStatus(string $status): void
     {
-        $this->currentMonth = now()->month;
-        $this->currentYear = now()->year;
+        if (in_array($status, $this->activeStatuses)) {
+            $this->activeStatuses = array_values(array_diff($this->activeStatuses, [$status]));
+        } else {
+            $this->activeStatuses[] = $status;
+        }
+
+        $this->dispatch('filament-fullcalendar--refresh');
     }
 
-    public function previousMonth(): void
+    /**
+     * FullCalendar configuration.
+     */
+    public function config(): array
     {
-        $date = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->subMonth();
-        $this->currentMonth = $date->month;
-        $this->currentYear = $date->year;
+        return [
+            'headerToolbar' => [
+                'left'   => 'prev,next today',
+                'center' => 'title',
+                'right'  => 'dayGridMonth,dayGridWeek',
+            ],
+            'initialView'       => 'dayGridMonth',
+            'dayMaxEvents'      => 4,
+            'eventDisplay'      => 'block',
+            'displayEventTime'  => false,
+            'eventBorderColor'  => 'transparent',
+            'height'            => 'auto',
+            'firstDay'          => 0, // Sunday
+        ];
     }
 
-    public function nextMonth(): void
+    /**
+     * Fetch reservation events for the visible date range.
+     */
+    public function fetchEvents(array $fetchInfo): array
     {
-        $date = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->addMonth();
-        $this->currentMonth = $date->month;
-        $this->currentYear = $date->year;
+        $start = $fetchInfo['start'];
+        $end   = $fetchInfo['end'];
+
+        $reservations = Reservation::query()
+            ->where(function ($q) use ($start, $end) {
+                $q->whereBetween('check_in_date', [$start, $end])
+                    ->orWhereBetween('check_out_date', [$start, $end])
+                    ->orWhere(function ($q2) use ($start, $end) {
+                        $q2->where('check_in_date', '<=', $start)
+                            ->where('check_out_date', '>=', $end);
+                    });
+            })
+            ->whereNotIn('status', ['declined', 'cancelled'])
+            ->whereIn('status', $this->activeStatuses)
+            ->get(['id', 'reference_number', 'guest_name', 'check_in_date', 'check_out_date', 'status']);
+
+        return $reservations->map(function (Reservation $res) {
+            $color = static::$statusColors[$res->status] ?? '#d1d5db';
+
+            return EventData::make()
+                ->id($res->id)
+                ->title("{$res->reference_number} — {$res->guest_name}")
+                ->start($res->check_in_date)
+                ->end($res->check_out_date->copy()->addDay()) // FullCalendar end is exclusive
+                ->backgroundColor($color)
+                ->textColor('#ffffff')
+                ->url(
+                    url('/admin/reservations?tableSearch=' . urlencode($res->reference_number)),
+                    shouldOpenUrlInNewTab: false,
+                );
+        })->toArray();
     }
 
-    public function getCalendarData(): array
+    /**
+     * Disable all interactive modal actions — the calendar is view/navigate only.
+     */
+    protected function headerActions(): array
     {
-        $cacheKey = "dashboard.calendar.{$this->currentYear}.{$this->currentMonth}";
-
-        return Cache::remember($cacheKey, 300, function () {
-            $start = Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->startOfMonth();
-            $end = $start->copy()->endOfMonth();
-
-            // Fetch all reservations active within this month
-            $reservations = Reservation::query()
-                ->where(function ($q) use ($start, $end) {
-                    $q->whereBetween('check_in_date', [$start, $end])
-                        ->orWhereBetween('check_out_date', [$start, $end])
-                        ->orWhere(function ($q2) use ($start, $end) {
-                            $q2->where('check_in_date', '<=', $start)
-                                ->where('check_out_date', '>=', $end);
-                        });
-                })
-                ->whereNotIn('status', ['declined', 'cancelled'])
-                ->get(['id', 'reference_number', 'guest_name', 'check_in_date', 'check_out_date', 'status']);
-
-            // Build a map: date string → list of reservation summaries
-            $dayMap = [];
-            foreach ($reservations as $res) {
-                // Use max/min with copies to avoid mutating $start/$end
-                $cursorDate = $res->check_in_date->copy();
-                if ($cursorDate->lt($start)) {
-                    $cursorDate = $start->copy();
-                }
-                $finishDate = $res->check_out_date->copy();
-                if ($finishDate->gt($end)) {
-                    $finishDate = $end->copy();
-                }
-
-                while ($cursorDate->lte($finishDate)) {
-                    $key = $cursorDate->toDateString();
-                    $dayMap[$key][] = [
-                        'id' => $res->id,
-                        'guest_name' => $res->guest_name,
-                        'reference_number' => $res->reference_number,
-                        'status' => $res->status,
-                        'is_checkin' => $cursorDate->equalTo($res->check_in_date),
-                        'is_checkout' => $cursorDate->equalTo($res->check_out_date),
-                    ];
-                    $cursorDate->addDay();
-                }
-            }
-
-            // Build weeks array — start from the Sunday on or before the 1st of the month
-            $weeks = [];
-            $current = $start->copy()->subDays($start->dayOfWeek); // dayOfWeek: 0=Sun … 6=Sat
-
-            // Run until we've passed the last day of the month
-            while ($current->lte($end)) {
-                $week = [];
-                for ($i = 0; $i < 7; $i++) {
-                    $dateStr = $current->toDateString();
-                    $week[] = [
-                        'date' => $current->copy(),
-                        'in_month' => (int) $current->month === (int) $this->currentMonth,
-                        'is_today' => $current->isToday(),
-                        'reservations' => $dayMap[$dateStr] ?? [],
-                    ];
-                    $current->addDay();
-                }
-                $weeks[] = $week;
-            }
-
-            return [
-                'weeks' => $weeks,
-                'monthLabel' => Carbon::createFromDate($this->currentYear, $this->currentMonth, 1)->format('F Y'),
-            ];
-        }); // end Cache::remember
-    }
-
-    protected function getViewData(): array
-    {
-        return $this->getCalendarData();
+        return [];
     }
 }
