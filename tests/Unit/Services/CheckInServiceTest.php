@@ -153,7 +153,7 @@ class CheckInServiceTest extends TestCase
         $this->actingAs($user);
 
         $roomType = $this->createRoomType();
-        $room = $this->createRoom($roomType, 'occupied', 4);
+        $room = $this->createRoom($roomType, 'maintenance', 4);
         $reservation = $this->createReservation($roomType);
 
         $payload = [

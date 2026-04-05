@@ -45,13 +45,16 @@ class AdminPanelProvider extends PanelProvider
                 >
                     <a href="/admin" class="flex items-center gap-2">
                         <img src="/images/uh_logo.jpg" alt="UH Lodging Management System" style="height:1.5rem; width:auto;" />
-                        <span class="filament-brand-text text-base font-semibold text-[#FFC600] whitespace-nowrap">UH Lodging Management System</span>
+                        <span class="filament-brand-text font-semibold whitespace-nowrap leading-tight" style="color:white !important;">
+                            <span style="display:block;font-size:0.5rem;line-height:1.1;">Central Mindanao University</span>
+                            <span style="display:block;font-size:0.875rem;line-height:1.2;">UH Lodging Management System</span>
+                        </span>
                     </a>
                 </div>
                 HTML,
             )
             ->renderHook(
-                'panels::topbar.end',
+                'panels::global-search.after',
                 fn () => view('filament.topbar-date')->render(),
             )
             ->renderHook(
@@ -77,6 +80,10 @@ class AdminPanelProvider extends PanelProvider
                     });
                 </script>
                 HTML,
+            )
+            ->renderHook(
+                'panels::footer',
+                fn (): string => '<div class="text-center text-xs text-gray-500 py-4">&copy; ' . date('Y') . ' CMU University Homestay Lodging Management System. All rights reserved.</div>',
             )
             ->colors([
                 'primary' => Color::hex('#00491E'),
