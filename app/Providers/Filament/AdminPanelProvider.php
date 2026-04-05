@@ -83,7 +83,7 @@ class AdminPanelProvider extends PanelProvider
             )
             ->renderHook(
                 'panels::footer',
-                fn (): string => '<div class="text-center text-xs text-gray-500 py-4">&copy; ' . date('Y') . ' CMU University Homestay Lodging Management System. All rights reserved.</div>',
+                fn (): string => '<div class="text-center text-xs ' . (request()->routeIs('filament.admin.auth.login') ? 'text-white' : 'text-gray-500') . ' py-4">&copy; ' . date('Y') . ' CMU University Homestay Lodging Management System. All rights reserved.</div>',
             )
             ->colors([
                 'primary' => Color::hex('#00491E'),

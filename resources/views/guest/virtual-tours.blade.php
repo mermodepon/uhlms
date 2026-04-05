@@ -5,7 +5,7 @@
 @section('content')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h1 class="text-3xl font-bold mb-2">🎯 360° Virtual Tours</h1>
+            <h1 class="text-3xl font-bold mb-2"><svg xmlns="http://www.w3.org/2000/svg" class="inline-block w-8 h-8 align-middle mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 360° Virtual Tours</h1>
             <p class="text-gray-200">Explore our rooms in immersive 360° before you book. Click and drag to look around.</p>
         </div>
     </section>

@@ -93,7 +93,7 @@
                 {{-- Virtual Tour --}}
                 @if($roomType->virtual_tour_url)
                     <div id="virtual-tour" class="bg-white rounded-xl shadow-md p-6">
-                        <h2 class="text-xl font-bold text-[#00491E] mb-4">🎯 360° Virtual Tour</h2>
+                        <h2 class="text-xl font-bold text-[#00491E] mb-4 flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 360° Virtual Tour</h2>
                         <p class="text-gray-600 text-sm mb-4">Explore this room type in an immersive 360° virtual tour. Click and drag to look around.</p>
                         <div class="rounded-lg overflow-hidden" style="position: relative; padding-bottom: 56.25%; height: 0;">
                             <iframe

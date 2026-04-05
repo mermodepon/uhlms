@@ -110,7 +110,8 @@
                             <img src="{{ $logoSrc }}" alt="{{ $siteTitle }}" class="h-9 w-9 object-cover rounded" />
                         </div>
                         <div class="hidden sm:flex flex-col leading-tight">
-                            <span class="text-[#FFC600] font-extrabold text-lg tracking-wide group-hover:text-yellow-300 transition drop-shadow">{{ $siteTitle }}</span>
+                            <span class="text-white font-semibold text-xs tracking-wide group-hover:text-yellow-100 transition drop-shadow">Central Mindanao University</span>
+                            <span class="text-[#FFC600] font-extrabold text-lg tracking-wide group-hover:text-yellow-300 transition drop-shadow">University Homestay</span>
                         </div>
                     </a>
                 </div>
@@ -162,7 +163,7 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div>
-                    <h3 class="text-[var(--cmu-yellow)] font-bold text-lg mb-3">{{ $siteTitle }}</h3>
+                    <h3 class="text-[var(--cmu-yellow)] font-bold text-lg mb-3">Central Mindanao University<br>University Homestay</h3>
                     <p class="text-gray-300 text-sm">
                         Central Mindanao University<br>Musuan, Maramag, Bukidnon<br>Philippines
                     </p>

@@ -61,8 +61,8 @@
                                 </span>
                                 @if($roomType->virtual_tour_url)
                                     <span class="text-gray-300">|</span>
-                                    <button type="button" class="relative z-10 text-[#919F02] font-semibold hover:text-[#02681E] transition text-sm bg-transparent p-0" onclick="event.stopPropagation(); window.location.href='{{ route('guest.room-detail', $roomType) }}#virtual-tour'">
-                                        🎯 Virtual Tour
+                                    <button type="button" class="relative z-10 text-[#919F02] font-semibold hover:text-[#02681E] transition text-sm bg-transparent p-0 flex items-center gap-1" onclick="event.stopPropagation(); window.location.href='{{ route('guest.room-detail', $roomType) }}#virtual-tour'">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Virtual Tour
                                     </button>
                                 @endif
                             </div>

@@ -37,7 +37,7 @@
                         Make a Reservation
                     </a>
                     <a href="{{ route('guest.virtual-tours') }}" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg shadow-lg transition-all duration-200 hover:bg-[#00491E] hover:text-[#FFC600] hover:shadow-2xl hover:scale-105 active:scale-95 flex items-center gap-2">
-                        🎯 360° Virtual Tours
+                        <svg xmlns="http://www.w3.org/2000/svg" class="inline-block w-5 h-5 align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 360° Virtual Tours
                     </a>
                 </div>
             </div>
