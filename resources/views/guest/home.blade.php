@@ -5,40 +5,61 @@
 @section('content')
     {{-- Hero Section --}}
     @php
-        $heroSrc          = asset('images/uh_banner.png');
-        $heroEmbed        = null;
-        $heroEmbedEnabled = false;
-        $welcomeMessage   = 'Comfortable and affordable lodging for visiting scholars, faculty, students, and guests of Central Mindanao University.';
-        $siteTitle        = 'University Homestay';
+        $welcomeMessage = 'Comfortable and affordable lodging for visiting scholars, faculty, students, and guests of Central Mindanao University.';
+        $siteTitle      = 'University Homestay';
     @endphp
     <section class="relative bg-gradient-to-br from-[#00491E] via-[#02681E] to-[#00491E] text-white">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
-            <div class="flex justify-center mb-8">
-                @if($heroEmbed && $heroEmbedEnabled)
-                    <div class="w-full max-w-4xl rounded-xl shadow-lg overflow-hidden" style="position: relative; padding-bottom: 56.25%; height: 0;">
-                        <iframe src="{{ $heroEmbed }}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen loading="lazy"></iframe>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                {{-- Left: Text --}}
+                <div>
+                    <span class="inline-block bg-[#FFC600] text-[#00491E] px-3 py-1 rounded-full text-xs font-bold mb-5 uppercase tracking-widest">360° Virtual Tour Available</span>
+                    <h1 class="text-4xl md:text-5xl font-bold mb-5 leading-tight">{{ $siteTitle }}</h1>
+                    <p class="text-lg text-gray-200 mb-8 max-w-lg">{{ $welcomeMessage }}</p>
+                    <ul class="space-y-3 mb-8 text-gray-200">
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-[#FFC600] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                            Navigate freely between rooms and common areas
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-[#FFC600] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                            View room details and real-time availability
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-[#FFC600] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                            Request a reservation directly from within the tour
+                        </li>
+                    </ul>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <a href="{{ route('guest.tour.viewer') }}" class="inline-flex items-center justify-center gap-2 bg-[#FFC600] text-[#00491E] px-8 py-3.5 rounded-lg font-bold text-lg hover:bg-yellow-400 transition shadow-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            Start Virtual Tour
+                        </a>
+                        <a href="{{ route('guest.rooms') }}" class="inline-flex items-center justify-center gap-2 bg-white/10 border border-white/30 text-white px-8 py-3.5 rounded-lg font-bold text-lg hover:bg-white/20 transition">
+                            Browse Rooms
+                        </a>
                     </div>
-                @else
-                    <img src="{{ $heroSrc }}" alt="Hero Banner" class="w-full max-w-4xl rounded-xl shadow-lg object-cover" />
-                @endif
-            </div>
-            <div class="text-center">
-                <h1 class="text-4xl md:text-6xl font-bold mb-6">
-                    {{ $siteTitle }}
-                </h1>
-                <p class="text-xl md:text-2xl text-gray-200 mb-8 max-w-3xl mx-auto">
-                    {{ $welcomeMessage }}
-                </p>
-                <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    <a href="{{ route('guest.rooms') }}" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg shadow-lg transition-all duration-200 hover:bg-[#00491E] hover:text-[#FFC600] hover:shadow-2xl hover:scale-105 active:scale-95">
-                        Browse Rooms
-                    </a>
-                    <a href="{{ route('guest.reserve') }}" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg shadow-lg transition-all duration-200 hover:bg-[#00491E] hover:text-[#FFC600] hover:shadow-2xl hover:scale-105 active:scale-95">
-                        Make a Reservation
-                    </a>
-                    <a href="{{ route('guest.virtual-tours') }}" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg shadow-lg transition-all duration-200 hover:bg-[#00491E] hover:text-[#FFC600] hover:shadow-2xl hover:scale-105 active:scale-95 flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="inline-block w-5 h-5 align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 360° Virtual Tours
-                    </a>
+                </div>
+                {{-- Right: Preview Card --}}
+                <div class="flex items-center justify-center">
+                    <div class="relative w-full max-w-md">
+                        <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 shadow-2xl">
+                            <div class="rounded-xl overflow-hidden bg-black" style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;position:relative;">
+                                <div class="absolute inset-0 bg-gradient-to-br from-[#02681E]/70 to-black/80 flex flex-col items-center justify-center">
+                                    <svg class="w-16 h-16 text-[#FFC600] mb-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                                    <p class="text-white font-semibold text-lg">360° Interactive Tour</p>
+                                    <p class="text-gray-300 text-sm mt-1">Navigate. Explore. Reserve.</p>
+                                </div>
+                            </div>
+                            <div class="mt-4 flex items-center justify-between text-sm text-white/70">
+                                <span class="flex items-center gap-1.5">
+                                    <span class="w-2 h-2 bg-[#FFC600] rounded-full inline-block"></span>
+                                    Live tour available
+                                </span>
+                                <span>Works on mobile &amp; desktop</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -76,6 +97,7 @@
         </div>
     </section>
     @endif
+
     {{-- Room Types Preview --}}
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div class="text-center mb-12">

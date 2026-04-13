@@ -142,6 +142,11 @@ class Reservation extends Model
         return $this->hasMany(ReservationLog::class)->orderBy('logged_at', 'desc');
     }
 
+    public function roomHolds(): HasMany
+    {
+        return $this->hasMany(RoomHold::class);
+    }
+
     public function refreshFinancialSummary(): void
     {
         $chargesTotal = (float) $this->charges()->sum('amount');

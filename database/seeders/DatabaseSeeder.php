@@ -42,6 +42,8 @@ class DatabaseSeeder extends Seeder
         DB::table('settings')->truncate();
         DB::table('users')->truncate();
         DB::table('reservation_sequences')->truncate();
+        DB::table('tour_hotspots')->truncate();
+        DB::table('tour_waypoints')->truncate();
         DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
         // ─── Users ────────────────────────────────────────────────────────
@@ -1993,5 +1995,8 @@ class DatabaseSeeder extends Seeder
             ['year' => Carbon::today()->year],
             ['last_sequence' => 100],
         );
+
+        // ─── Virtual Tour Sample Data ────────────────────────────────────
+        $this->call(VirtualTourSeeder::class);
     }
 }

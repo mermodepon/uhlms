@@ -10,6 +10,7 @@ use App\Models\ReservationLog;
 use App\Models\ReservationPayment;
 use App\Models\Room;
 use App\Models\RoomAssignment;
+use App\Models\RoomHold;
 use App\Models\Service;
 use App\Models\Setting;
 use Illuminate\Support\Carbon;
@@ -194,6 +195,12 @@ class CheckInService
                     'num_male_guests' => $maleCount,
                     'num_female_guests' => $femaleCount,
                 ]);
+
+                // Clear advance room holds since they're now converted to assignments
+                RoomHold::query()
+                    ->where('reservation_id', $reservation->id)
+                    ->where('hold_type', 'advance')
+                    ->delete();
             }
         });
 
@@ -226,6 +233,13 @@ class CheckInService
             throw new \RuntimeException('Please add at least one room entry before preparing payment.');
         }
 
+        // Validate hold_duration_minutes
+        $allowedDurations = [240, 480, 720, 1440, 2160, 2880, 4320];
+        $holdMinutes = (int) ($payload['hold_duration_minutes'] ?? 240);
+        if (!in_array($holdMinutes, $allowedDurations, true)) {
+            throw new \RuntimeException('Invalid Payment Hold Duration. Allowed values: 4, 8, 12, 24, 36, 48, or 72 hours.');
+        }
+
         $primaryGuest = [
             'first_name' => $payload['guest_first_name'] ?? null,
             'last_name' => $payload['guest_last_name'] ?? null,
@@ -243,7 +257,6 @@ class CheckInService
         );
 
         $holdPayloadData = $this->sanitizePreparePayload($payload);
-        $holdMinutes = max(1, (int) ($payload['hold_duration_minutes'] ?? 180));
 
         $holdEntries = [];
 
@@ -341,6 +354,22 @@ class CheckInService
                 'checkin_hold_expires_at' => now()->addMinutes($holdMinutes),
                 'checkin_hold_by' => auth()->id(),
             ]);
+
+            // Also create short-term room holds for date-range tracking
+            $expiresAt = now()->addMinutes($holdMinutes);
+            foreach ($holdEntries as $entry) {
+                $roomId = $entry['room_id'] ?? null;
+                if ($roomId) {
+                    RoomHold::create([
+                        'room_id' => $roomId,
+                        'reservation_id' => $reservation->id,
+                        'hold_from' => $reservation->check_in_date,
+                        'hold_to' => $reservation->check_out_date,
+                        'hold_type' => 'short_term',
+                        'expires_at' => $expiresAt,
+                    ]);
+                }
+            }
         });
 
         $heldGuestCount = collect($holdEntries)->sum(fn ($entry) => count($entry['guests'] ?? []));
@@ -575,6 +604,12 @@ class CheckInService
                     }
                 }
             }
+
+            // Also delete short-term room holds
+            RoomHold::query()
+                ->where('reservation_id', $reservation->id)
+                ->where('hold_type', 'short_term')
+                ->delete();
         });
 
         $update = [
@@ -613,6 +648,13 @@ class CheckInService
             );
             $this->releasePendingPaymentHold($expiredReservation, true);
         }
+
+        // Also clean up any orphaned expired short-term room holds
+        // (e.g., if reservation was deleted but holds remain)
+        RoomHold::query()
+            ->shortTerm()
+            ->expired()
+            ->delete();
 
         return $expiredReservations->count();
     }

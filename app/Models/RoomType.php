@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Services\RoomHoldService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 class RoomType extends Model
 {
@@ -18,18 +20,14 @@ class RoomType extends Model
         'pricing_type',
         'room_sharing_type',
         'images',
-        'virtual_tour_url',
         'is_active',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'images' => 'array',
-            'base_rate' => 'decimal:2',
-            'is_active' => 'boolean',
-        ];
-    }
+    protected $casts = [
+        'images' => 'array',
+        'base_rate' => 'decimal:2',
+        'is_active' => 'boolean',
+    ];
 
     public function rooms(): HasMany
     {
@@ -41,6 +39,24 @@ class RoomType extends Model
         return $this->hasMany(Room::class)->where('status', 'available')->where('is_active', true);
     }
 
+    /**
+     * Get rooms available for a specific date range (considers room holds).
+     *
+     * @return \Illuminate\Support\Collection<int, Room>
+     */
+    public function availableRoomsForDates(Carbon $checkIn, Carbon $checkOut): \Illuminate\Support\Collection
+    {
+        return app(RoomHoldService::class)->getAvailableRooms($this, $checkIn, $checkOut);
+    }
+
+    /**
+     * Get count of rooms available for a specific date range.
+     */
+    public function availableRoomsCountForDates(Carbon $checkIn, Carbon $checkOut): int
+    {
+        return app(RoomHoldService::class)->getAvailableRoomCount($this, $checkIn, $checkOut);
+    }
+
     public function amenities(): BelongsToMany
     {
         return $this->belongsToMany(Amenity::class, 'amenity_room_type')->withTimestamps();
@@ -49,6 +65,11 @@ class RoomType extends Model
     public function reservations(): HasMany
     {
         return $this->hasMany(Reservation::class, 'preferred_room_type_id');
+    }
+
+    public function tourWaypoints(): HasMany
+    {
+        return $this->hasMany(TourWaypoint::class, 'linked_room_type_id');
     }
 
     /**

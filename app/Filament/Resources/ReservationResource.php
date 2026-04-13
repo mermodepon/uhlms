@@ -6,11 +6,14 @@ use App\Filament\Resources\ReservationResource\Pages;
 use App\Models\Guest;
 use App\Models\ForceDeletionLog;
 use App\Models\Reservation;
+use App\Models\ReservationLog;
 use App\Models\Room;
 use App\Models\RoomAssignment;
+use App\Models\RoomHold;
 use App\Models\Service;
 use App\Models\Setting;
 use App\Services\CheckInService;
+use App\Services\RoomHoldService;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Infolists;
@@ -634,11 +637,28 @@ class ReservationResource extends Resource
                                             }),
                                         Infolists\Components\TextEntry::make('checkin_hold_expires_at')
                                             ->label('Payment Hold Expires')
-                                            ->date()
+                                            ->formatStateUsing(fn ($state) => $state ? \Illuminate\Support\Carbon::parse($state)->format('M d, Y h:i A') : null)
                                             ->placeholder('No active hold'),
                                         Infolists\Components\TextEntry::make('checked_in_by_name')
                                             ->label('Last Processed By')
-                                            ->default(fn (Reservation $record) => optional($record->roomAssignments()->with('assignedByUser')->latest('checked_in_at')->first()?->assignedByUser)->name ?? '-'),
+                                            ->default(function (Reservation $record) {
+                                                // Try last check-in
+                                                $lastCheckedIn = $record->roomAssignments()->with('assignedByUser')->latest('checked_in_at')->first();
+                                                if ($lastCheckedIn && $lastCheckedIn->assignedByUser) {
+                                                    return $lastCheckedIn->assignedByUser->name;
+                                                }
+                                                // Try last assignment
+                                                $lastAssigned = $record->roomAssignments()->with('assignedByUser')->latest('assigned_at')->first();
+                                                if ($lastAssigned && $lastAssigned->assignedByUser) {
+                                                    return $lastAssigned->assignedByUser->name;
+                                                }
+                                                // Try hold creator
+                                                if ($record->checkin_hold_by && $record->checkin_hold_by > 0 && $record->checkin_hold_by !== null) {
+                                                    $user = \App\Models\User::find($record->checkin_hold_by);
+                                                    if ($user) return $user->name;
+                                                }
+                                                return '-';
+                                            }),
                                     ])->columns(4),
 
                                 Infolists\Components\Section::make('Captured Check-In Snapshot')
@@ -747,6 +767,49 @@ class ReservationResource extends Resource
                                             ->date(),
                                     ])->columns(2),
                             ]),
+
+                        Infolists\Components\Tabs\Tab::make('Held Rooms')
+                            ->visible(fn (?Reservation $record) => $record?->roomHolds()->exists())
+                            ->badge(fn (?Reservation $record) => $record?->roomHolds()->count() ?: null)
+                            ->schema([
+                                Infolists\Components\Section::make('Reserved Room Inventory')
+                                    ->description('These rooms are held exclusively for this reservation and are blocked from others.')
+                                    ->schema([
+                                        Infolists\Components\RepeatableEntry::make('roomHolds')
+                                            ->schema([
+                                                Infolists\Components\TextEntry::make('room.room_number')
+                                                    ->label('Room')
+                                                    ->badge()
+                                                    ->color('primary'),
+                                                Infolists\Components\TextEntry::make('hold_from')
+                                                    ->label('From')
+                                                    ->date('M d, Y'),
+                                                Infolists\Components\TextEntry::make('hold_to')
+                                                    ->label('To')
+                                                    ->date('M d, Y'),
+                                                Infolists\Components\TextEntry::make('hold_type')
+                                                    ->label('Type')
+                                                    ->badge()
+                                                    ->formatStateUsing(fn (string $state) => match ($state) {
+                                                        'advance' => 'Advance',
+                                                        'short_term' => 'Short-term',
+                                                        default => $state,
+                                                    })
+                                                    ->color(fn (string $state) => match ($state) {
+                                                        'advance' => 'success',
+                                                        'short_term' => 'warning',
+                                                        default => 'gray',
+                                                    }),
+                                                Infolists\Components\TextEntry::make('expires_at')
+                                                    ->label('Expires At')
+                                                    ->dateTime('M d, Y h:i A')
+                                                    ->placeholder('No expiry (advance hold)')
+                                                    ->color(fn (?string $state) => $state && \Carbon\Carbon::parse($state)->isPast() ? 'danger' : 'gray'),
+                                            ])
+                                            ->columns(5)
+                                            ->contained(),
+                                    ]),
+                            ]),
                     ])
                     ->columnSpanFull(),
             ]);
@@ -761,6 +824,26 @@ class ReservationResource extends Resource
                     ->sortable()
                     ->copyable()
                     ->width('120px'),
+                Tables\Columns\TextColumn::make('heldRooms')
+                    ->label('Held Rooms')
+                    ->getStateUsing(function (Reservation $record) {
+                        $holds = $record->roomHolds()
+                            ->with('room')
+                            ->orderBy('hold_from')
+                            ->get();
+
+                        if ($holds->isEmpty()) {
+                            return null;
+                        }
+
+                        return $holds->pluck('room.room_number')->join(', ');
+                    })
+                    ->badge()
+                    ->color('success')
+                    ->visible(fn (?Reservation $record) => $record?->roomHolds()->exists())
+                    ->wrap()
+                    ->tooltip(fn (?string $state) => $state ? "Rooms held: {$state}" : null)
+                    ->width('140px'),
                 Tables\Columns\TextColumn::make('guest_name')
                     ->searchable()
                     ->sortable()
@@ -949,14 +1032,53 @@ class ReservationResource extends Resource
                     Tables\Actions\Action::make('approve')
                         ->icon('heroicon-o-check-circle')
                         ->color('success')
-                        ->requiresConfirmation()
                         ->modalHeading('Approve Reservation')
-                        ->modalDescription('Approve this reservation? The guest should proceed to the front desk for check-in, where room assignment and payment will be processed.')
+                        ->modalDescription('Approve this reservation. You may optionally assign specific rooms now to hold them for the guest\'s arrival.')
+                        ->modalWidth('4xl')
                         ->visible(fn (Reservation $record) => $record->status === 'pending')
                         ->form([
-                            Forms\Components\Textarea::make('admin_notes')
-                                ->label('Notes (optional)')
-                                ->rows(2),
+                            Forms\Components\Section::make('Approval Details')
+                                ->schema([
+                                    Forms\Components\Textarea::make('admin_notes')
+                                        ->label('Notes (optional)')
+                                        ->rows(2),
+                                ]),
+
+                            Forms\Components\Section::make('Room Assignment (Optional)')
+                                ->description('Assigning rooms now will hold them exclusively for this reservation. If you skip this, rooms can be assigned later during check-in.')
+                                ->schema([
+                                    Forms\Components\Select::make('assigned_room_ids')
+                                        ->label('Select Rooms')
+                                        ->multiple()
+                                        ->searchable()
+                                        ->preload()
+                                        ->options(function (callable $get, Reservation $record) {
+                                            $checkIn = $record->check_in_date ? Carbon::parse($record->check_in_date) : null;
+                                            $checkOut = $record->check_out_date ? Carbon::parse($record->check_out_date) : null;
+
+                                            if (! $checkIn || ! $checkOut) {
+                                                return [];
+                                            }
+
+                                            $roomType = $record->preferredRoomType;
+                                            if (! $roomType) {
+                                                return [];
+                                            }
+
+                                            $availableRooms = app(RoomHoldService::class)
+                                                ->getAvailableRooms($roomType, $checkIn, $checkOut);
+
+                                            if ($availableRooms->isEmpty()) {
+                                                return ['' => '(No available rooms for this date range)'];
+                                            }
+
+                                            return $availableRooms->pluck('room_number', 'id')->toArray();
+                                        })
+                                        ->helperText(fn (Reservation $record) => $record->check_in_date && $record->check_out_date
+                                            ? 'Showing rooms available from '.$record->check_in_date->format('M d, Y').' to '.$record->check_out_date->format('M d, Y')
+                                            : 'Check-in and check-out dates are required to filter available rooms.'
+                                        ),
+                                ])->collapsible(),
                         ])
                         ->action(function (Reservation $record, array $data) {
                             $record->update([
@@ -965,6 +1087,36 @@ class ReservationResource extends Resource
                                 'reviewed_by' => auth()->id(),
                                 'reviewed_at' => now(),
                             ]);
+
+                            // Create room holds if rooms were assigned
+                            $roomIds = $data['assigned_room_ids'] ?? [];
+                            if (! empty($roomIds)) {
+                                try {
+                                    $result = app(RoomHoldService::class)->createAdvanceHolds($record, $roomIds);
+                                    ReservationLog::record(
+                                        $record,
+                                        'room_holds_created',
+                                        "Approved with {$result['room_count']} room(s) held: ".implode(', ', collect($roomIds)->map(fn ($id) => Room::find($id)?->room_number)->filter()->toArray()).'.',
+                                        ['room_ids' => $roomIds]
+                                    );
+
+                                    Notification::make()
+                                        ->title('Reservation approved with '.$result['room_count'].' room(s) held.')
+                                        ->success()
+                                        ->send();
+                                } catch (\RuntimeException $e) {
+                                    Notification::make()
+                                        ->title('Reservation approved, but room holds failed: '.$e->getMessage())
+                                        ->warning()
+                                        ->send();
+                                }
+                            } else {
+                                ReservationLog::record(
+                                    $record,
+                                    'approved_without_rooms',
+                                    "Approved without room assignment. Rooms will be assigned during check-in."
+                                );
+                            }
                         }),
 
                     // Decline action
@@ -981,6 +1133,9 @@ class ReservationResource extends Resource
                                 ->rows(3),
                         ])
                         ->action(function (Reservation $record, array $data) {
+                            // Release any room holds before declining
+                            app(RoomHoldService::class)->releaseAllHolds($record);
+
                             $record->update([
                                 'status' => 'declined',
                                 'admin_notes' => $data['admin_notes'],
@@ -1057,6 +1212,29 @@ class ReservationResource extends Resource
                                     : 'Add one row per room involved in this check-in. Use PRIVATE for whole-room assignment or DORM for per-bed assignment.')
                                 ->schema([
                                     Forms\Components\Repeater::make('reservation_rooms')
+                                        ->default(function (Reservation $record) {
+                                            // Pre-populate from advance room holds if they exist
+                                            $holds = $record->roomHolds()
+                                                ->advance()
+                                                ->with('room.roomType')
+                                                ->get();
+
+                                            if ($holds->isEmpty()) {
+                                                return [];
+                                            }
+
+                                            return $holds->map(function ($hold) {
+                                                $room = $hold->room;
+                                                $isPrivate = $room->roomType?->isPrivate() ?? false;
+
+                                                return [
+                                                    'room_mode' => $isPrivate ? 'private' : 'dorm',
+                                                    'room_id' => $room->id,
+                                                    'includes_primary_guest' => true,
+                                                    'guests' => [], // Staff will fill in guest details
+                                                ];
+                                            })->toArray();
+                                        })
                                         ->schema([
                                             Forms\Components\Select::make('room_mode')
                                                 ->label('Room Mode')
@@ -1139,15 +1317,22 @@ class ReservationResource extends Resource
                                                         $isPreferred = $typeId == $preferredTypeId;
                                                         $groupLabel = $isPreferred ? "{$typeName} (Preferred)" : $typeName;
 
-                                                        $options[$groupLabel] = $roomsInType->mapWithKeys(fn ($room) => [
-                                                            $room->id => "Room {$room->room_number}",
-                                                        ])->toArray();
+                                                        $options[$groupLabel] = $roomsInType->mapWithKeys(function ($room) use ($record) {
+                                                            // Check if this room is already on advance hold for this reservation
+                                                            $isHeld = $record->roomHolds()
+                                                                ->advance()
+                                                                ->where('room_id', $room->id)
+                                                                ->exists();
+                                                            $label = "Room {$room->room_number}".($isHeld ? ' (Already held)' : '');
+
+                                                            return [$room->id => $label];
+                                                        })->toArray();
                                                     }
 
                                                     return $options;
                                                 })
                                                 ->helperText(fn ($get) => filled($get('room_mode') ?? null)
-                                                    ? 'Preferred room type shown first'
+                                                    ? 'Preferred room type shown first. Rooms already held for this reservation are marked.'
                                                     : 'Select room mode first'),
                                             Forms\Components\Toggle::make('includes_primary_guest')
                                                 ->label('Include primary guest in this room')
@@ -1557,18 +1742,15 @@ class ReservationResource extends Resource
                                     Forms\Components\Select::make('hold_duration_minutes')
                                         ->label('Payment Hold Duration')
                                         ->options([
-                                            15 => '15 minutes',
-                                            30 => '30 minutes',
-                                            45 => '45 minutes',
-                                            60 => '1 hour',
-                                            90 => '1 hour 30 minutes',
-                                            120 => '2 hours',
-                                            180 => '3 hours',
                                             240 => '4 hours',
                                             480 => '8 hours',
                                             720 => '12 hours',
+                                            1440 => '24 hours',
+                                            2160 => '36 hours',
+                                            2880 => '48 hours',
+                                            4320 => '72 hours',
                                         ])
-                                        ->default(180)
+                                        ->default(240)
                                         ->required()
                                         ->helperText('How long the room(s) will be held while awaiting payment.'),
                                 ])->columns(1),
@@ -1783,6 +1965,9 @@ class ReservationResource extends Resource
                             if ($record->status === 'pending_payment') {
                                 app(CheckInService::class)->releasePendingPaymentHold($record, false);
                             }
+
+                            // Release any room holds before cancelling
+                            app(RoomHoldService::class)->releaseAllHolds($record);
 
                             $record->update([
                                 'status' => 'cancelled',

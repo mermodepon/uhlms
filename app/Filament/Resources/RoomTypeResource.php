@@ -83,7 +83,7 @@ class RoomTypeResource extends Resource
                             ]),
                     ]),
 
-                Forms\Components\Section::make('Media & Virtual Tour')
+                Forms\Components\Section::make('Media')
                     ->schema([
                         Forms\Components\FileUpload::make('images')
                             ->image()
@@ -92,12 +92,6 @@ class RoomTypeResource extends Resource
                             ->reorderable()
                             ->directory('room-types')
                             ->helperText('Upload up to 5 images. Drag to reorder.')
-                            ->columnSpanFull(),
-                        Forms\Components\TextInput::make('virtual_tour_url')
-                            ->label('Virtual Tour URL')
-                            ->url()
-                            ->placeholder('https://pfrm.panoee.com/...')
-                            ->helperText('Paste the Panoee virtual tour embed URL here')
                             ->columnSpanFull(),
                     ]),
             ]);
@@ -162,10 +156,6 @@ class RoomTypeResource extends Resource
                 Tables\Columns\IconColumn::make('is_active')
                     ->boolean()
                     ->sortable(),
-                Tables\Columns\IconColumn::make('virtual_tour_url')
-                    ->label('Tour')
-                    ->boolean()
-                    ->getStateUsing(fn ($record) => ! empty($record->virtual_tour_url)),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->searchable()

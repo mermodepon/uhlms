@@ -44,6 +44,11 @@ class Room extends Model
         return $this->hasMany(RoomAssignment::class);
     }
 
+    public function roomHolds(): HasMany
+    {
+        return $this->hasMany(RoomHold::class);
+    }
+
     // ─── Occupancy Helpers ────────────────────────────────────────────────────
 
     /**
@@ -102,10 +107,24 @@ class Room extends Model
      * Recalculate and persist this room's occupancy status.
      * Bases the result on the current count of checked-in assignments.
      * No-op when the room is under maintenance or inactive.
+     * Also preserves 'reserved' status if an active advance hold exists.
      */
     public function recalculateStatus(): void
     {
         if (in_array($this->status, ['maintenance', 'inactive'], true)) {
+            return;
+        }
+
+        // Check if this room has an active advance hold — preserve 'reserved' status
+        $hasAdvanceHold = $this->roomHolds()
+            ->advance()
+            ->where('hold_from', '<=', now()->toDateString())
+            ->where('hold_to', '>', now()->toDateString())
+            ->exists();
+
+        if ($hasAdvanceHold && $this->status !== 'reserved') {
+            $this->update(['status' => 'reserved']);
+
             return;
         }
 

@@ -7,6 +7,8 @@ export default defineConfig({
             input: [
                 'resources/css/app.css',
                 'resources/js/app.js',
+                'resources/js/tour-engine.js',
+                'resources/js/tour-editor.js',
             ],
             refresh: [
                 ...refreshPaths,

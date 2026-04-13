@@ -62,6 +62,13 @@
         textarea::placeholder {
             color: #9ca3af !important;
         }
+        @keyframes tour-ping {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.5); }
+        }
+        .tour-pill-dot {
+            animation: tour-ping 1.8s ease-in-out infinite;
+        }
         /* Accessibility: High Contrast */
         @if($highContrast)
         body {
@@ -118,7 +125,14 @@
                 <div class="hidden md:flex items-center space-x-8">
                     <a href="{{ route('guest.home') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.home') ? 'text-[#FFC600]' : '' }}">Home</a>
                     <a href="{{ route('guest.rooms') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.rooms') ? 'text-[#FFC600]' : '' }}">Rooms</a>
-                    <a href="{{ route('guest.virtual-tours') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.virtual-tours') ? 'text-[#FFC600]' : '' }}">Virtual Tours</a>
+                    <a href="{{ route('guest.virtual-tours') }}" class="flex items-center gap-2 bg-[#FFC600] text-[#00491E] font-bold px-4 py-1.5 rounded-full shadow-[0_0_12px_rgba(255,198,0,0.45)] hover:shadow-[0_0_20px_rgba(255,198,0,0.7)] hover:bg-yellow-400 transition-all duration-200 {{ request()->routeIs('guest.virtual-tours') ? 'ring-2 ring-white' : '' }}">
+                        <span class="relative flex items-center justify-center w-2 h-2">
+                            <span class="tour-pill-dot absolute inline-flex w-full h-full rounded-full bg-red-600 opacity-60"></span>
+                            <span class="relative inline-flex w-2 h-2 rounded-full bg-red-600"></span>
+                        </span>
+                        <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        Virtual Tour
+                    </a>
                     <a href="{{ route('guest.reserve') }}" class="bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold transition-all duration-200 hover:bg-white hover:text-[#00491E] hover:scale-105 active:scale-95 {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">Reserve Now</a>
                     <a href="{{ route('guest.track') }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.track') ? 'text-[#FFC600]' : '' }}">Track Status</a>
                 </div>
@@ -137,7 +151,10 @@
             <div class="px-4 py-3 space-y-2">
                 <a href="{{ route('guest.home') }}" class="block text-white hover:text-[#FFC600] py-2">Home</a>
                 <a href="{{ route('guest.rooms') }}" class="block text-white hover:text-[#FFC600] py-2">Rooms</a>
-                <a href="{{ route('guest.virtual-tours') }}" class="block text-white hover:text-[#FFC600] py-2">Virtual Tours</a>
+                <a href="{{ route('guest.virtual-tours') }}" class="flex items-center gap-2 text-[#FFC600] hover:text-yellow-400 py-2 font-medium">
+                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    Virtual Tour
+                </a>
                 <a href="{{ route('guest.reserve') }}" class="block text-[#FFC600] font-bold py-2">Reserve Now</a>
                 <a href="{{ route('guest.track') }}" class="block text-white hover:text-[#FFC600] py-2">Track Status</a>
             </div>
@@ -176,7 +193,7 @@
                     <h3 class="text-[#FFC600] font-bold text-lg mb-3">Quick Links</h3>
                     <ul class="space-y-2 text-sm">
                         <li><a href="{{ route('guest.rooms') }}" class="text-gray-300 hover:text-[#FFC600] transition">Room Catalog</a></li>
-                        <li><a href="{{ route('guest.virtual-tours') }}" class="text-gray-300 hover:text-[#FFC600] transition">Virtual Tours</a></li>
+                        <li><a href="{{ route('guest.virtual-tours') }}" class="text-gray-300 hover:text-[#FFC600] transition">Virtual Tour</a></li>
                         <li><a href="{{ route('guest.reserve') }}" class="text-gray-300 hover:text-[#FFC600] transition">Make a Reservation</a></li>
                         <li><a href="{{ route('guest.track') }}" class="text-gray-300 hover:text-[#FFC600] transition">Track Reservation</a></li>
                     </ul>

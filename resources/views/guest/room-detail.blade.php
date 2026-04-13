@@ -90,21 +90,6 @@
                     </div>
                 @endif
 
-                {{-- Virtual Tour --}}
-                @if($roomType->virtual_tour_url)
-                    <div id="virtual-tour" class="bg-white rounded-xl shadow-md p-6">
-                        <h2 class="text-xl font-bold text-[#00491E] mb-4 flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 360° Virtual Tour</h2>
-                        <p class="text-gray-600 text-sm mb-4">Explore this room type in an immersive 360° virtual tour. Click and drag to look around.</p>
-                        <div class="rounded-lg overflow-hidden" style="position: relative; padding-bottom: 56.25%; height: 0;">
-                            <iframe
-                                src="{{ $roomType->virtual_tour_url }}"
-                                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
-                                allowfullscreen
-                                loading="lazy"
-                            ></iframe>
-                        </div>
-                    </div>
-                @endif
             </div>
 
             {{-- Sidebar --}}
@@ -213,6 +198,18 @@
                     
                     <a href="{{ route('guest.rooms') }}" class="block text-center text-sm text-gray-500 hover:text-[#00491E] mt-3 transition">
                         ← Back to All Rooms
+                    </a>
+                </div>
+
+                {{-- Virtual Tour Card --}}
+                <div class="bg-gradient-to-br from-[#00491E] to-[#02681E] rounded-xl p-5 text-white text-center shadow-md">
+                    <div class="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <svg class="w-6 h-6 text-[#FFC600]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    </div>
+                    <h3 class="font-bold text-lg mb-1">See It in 360°</h3>
+                    <p class="text-gray-200 text-sm mb-4">Explore the establishment in an interactive virtual tour before you book.</p>
+                    <a href="{{ route('guest.tour.viewer') }}" class="inline-block w-full bg-[#FFC600] text-[#00491E] font-bold py-2.5 px-4 rounded-lg hover:bg-yellow-400 transition text-sm">
+                        Take the Virtual Tour &rarr;
                     </a>
                 </div>
             </div>

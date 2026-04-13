@@ -64,17 +64,11 @@ class GuestController extends Controller
     }
 
     /**
-     * Virtual tours page - list all room types with virtual tours
+     * Virtual tours page - redirects to the PSV interactive tour viewer
      */
     public function virtualTours()
     {
-        $roomTypes = RoomType::where('is_active', true)
-            ->whereNotNull('virtual_tour_url')
-            ->where('virtual_tour_url', '!=', '')
-            ->select(['id', 'name', 'description', 'virtual_tour_url', 'images'])
-            ->get();
-
-        return view('guest.virtual-tours', compact('roomTypes'));
+        return redirect()->route('guest.tour.viewer');
     }
 
     /**

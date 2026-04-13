@@ -11,6 +11,22 @@
     </section>
 
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {{-- Virtual Tour Banner --}}
+        <div class="mb-8 bg-gradient-to-r from-[#00491E] to-[#02681E] rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 bg-[#FFC600] rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-[#00491E]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                </div>
+                <div>
+                    <p class="text-white font-bold">Want to look around first?</p>
+                    <p class="text-gray-200 text-sm">Take an interactive 360° virtual tour of the establishment before choosing a room.</p>
+                </div>
+            </div>
+            <a href="{{ route('guest.tour.viewer') }}" class="whitespace-nowrap bg-[#FFC600] text-[#00491E] px-5 py-2 rounded-lg font-bold text-sm hover:bg-yellow-400 transition flex-shrink-0">
+                Take the Tour &rarr;
+            </a>
+        </div>
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             @forelse($roomTypes as $roomType)
                 <div role="link" tabindex="0" class="block cursor-pointer bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition group" onclick="window.location.href='{{ route('guest.room-detail', $roomType) }}'" onkeydown="if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); window.location.href='{{ route('guest.room-detail', $roomType) }}'; }">
@@ -59,12 +75,6 @@
                                 <span class="relative z-10 text-[#02681E] font-semibold group-hover:text-[#00491E] transition text-sm">
                                     View Details &rarr;
                                 </span>
-                                @if($roomType->virtual_tour_url)
-                                    <span class="text-gray-300">|</span>
-                                    <button type="button" class="relative z-10 text-[#919F02] font-semibold hover:text-[#02681E] transition text-sm bg-transparent p-0 flex items-center gap-1" onclick="event.stopPropagation(); window.location.href='{{ route('guest.room-detail', $roomType) }}#virtual-tour'">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Virtual Tour
-                                    </button>
-                                @endif
                             </div>
                         </div>
                     </div>
