@@ -71,6 +71,7 @@
         box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
         z-index: 9999;
         transform: translateX(100%);
+        transition: opacity 0.4s ease-in-out;
         transition: transform 0.3s ease-in-out;
         overflow-y: auto;
     }
@@ -98,12 +99,19 @@
         bottom: 4rem;
         right: 1rem;
         background: white;
+        opacity: 1;
+        transition: opacity 0.4s ease-in-out;
         border-radius: 0.5rem;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         z-index: 40;
         max-height: 300px;
         overflow-y: auto;
         width: 200px;
+    }
+
+    #minimap.ui-hidden {
+        opacity: 0;
+        pointer-events: none;
     }
 
     .minimap-waypoints {
@@ -230,6 +238,25 @@
         background: rgba(185, 28, 28, 1);
     }
 
+    .top-right-controls .toggle-ui-btn {
+        background: rgba(0, 0, 0, 0.7);
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .top-right-controls .toggle-ui-btn:hover {
+        background: rgba(0, 0, 0, 0.9);
+    }
+
+    .top-right-controls .toggle-ui-btn svg {
+        width: 20px;
+        height: 20px;
+    }
+
     .top-right-controls svg {
         width: 16px;
         height: 16px;
@@ -244,6 +271,13 @@
         flex-direction: column;
         gap: 0.5rem;
         z-index: 50;
+        opacity: 1;
+        transition: opacity 0.4s ease-in-out;
+    }
+
+    .vr-controls.ui-hidden {
+        opacity: 0;
+        pointer-events: none;
     }
 
     .vr-btn {
@@ -272,6 +306,88 @@
     .vr-btn.active:hover {
         background: rgba(124, 58, 237, 1);
     }
+
+    #auto-tour-hud {
+        width: 170px;
+        background: rgba(0, 0, 0, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 0.5rem;
+        padding: 0.45rem 0.55rem;
+        color: #fff;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+    }
+
+    #auto-tour-countdown {
+        font-size: 0.72rem;
+        line-height: 1.2;
+        margin-bottom: 0.35rem;
+        opacity: 0.95;
+        letter-spacing: 0.01em;
+    }
+
+    #auto-tour-progress {
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.2);
+        overflow: hidden;
+    }
+
+    #auto-tour-progress-fill {
+        width: 0%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #fbbf24 0%, #34d399 100%);
+        transition: width 100ms linear;
+    }
+
+    #auto-tour-settings {
+        width: 170px;
+        background: rgba(0, 0, 0, 0.62);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 0.5rem;
+        padding: 0.45rem 0.55rem;
+    }
+
+    #auto-tour-settings label {
+        display: block;
+        font-size: 0.68rem;
+        color: rgba(255, 255, 255, 0.9);
+        margin-bottom: 0.3rem;
+        letter-spacing: 0.02em;
+    }
+
+    .auto-tour-speed-options {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.3rem;
+    }
+
+    .auto-tour-speed-btn {
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        background: rgba(17, 24, 39, 0.86);
+        color: #f3f4f6;
+        border-radius: 0.35rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        padding: 0.33rem 0.2rem;
+        line-height: 1;
+        cursor: pointer;
+        transition: all 0.18s ease;
+    }
+
+    .auto-tour-speed-btn:hover {
+        background: rgba(31, 41, 55, 0.95);
+    }
+
+    .auto-tour-speed-btn.active,
+    .auto-tour-speed-btn[aria-pressed="true"] {
+        border-color: rgba(251, 191, 36, 0.9);
+        background: rgba(251, 191, 36, 0.2);
+        color: #fef3c7;
+        box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.22) inset;
+    }
+
     #auto-tour-btn.active {
         background: rgba(239, 68, 68, 0.85);
     }
@@ -391,12 +507,27 @@
         .modal-content {
             width: 95%;
         }
+
+        #auto-tour-hud {
+            width: 160px;
+            padding: 0.4rem 0.5rem;
+        }
+
+        #auto-tour-settings {
+            width: 160px;
+            padding: 0.4rem 0.5rem;
+        }
+
+        #auto-tour-countdown {
+            font-size: 0.68rem;
+        }
     }
 
     /* Room Info Button (inside top-right-controls) */
     #room-info-btn {
         display: none !important;
         background: linear-gradient(135deg, #00491E 0%, #02681E 100%) !important;
+        transition: opacity 0.4s ease-in-out;
     }
     #room-info-btn:hover {
         background: linear-gradient(135deg, #02681E 0%, #089030 100%) !important;
@@ -404,15 +535,31 @@
     #room-info-btn.visible {
         display: flex !important;
     }
+    #room-info-btn.ui-hidden {
+        opacity: 0;
+        pointer-events: none;
+    }
+    #room-info-btn.visible.ui-hidden {
+        display: flex !important;
+    }
+    #room-info-btn.ui-hidden {
+        opacity: 0;
+        pointer-events: none;
+    }
 
     /* Panorama Viewer Marker Styling — injected by panorama-viewer.js for consistency */
 
     /* Help Button */
     #help-btn {
         background: rgba(0, 73, 30, 0.85) !important;
+        transition: opacity 0.4s ease-in-out;
     }
     #help-btn:hover {
         background: rgba(0, 73, 30, 1) !important;
+    }
+    #help-btn.ui-hidden {
+        opacity: 0;
+        pointer-events: none;
     }
 
     /* Help Modal */
@@ -671,6 +818,16 @@
             </svg>
             <span id="fs-btn-text">Fullscreen</span>
         </button>
+        <button id="toggle-ui-btn" class="toggle-ui-btn" onclick="tourEngine.toggleUIVisibility()" title="Hide/Show controls (H)">
+            <svg id="ui-hide-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <svg id="ui-show-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+        </button>
         <button class="exit-btn" onclick="window.location.href='{{ route('guest.virtual-tours') }}'">
             ✕ Exit Tour
         </button>
@@ -683,15 +840,15 @@
         </button>
     </div>
 
-    <!-- VR Controls -->
+    <!-- Stereo Controls -->
     <div class="vr-controls">
-        <button id="vr-mode-btn" class="vr-btn" onclick="toggleVRMode()" title="Cardboard / split-screen stereo mode (mobile only)">
+        <button id="vr-mode-btn" class="vr-btn" onclick="toggleVRMode()" title="Split-screen stereo panorama mode (mobile/headset browser)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M2 8a2 2 0 012-2h16a2 2 0 012 2v8a2 2 0 01-2 2h-4.764l-1.427-2.14a2 2 0 00-3.618 0L8.764 18H4a2 2 0 01-2-2V8z"/>
                 <circle cx="8" cy="12" r="2"/>
                 <circle cx="16" cy="12" r="2"/>
             </svg>
-            <span id="vr-btn-text">VR Mode</span>
+            <span id="vr-btn-text">Stereo Mode</span>
         </button>
         <button id="gyro-btn" class="vr-btn" onclick="toggleGyro()" title="Enable gyroscope control (tilt device to look around)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -700,12 +857,29 @@
             </svg>
             <span id="gyro-btn-text">Gyroscope</span>
         </button>
-        <button id="auto-tour-btn" class="vr-btn" onclick="tourEngine.toggleAutoTour()" title="Auto-advance through the tour, one scene every 12 seconds">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button id="auto-tour-btn" class="vr-btn" onclick="tourEngine.toggleAutoTour()" title="Auto-advance with gentle panning and a visible countdown">
+            <svg id="auto-tour-play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <svg id="auto-tour-stop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                <rect x="6" y="6" width="12" height="12" rx="1" ry="1"/>
             </svg>
             <span id="auto-tour-btn-text">Auto Tour</span>
         </button>
+        <div id="auto-tour-settings">
+            <label id="auto-tour-speed-label">Tour Speed</label>
+            <div class="auto-tour-speed-options" role="group" aria-labelledby="auto-tour-speed-label" aria-label="Auto tour speed">
+                <button type="button" class="auto-tour-speed-btn" data-profile="fast" aria-pressed="false">Fast</button>
+                <button type="button" class="auto-tour-speed-btn" data-profile="normal" aria-pressed="true">Normal</button>
+                <button type="button" class="auto-tour-speed-btn" data-profile="slow" aria-pressed="false">Slow</button>
+            </div>
+        </div>
+        <div id="auto-tour-hud" class="hidden" aria-live="polite" aria-atomic="true">
+            <div id="auto-tour-countdown">Auto Tour idle</div>
+            <div id="auto-tour-progress" role="progressbar" aria-label="Time before next scene">
+                <div id="auto-tour-progress-fill"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Mini-map -->
@@ -814,6 +988,7 @@
 
                 <form id="reservation-form" onsubmit="handleReservationSubmit(event)">
                     <input type="hidden" id="preferred_room_type_id" name="preferred_room_type_id">
+                    <input type="hidden" id="preferred_room_id" name="preferred_room_id">
                     <input type="hidden" name="source" value="virtual_tour">
 
                     <div class="grid grid-cols-2 gap-4">
@@ -1021,11 +1196,11 @@
                     <ul class="help-list">
                         <li>
                             <span class="help-icon">🥽</span>
-                            <div><strong>VR Mode</strong><br>Cardboard split-screen stereo for mobile devices — tilt to look around (top-left)</div>
+                            <div><strong>Stereo Mode</strong><br>Split-screen stereo panorama mode for mobile/headset browser viewing (top-left)</div>
                         </li>
                         <li>
                             <span class="help-icon">📡</span>
-                            <div><strong>Gyroscope</strong><br>Tilt your phone to look around — mobile only (top-left)</div>
+                            <div><strong>Gyroscope</strong><br>Tilt your phone to look around — available on supported mobile devices only (top-left)</div>
                         </li>
                         <li>
                             <span class="help-icon">⛶</span>
@@ -1042,6 +1217,10 @@
                         <li>
                             <span class="help-icon">▶️</span>
                             <div><strong>Auto Tour</strong><br>Advances automatically through every scene. Press Esc or click the button to stop (bottom-left)</div>
+                        </li>
+                        <li>
+                            <span class="help-kbd">H</span>
+                            <div><strong>Hide/Show UI</strong><br>Toggle visibility of all controls for maximum immersion. Click the eye icon (top-right) or press H to toggle</div>
                         </li>
                     </ul>
                 </div>
@@ -1081,6 +1260,15 @@
             document.getElementById('minimap').classList.remove('hidden');
             document.getElementById('progress-indicator').classList.remove('hidden');
         }, 2000);
+
+        // Hide gyroscope button if not supported
+        if (typeof DeviceOrientationEvent === 'undefined') {
+            const gyroBtn = document.getElementById('gyro-btn');
+            if (gyroBtn) {
+                gyroBtn.style.display = 'none';
+                console.log('Gyroscope not supported on this device - button hidden');
+            }
+        }
     });
 
     // Fullscreen toggle
@@ -1096,7 +1284,7 @@
     }
 
     // Elements that must remain visible inside any fullscreen context
-    const _fsOverlays = ['room-info-overlay', 'reservation-modal'].map(id => document.getElementById(id)).filter(Boolean);
+    const _fsOverlays = ['room-info-overlay', 'reservation-modal', 'reservation-success-modal'].map(id => document.getElementById(id)).filter(Boolean);
     const _fsOverlayHome = document.getElementById('tour-viewer');
 
     function _syncOverlaysToFullscreen() {
@@ -1124,7 +1312,7 @@
     // Safari / iOS WebKit prefix
     document.addEventListener('webkitfullscreenchange', _syncOverlaysToFullscreen);
 
-    // VR mode toggle (cardboard / split-screen stereo, mobile only)
+    // Stereo mode toggle (split-screen panorama)
     async function toggleVRMode() {
         if (!tourEngine) return;
         await tourEngine.toggleVR();
@@ -1132,32 +1320,59 @@
         const text = document.getElementById('vr-btn-text');
         if (tourEngine.vrActive) {
             btn.classList.add('active');
-            text.textContent = 'Exit VR';
+            text.textContent = 'Exit Stereo';
         } else {
             btn.classList.remove('active');
-            text.textContent = 'VR Mode';
+            text.textContent = 'Stereo Mode';
         }
     }
 
     // Gyroscope toggle
     async function toggleGyro() {
         if (!tourEngine) return;
-        await tourEngine.toggleGyroscope();
-        const btn = document.getElementById('gyro-btn');
-        const text = document.getElementById('gyro-btn-text');
-        const isActive = tourEngine.gyroscopePlugin?.isEnabled();
-        if (isActive) {
-            btn.classList.add('active');
-            text.textContent = 'Gyro ON';
-        } else {
-            btn.classList.remove('active');
-            text.textContent = 'Gyroscope';
+        
+        try {
+            await tourEngine.toggleGyroscope();
+            
+            const btn = document.getElementById('gyro-btn');
+            const text = document.getElementById('gyro-btn-text');
+            const isActive = tourEngine.gyroscopePlugin?.isEnabled();
+            
+            if (isActive) {
+                btn.classList.add('active');
+                text.textContent = 'Gyro ON';
+                tourEngine._showToast('Gyroscope enabled - tilt your device to look around', 'success');
+            } else {
+                btn.classList.remove('active');
+                text.textContent = 'Gyroscope';
+            }
+        } catch (error) {
+            console.error('Gyroscope error:', error);
+            
+            let errorMessage = 'Gyroscope not available on this device';
+            
+            if (error.message?.includes('denied') || error.message?.includes('permission')) {
+                errorMessage = 'Permission denied. Enable in Settings → Safari → Motion & Orientation Access';
+            } else if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
+                errorMessage = 'Gyroscope requires HTTPS connection on mobile devices';
+            } else if (error.message?.includes('not initialized')) {
+                errorMessage = 'Gyroscope not supported on this device';
+            }
+            
+            tourEngine._showToast(errorMessage, 'error');
         }
     }
 
     // Handle reservation form submission
     async function handleReservationSubmit(event) {
         event.preventDefault();
+
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.dataset.originalText = submitBtn.textContent;
+            submitBtn.textContent = 'Submitting...';
+        }
         
         const formData = {
             guest_first_name: document.getElementById('guest_first_name').value,
@@ -1168,6 +1383,7 @@
             guest_gender: document.getElementById('guest_gender').value,
             guest_address: document.getElementById('guest_address').value,
             preferred_room_type_id: document.getElementById('preferred_room_type_id').value,
+            preferred_room_id: document.getElementById('preferred_room_id')?.value || null,
             check_in_date: document.getElementById('check_in_date').value,
             check_out_date: document.getElementById('check_out_date').value,
             number_of_occupants: document.getElementById('number_of_occupants').value,
@@ -1175,10 +1391,47 @@
             source: 'virtual_tour'
         };
 
-        const success = await tourEngine.submitReservation(formData);
-        
-        if (success) {
-            document.getElementById('reservation-form').reset();
+        if (!formData.preferred_room_type_id) {
+            alert('Please open Room Info from a room scene before submitting a reservation request.');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = submitBtn.dataset.originalText || 'Submit Reservation Request';
+            }
+            return;
+        }
+
+        try {
+            const result = await tourEngine.submitReservation(formData);
+            const didSucceed = Boolean(
+                result?.success ||
+                result?.data?.success ||
+                result?.data?.data?.reference_number
+            );
+
+            if (didSucceed) {
+                const formEl = document.getElementById('reservation-form');
+                if (formEl) formEl.reset();
+
+                // Keep close behavior resilient even if engine return shape changes.
+                const reservationModal = document.getElementById('reservation-modal');
+                if (reservationModal) {
+                    reservationModal.style.setProperty('display', 'none', 'important');
+                    reservationModal.style.visibility = 'hidden';
+                    reservationModal.style.opacity = '0';
+                    reservationModal.style.pointerEvents = 'none';
+                    reservationModal.classList.add('hidden');
+                    reservationModal.setAttribute('hidden', 'hidden');
+                }
+
+                if (tourEngine?.closeReservationModal) {
+                    tourEngine.closeReservationModal();
+                }
+            }
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = submitBtn.dataset.originalText || 'Submit Reservation Request';
+            }
         }
     }
 

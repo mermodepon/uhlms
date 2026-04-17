@@ -181,6 +181,7 @@ class Reservation extends Model
         return match ($this->status) {
             'pending' => 'warning',
             'approved' => 'info',
+            'confirmed' => 'success',
             'pending_payment' => 'warning',
             'declined' => 'danger',
             'cancelled' => 'gray',

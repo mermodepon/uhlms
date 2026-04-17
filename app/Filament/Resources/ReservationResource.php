@@ -824,26 +824,6 @@ class ReservationResource extends Resource
                     ->sortable()
                     ->copyable()
                     ->width('120px'),
-                Tables\Columns\TextColumn::make('heldRooms')
-                    ->label('Held Rooms')
-                    ->getStateUsing(function (Reservation $record) {
-                        $holds = $record->roomHolds()
-                            ->with('room')
-                            ->orderBy('hold_from')
-                            ->get();
-
-                        if ($holds->isEmpty()) {
-                            return null;
-                        }
-
-                        return $holds->pluck('room.room_number')->join(', ');
-                    })
-                    ->badge()
-                    ->color('success')
-                    ->visible(fn (?Reservation $record) => $record?->roomHolds()->exists())
-                    ->wrap()
-                    ->tooltip(fn (?string $state) => $state ? "Rooms held: {$state}" : null)
-                    ->width('140px'),
                 Tables\Columns\TextColumn::make('guest_name')
                     ->searchable()
                     ->sortable()
@@ -879,21 +859,99 @@ class ReservationResource extends Resource
                 Tables\Columns\TextColumn::make('room_display')
                     ->label('Room')
                     ->badge()
-                    ->width('100px')
-                    ->getStateUsing(function ($record) {
-                        $rooms = $record->roomAssignments
-                            ->pluck('room.room_number')
-                            ->filter()
-                            ->unique()
-                            ->values()
-                            ->toArray();
+                    ->width('120px')
+                    ->getStateUsing(function (Reservation $record) {
+                        // Priority 1: Actual room assignments (for checked-in/out/pending_payment)
+                        if (in_array($record->status, ['checked_in', 'checked_out', 'pending_payment'], true)) {
+                            $assignedRooms = $record->roomAssignments
+                                ->pluck('room.room_number')
+                                ->filter()
+                                ->unique()
+                                ->values()
+                                ->toArray();
 
-                        return empty($rooms) ? null : (count($rooms) === 1 ? $rooms[0] : $rooms);
+                            if (!empty($assignedRooms)) {
+                                return count($assignedRooms) === 1 ? $assignedRooms[0] : $assignedRooms;
+                            }
+
+                            // Fallback for pending_payment: check hold payload
+                            if ($record->status === 'pending_payment') {
+                                $holdPayload = $record->checkin_hold_payload ?? [];
+                                $entries = data_get($holdPayload, 'entries', []);
+                                $roomIds = collect($entries)->pluck('room_id')->filter()->unique();
+                                
+                                if ($roomIds->isNotEmpty()) {
+                                    $heldRooms = \App\Models\Room::whereIn('id', $roomIds)
+                                        ->pluck('room_number')
+                                        ->toArray();
+                                    
+                                    if (!empty($heldRooms)) {
+                                        return array_map(fn($r) => "🔒 {$r}", $heldRooms);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Priority 2: Advance holds (for approved/confirmed)
+                        if (in_array($record->status, ['approved', 'confirmed'], true)) {
+                            $holds = $record->roomHolds()
+                                ->advance()
+                                ->with('room')
+                                ->get();
+
+                            if ($holds->isNotEmpty()) {
+                                $heldRooms = $holds
+                                    ->pluck('room.room_number')
+                                    ->filter()
+                                    ->unique()
+                                    ->values()
+                                    ->toArray();
+
+                                if (!empty($heldRooms)) {
+                                    // Add lock emoji to indicate these are holds, not actual occupancy
+                                    $displayRooms = array_map(fn($r) => "🔒 {$r}", $heldRooms);
+                                    return count($displayRooms) === 1 ? $displayRooms[0] : $displayRooms;
+                                }
+                            }
+                        }
+
+                        return null;
+                    })
+                    ->color(function ($state, Reservation $record) {
+                        // Green for actual occupancy, blue for holds
+                        if (in_array($record->status, ['checked_in', 'checked_out'], true)) {
+                            return 'success';
+                        }
+                        if (in_array($record->status, ['approved', 'confirmed', 'pending_payment'], true)) {
+                            return 'info';
+                        }
+                        return 'gray';
+                    })
+                    ->tooltip(function ($state, Reservation $record) {
+                        if (in_array($record->status, ['checked_in', 'checked_out'], true)) {
+                            return 'Room assignment (occupied)';
+                        }
+                        if (in_array($record->status, ['approved', 'confirmed'], true)) {
+                            return 'Advance hold (reserved)';
+                        }
+                        if ($record->status === 'pending_payment') {
+                            return 'Short-term hold (payment pending)';
+                        }
+                        return null;
                     })
                     ->searchable(query: function ($query, string $search) {
-                        $query->whereHas('roomAssignments.room', fn ($q) => $q->where('room_number', 'like', "%{$search}%")
-                        );
-                    }),
+                        $query->where(function ($q) use ($search) {
+                            // Search in room assignments
+                            $q->whereHas('roomAssignments.room', fn ($subQ) => 
+                                $subQ->where('room_number', 'like', "%{$search}%")
+                            )
+                            // Also search in room holds
+                            ->orWhereHas('roomHolds.room', fn ($subQ) => 
+                                $subQ->where('room_number', 'like', "%{$search}%")
+                            );
+                        });
+                    })
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('check_in_date')
                     ->date()
                     ->searchable()
@@ -1151,7 +1209,7 @@ class ReservationResource extends Resource
                         ->color('success')
                         ->modalHeading('Prepare Check-in (Pending Payment)')
                         ->modalWidth('7xl')
-                        ->visible(fn (Reservation $record) => $record->status === 'approved')
+                        ->visible(fn (Reservation $record) => in_array($record->status, ['approved', 'confirmed']))
                         ->form([
                             Forms\Components\Section::make('Primary Guest Identification')
                                 ->schema([
@@ -1223,17 +1281,64 @@ class ReservationResource extends Resource
                                                 return [];
                                             }
 
-                                            return $holds->map(function ($hold) {
+                                            $validEntries = [];
+                                            $skippedCount = 0;
+
+                                            foreach ($holds as $index => $hold) {
+                                                // Skip if room is deleted or inactive
+                                                if (!$hold->room || !$hold->room->is_active) {
+                                                    $skippedCount++;
+                                                    continue;
+                                                }
+
                                                 $room = $hold->room;
+
+                                                // Skip if room is in maintenance or inactive status
+                                                if (in_array($room->status, ['maintenance', 'inactive'], true)) {
+                                                    $skippedCount++;
+                                                    continue;
+                                                }
+
                                                 $isPrivate = $room->roomType?->isPrivate() ?? false;
 
-                                                return [
+                                                $validEntries[] = [
                                                     'room_mode' => $isPrivate ? 'private' : 'dorm',
                                                     'room_id' => $room->id,
-                                                    'includes_primary_guest' => true,
+                                                    'includes_primary_guest' => (count($validEntries) === 0), // Only first gets primary
                                                     'guests' => [], // Staff will fill in guest details
                                                 ];
-                                            })->toArray();
+                                            }
+
+                                            // Store counts in session for helper text display
+                                            if ($skippedCount > 0) {
+                                                session()->flash('room_hold_load_status', [
+                                                    'total' => $holds->count(),
+                                                    'loaded' => count($validEntries),
+                                                    'skipped' => $skippedCount,
+                                                ]);
+                                            }
+
+                                            return $validEntries;
+                                        })
+                                        ->helperText(function (Reservation $record) {
+                                            $status = session('room_hold_load_status');
+                                            if (!$status) {
+                                                $totalHolds = $record->roomHolds()->advance()->count();
+                                                if ($totalHolds > 0) {
+                                                    return "✓ {$totalHolds} room(s) held from approval stage. Pre-populated below.";
+                                                }
+                                                return 'Add one or more rooms to proceed with check-in.';
+                                            }
+
+                                            $loaded = $status['loaded'];
+                                            $skipped = $status['skipped'];
+                                            $total = $status['total'];
+
+                                            if ($skipped > 0) {
+                                                return "⚠️ {$loaded}/{$total} held rooms loaded. {$skipped} skipped (inactive/unavailable).";
+                                            }
+
+                                            return "✓ {$loaded} room(s) from approval stage loaded successfully.";
                                         })
                                         ->schema([
                                             Forms\Components\Select::make('room_mode')
@@ -1415,7 +1520,30 @@ class ReservationResource extends Resource
                                                 ->minItems(0)
                                                 ->defaultItems(0)
                                                 ->addActionLabel('➕ Add Another Guest')
-                                                ->helperText('Add companion guests only. Primary guest is auto-included when enabled above.')
+                                                ->helperText(function ($get) {
+                                                    $roomId = $get('room_id');
+                                                    $mode = $get('room_mode');
+
+                                                    $baseText = 'Add companion guests only. Primary guest is auto-included when enabled above.';
+
+                                                    if (!$roomId || $mode !== 'dorm') {
+                                                        return $baseText;
+                                                    }
+
+                                                    $room = \App\Models\Room::find($roomId);
+                                                    if (!$room) {
+                                                        return $baseText;
+                                                    }
+
+                                                    $occupied = $room->roomAssignments()
+                                                        ->where('status', 'checked_in')
+                                                        ->count();
+                                                    $available = max(0, $room->capacity - $occupied);
+                                                    $includesPrimary = $get('includes_primary_guest') ? 1 : 0;
+                                                    $availableForCompanions = max(0, $available - $includesPrimary);
+
+                                                    return "Room capacity: {$room->capacity} | Currently occupied: {$occupied} | Available slots: {$available} | Space for companions: {$availableForCompanions}";
+                                                })
                                                 ->visible(fn ($get) => filled($get('room_mode') ?? null) && filled($get('room_id') ?? null))
                                                 ->reorderable(false),
                                         ])
@@ -1742,17 +1870,19 @@ class ReservationResource extends Resource
                                     Forms\Components\Select::make('hold_duration_minutes')
                                         ->label('Payment Hold Duration')
                                         ->options([
+                                            30 => '30 minutes',
+                                            45 => '45 minutes',
+                                            60 => '1 hour',
+                                            90 => '1.5 hours',
+                                            120 => '2 hours',
                                             240 => '4 hours',
                                             480 => '8 hours',
                                             720 => '12 hours',
                                             1440 => '24 hours',
-                                            2160 => '36 hours',
-                                            2880 => '48 hours',
-                                            4320 => '72 hours',
                                         ])
-                                        ->default(240)
+                                        ->default(30)
                                         ->required()
-                                        ->helperText('How long the room(s) will be held while awaiting payment.'),
+                                        ->helperText('How long the room(s) will be held while guest walks to cashier and returns with OR.'),
                                 ])->columns(1),
                         ])
                         ->action(function (Reservation $record, array $data) {
@@ -1880,6 +2010,50 @@ class ReservationResource extends Resource
                             }
                         }),
 
+                    Tables\Actions\Action::make('extend_hold')
+                        ->label('Extend Hold')
+                        ->icon('heroicon-o-clock')
+                        ->color('info')
+                        ->visible(fn (Reservation $record) => $record->status === 'pending_payment')
+                        ->form([
+                            Forms\Components\Placeholder::make('current_expiry')
+                                ->label('Current Hold Expiry')
+                                ->content(fn (Reservation $record) => $record->checkin_hold_expires_at
+                                    ? $record->checkin_hold_expires_at->format('M d, Y h:i A')
+                                    : 'No active hold'),
+                            Forms\Components\Select::make('additional_minutes')
+                                ->label('Extend By')
+                                ->required()
+                                ->default(15)
+                                ->options([
+                                    15 => '15 minutes',
+                                    30 => '30 minutes',
+                                    45 => '45 minutes',
+                                    60 => '1 hour',
+                                ])
+                                ->helperText('How many additional minutes to add to the current hold.'),
+                        ])
+                        ->action(function (Reservation $record, array $data) {
+                            try {
+                                $result = app(CheckInService::class)->extendPendingPaymentHold(
+                                    $record,
+                                    $data['additional_minutes'] ?? 15
+                                );
+
+                                Notification::make()
+                                    ->success()
+                                    ->title('Hold Extended')
+                                    ->body('Hold extended by '.$result['minutes_added'].' minute(s). New expiry: '.$result['new_expiry']->format('M d, Y h:i A').'.')
+                                    ->send();
+                            } catch (\Throwable $e) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Unable to Extend Hold')
+                                    ->body($e->getMessage())
+                                    ->send();
+                            }
+                        }),
+
                     Tables\Actions\Action::make('cancel_payment_hold')
                         ->label('Cancel Payment Hold')
                         ->icon('heroicon-o-lock-open')
@@ -1954,7 +2128,7 @@ class ReservationResource extends Resource
                         ->icon('heroicon-o-no-symbol')
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->visible(fn (Reservation $record) => in_array($record->status, ['pending', 'approved', 'pending_payment']))
+                        ->visible(fn (Reservation $record) => in_array($record->status, ['pending', 'approved', 'confirmed', 'pending_payment']))
                         ->form([
                             Forms\Components\Textarea::make('admin_notes')
                                 ->label('Cancellation reason')
@@ -2156,7 +2330,7 @@ class ReservationResource extends Resource
                         ->action(function (Collection $records, array $data) {
                             $count = 0;
                             foreach ($records as $record) {
-                                if (! in_array($record->status, ['pending', 'approved'])) {
+                                if (! in_array($record->status, ['pending', 'approved', 'confirmed'])) {
                                     continue;
                                 }
                                 $record->update([

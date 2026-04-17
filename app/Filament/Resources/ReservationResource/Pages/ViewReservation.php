@@ -20,6 +20,7 @@ class ViewReservation extends ViewRecord
         $colorClasses = match (true) {
             $status === 'pending'         => 'background-color:#fef3c7;color:#92400e;',
             $status === 'approved'        => 'background-color:#dbeafe;color:#1e40af;',
+            $status === 'confirmed'       => 'background-color:#d1fae5;color:#065f46;',
             $status === 'pending_payment' => 'background-color:#fef3c7;color:#92400e;',
             $status === 'checked_in'      => 'background-color:#dcfce7;color:#166534;',
             $status === 'checked_out'     => 'background-color:#f3f4f6;color:#4b5563;',

@@ -1638,7 +1638,7 @@ class DatabaseSeeder extends Seeder
                     $checkOut = Carbon::today()->addDays(rand(1, 3));
                     $nights = max(1, $checkIn->diffInDays($checkOut));
                 }
-            } elseif (in_array($status, ['approved', 'pending_payment'])) {
+            } elseif (in_array($status, ['approved', 'confirmed', 'pending_payment'])) {
                 $checkInOffset = rand(0, 30);
                 $nights = rand(1, 5);
                 $checkIn = Carbon::today()->addDays($checkInOffset);
@@ -1731,7 +1731,7 @@ class DatabaseSeeder extends Seeder
 
             $reviewedBy = null;
             $reviewedAt = null;
-            if (in_array($status, ['approved', 'checked_in', 'checked_out', 'declined', 'cancelled', 'pending_payment'])) {
+            if (in_array($status, ['approved', 'confirmed', 'checked_in', 'checked_out', 'declined', 'cancelled', 'pending_payment'])) {
                 $reviewer = $staffPool[array_rand($staffPool)];
                 $reviewedBy = $reviewer->id;
                 $reviewedAt = $checkIn->copy()->subDays(rand(1, 5));

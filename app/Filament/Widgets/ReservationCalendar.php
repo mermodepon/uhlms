@@ -35,7 +35,7 @@ class ReservationCalendar extends FullCalendarWidget
      * Which statuses are currently visible on the calendar.
      * Checked Out is OFF by default to reduce clutter.
      */
-    public array $activeStatuses = ['pending', 'approved', 'pending_payment', 'checked_in'];
+    public array $activeStatuses = ['pending', 'approved', 'confirmed', 'pending_payment', 'checked_in'];
 
     public function toggleStatus(string $status): void
     {

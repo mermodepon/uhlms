@@ -43,6 +43,10 @@
         .te-toolbar button.active { border-color:#3b82f6; background:rgba(59,130,246,.3); }
         .te-toolbar .divider { width:1px; height:24px; background:rgba(255,255,255,.2); }
         .te-status { position:absolute; top:12px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.75); color:#fff; padding:4px 14px; border-radius:999px; font-size:12px; z-index:20; pointer-events:none; }
+        .te-live-stats { position:absolute; top:12px; right:12px; display:flex; gap:8px; z-index:20; pointer-events:none; }
+        .te-live-stat { min-width:88px; background:rgba(0,0,0,.78); color:#fff; padding:8px 10px; border-radius:10px; backdrop-filter:blur(8px); box-shadow:0 8px 24px rgba(0,0,0,.18); }
+        .te-live-stat-label { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:rgba(255,255,255,.65); margin-bottom:2px; }
+        .te-live-stat-value { font-size:13px; font-weight:700; color:#f8fafc; }
 
         /* ── Properties panel ────────────────────────── */
         .te-props-header { padding:14px 16px; border-bottom:1px solid #e5e7eb; font-weight:700; font-size:14px; color:#1e293b; display:flex; justify-content:space-between; align-items:center; }
@@ -137,6 +141,21 @@
 
             {{-- Status bar --}}
             <div class="te-status" x-show="statusText" x-text="statusText" x-transition></div>
+
+            <div class="te-live-stats">
+                <div class="te-live-stat">
+                    <div class="te-live-stat-label">Yaw</div>
+                    <div class="te-live-stat-value" x-text="formatDegrees(liveYaw)"></div>
+                </div>
+                <div class="te-live-stat">
+                    <div class="te-live-stat-label">Pitch</div>
+                    <div class="te-live-stat-value" x-text="formatDegrees(livePitch)"></div>
+                </div>
+                <div class="te-live-stat">
+                    <div class="te-live-stat-label">Zoom</div>
+                    <div class="te-live-stat-value" x-text="formatZoom(liveZoom)"></div>
+                </div>
+            </div>
 
             {{-- Toolbar --}}
             <div class="te-toolbar">
@@ -403,15 +422,6 @@
                                 Zoom: <span x-text="activeScene?.default_zoom ?? 50"></span>%
                             </div>
 
-                            {{-- Live zoom with +/- controls --}}
-                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-                                <button @click="zoomOut()" class="te-btn" style="width:28px;height:28px;padding:0;font-size:16px;font-weight:700;line-height:1" title="Zoom out">−</button>
-                                <div style="flex:1;text-align:center;font-size:12px;font-weight:600;color:#334155">
-                                    🔍 <span x-text="liveZoom"></span>%
-                                </div>
-                                <button @click="zoomIn()" class="te-btn" style="width:28px;height:28px;padding:0;font-size:16px;font-weight:700;line-height:1" title="Zoom in">+</button>
-                            </div>
-
                             <button @click="captureDefaultView()" class="te-btn te-btn-success te-btn-block" style="font-size:11px;padding:5px 10px">
                                 📷 Set Current View as Default
                             </button>
@@ -467,6 +477,8 @@
                 editingHotspot: null,
                 pendingHotspot: null,
                 statusText: '',
+                liveYaw: 0,
+                livePitch: 0,
                 liveZoom: 0,
                 placingRoomInfo: false,
                 draggedHotspotId: null,
@@ -497,10 +509,14 @@
                             hotspots: this.hotspots,
                             allWaypoints: this.waypoints,
                             onReady: () => {
-                                this.liveZoom = Math.round(this.editor.viewer.getZoomLevel());
+                                this.syncLiveViewStats();
+                                this.startLiveViewTracking();
                                 // Track zoom changes in real-time
                                 this.editor.viewer.addEventListener('zoom-updated', (e) => {
                                     this.liveZoom = Math.round(e.zoomLevel);
+                                });
+                                this.editor.viewer.addEventListener('position-updated', (e) => {
+                                    this.updateLivePosition(e.position);
                                 });
                                 this.statusText = 'Ready — click toolbar icons to place hotspots';
                                 setTimeout(() => this.statusText = '', 3000);
@@ -578,20 +594,11 @@
                     const scene = this.activeScene;
                     if (scene && this.editor) {
                         this.editor.switchScene(scene, this.hotspots);
+                        setTimeout(() => this.syncLiveViewStats(), 50);
                     }
                     // Update count in sidebar
                     const wp = this.waypoints.find(w => w.id === waypointId);
                     if (wp) wp.hotspots_count = this.hotspots.length;
-                },
-
-                zoomIn() {
-                    if (!this.editor?.viewer) return;
-                    this.editor.viewer.zoomIn(10);
-                },
-
-                zoomOut() {
-                    if (!this.editor?.viewer) return;
-                    this.editor.viewer.zoomOut(10);
                 },
 
                 async captureDefaultView() {
@@ -785,7 +792,38 @@
                     };
                     return icons[id] || `<span style="font-size:${s}px">${id}</span>`;
                 },
+
+                updateLivePosition(position) {
+                    if (!position) return;
+                    this.liveYaw = parseFloat((position.yaw * 180 / Math.PI).toFixed(1));
+                    this.livePitch = parseFloat((position.pitch * 180 / Math.PI).toFixed(1));
+                },
+
+                startLiveViewTracking() {
+                    if (this._liveViewRaf) return;
+                    const tick = () => {
+                        this.syncLiveViewStats();
+                        this._liveViewRaf = window.requestAnimationFrame(tick);
+                    };
+                    this._liveViewRaf = window.requestAnimationFrame(tick);
+                },
+
+                syncLiveViewStats() {
+                    if (!this.editor?.viewer) return;
+                    const pos = this.editor.viewer.getPosition();
+                    this.updateLivePosition(pos);
+                    this.liveZoom = Math.round(this.editor.viewer.getZoomLevel());
+                },
+
+                formatDegrees(value) {
+                    return `${Number(value ?? 0).toFixed(1)}\u00B0`;
+                },
+
+                formatZoom(value) {
+                    return `${Math.round(Number(value ?? 0))}%`;
+                },
             };
         }
     </script>
 </x-filament-panels::page>
+

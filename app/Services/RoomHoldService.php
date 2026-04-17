@@ -130,6 +130,11 @@ class RoomHoldService
 
                 $holds[] = $hold;
             }
+
+            // Auto-transition from 'approved' to 'confirmed' when rooms are assigned
+            if ($reservation->status === 'approved') {
+                $reservation->update(['status' => 'confirmed']);
+            }
         });
 
         return [

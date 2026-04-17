@@ -87,15 +87,17 @@
                         $statusColors = [
                             'pending' => 'bg-yellow-100 text-yellow-800 border-yellow-300',
                             'approved' => 'bg-blue-100 text-blue-800 border-blue-300',
+                            'confirmed' => 'bg-green-100 text-green-800 border-green-300',
                             'pending_payment' => 'bg-amber-100 text-amber-800 border-amber-300',
                             'declined' => 'bg-red-100 text-red-800 border-red-300',
                             'cancelled' => 'bg-gray-100 text-gray-800 border-gray-300',
-                            'checked_in' => 'bg-green-100 text-green-800 border-green-300',
+                            'checked_in' => 'bg-emerald-100 text-emerald-900 border-emerald-300',
                             'checked_out' => 'bg-gray-100 text-gray-600 border-gray-300',
                         ];
                         $statusLabels = [
                             'pending' => 'Pending Review',
                             'approved' => 'Approved',
+                            'confirmed' => 'Confirmed',
                             'pending_payment' => 'Pending Payment',
                             'declined' => 'Declined',
                             'cancelled' => 'Cancelled',
@@ -110,7 +112,7 @@
 
                 {{-- Progress Bar --}}
                 @php
-                    $steps = ['pending', 'approved', 'pending_payment', 'checked_in', 'checked_out'];
+                    $steps = ['pending', 'approved', 'confirmed', 'pending_payment', 'checked_in', 'checked_out'];
                     $currentIndex = array_search($reservation->status, $steps);
                     if ($reservation->status === 'declined' || $reservation->status === 'cancelled') {
                         $currentIndex = -1;

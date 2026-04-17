@@ -196,10 +196,9 @@ class CheckInService
                     'num_female_guests' => $femaleCount,
                 ]);
 
-                // Clear advance room holds since they're now converted to assignments
+                // Clear ALL room holds (both advance and short-term) since they're now converted to assignments
                 RoomHold::query()
                     ->where('reservation_id', $reservation->id)
-                    ->where('hold_type', 'advance')
                     ->delete();
             }
         });
@@ -219,8 +218,8 @@ class CheckInService
     {
         $this->releaseExpiredHolds();
 
-        if (! in_array($reservation->status, ['approved', 'pending_payment'], true)) {
-            throw new \RuntimeException('Only approved reservations can be prepared for payment.');
+        if (! in_array($reservation->status, ['approved', 'confirmed', 'pending_payment'], true)) {
+            throw new \RuntimeException('Only approved or confirmed reservations can be prepared for payment.');
         }
 
         if ($reservation->status === 'pending_payment') {
@@ -234,10 +233,10 @@ class CheckInService
         }
 
         // Validate hold_duration_minutes
-        $allowedDurations = [240, 480, 720, 1440, 2160, 2880, 4320];
-        $holdMinutes = (int) ($payload['hold_duration_minutes'] ?? 240);
+        $allowedDurations = [30, 45, 60, 90, 120, 240, 480, 720, 1440];
+        $holdMinutes = (int) ($payload['hold_duration_minutes'] ?? 30);
         if (!in_array($holdMinutes, $allowedDurations, true)) {
-            throw new \RuntimeException('Invalid Payment Hold Duration. Allowed values: 4, 8, 12, 24, 36, 48, or 72 hours.');
+            throw new \RuntimeException('Invalid Payment Hold Duration. Allowed values: 30, 45, 60, 90, 120 minutes, or 4, 8, 12, 24 hours.');
         }
 
         $primaryGuest = [
@@ -455,6 +454,56 @@ class CheckInService
     }
 
     /**
+     * Extend an active pending payment hold by additional minutes.
+     */
+    public function extendPendingPaymentHold(Reservation $reservation, int $additionalMinutes = 15): array
+    {
+        if ($reservation->status !== 'pending_payment') {
+            throw new \RuntimeException('Reservation is not in pending payment state.');
+        }
+
+        $currentExpiry = $reservation->checkin_hold_expires_at;
+        if (!$currentExpiry) {
+            throw new \RuntimeException('No active hold found for this reservation.');
+        }
+
+        $currentExpiry = Carbon::parse($currentExpiry);
+        if ($currentExpiry->isPast()) {
+            throw new \RuntimeException('Hold has already expired. Please prepare check-in again.');
+        }
+
+        $newExpiry = $currentExpiry->addMinutes($additionalMinutes);
+
+        DB::transaction(function () use ($reservation, $newExpiry, $additionalMinutes) {
+            // Update reservation hold expiry
+            $reservation->update([
+                'checkin_hold_expires_at' => $newExpiry,
+            ]);
+
+            // Extend short-term room holds
+            RoomHold::query()
+                ->where('reservation_id', $reservation->id)
+                ->where('hold_type', 'short_term')
+                ->update(['expires_at' => $newExpiry]);
+
+            ReservationLog::record(
+                $reservation,
+                'checkin_hold_extended',
+                "Payment hold extended by {$additionalMinutes} minute(s). New expiry: ".$newExpiry->format('M d, Y h:i A').'.',
+                [
+                    'additional_minutes' => $additionalMinutes,
+                    'new_expiry' => $newExpiry->toDateTimeString(),
+                ]
+            );
+        });
+
+        return [
+            'new_expiry' => $newExpiry,
+            'minutes_added' => $additionalMinutes,
+        ];
+    }
+
+    /**
      * Keep hold payload focused on assignment/schedule details only.
      * Payment capture happens at finalization.
      *
@@ -620,7 +669,13 @@ class CheckInService
         ];
 
         if ($setApproved) {
-            $update['status'] = 'approved';
+            // Check if there are advance holds - if so, set to 'confirmed', otherwise 'approved'
+            $hasAdvanceHolds = RoomHold::query()
+                ->where('reservation_id', $reservation->id)
+                ->where('hold_type', 'advance')
+                ->exists();
+            
+            $update['status'] = $hasAdvanceHolds ? 'confirmed' : 'approved';
         }
 
         $reservation->update($update);

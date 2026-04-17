@@ -11,6 +11,12 @@ const HOTSPOT_COLORS = {
     'external-link': '#10b981',
 };
 
+const AUTO_TOUR_PROFILES = {
+    fast: { cycleMs: 6000, panMs: 4200, label: 'Fast' },
+    normal: { cycleMs: 8000, panMs: 6000, label: 'Normal' },
+    slow: { cycleMs: 10000, panMs: 7600, label: 'Slow' },
+};
+
 class VirtualTourEngine {
     constructor(containerId, options = {}) {
         this.container         = document.getElementById(containerId);
@@ -22,6 +28,7 @@ class VirtualTourEngine {
         this.apiBase             = options.apiBase || '/api/tour';
         this.vrActive            = false;
         this.currentRoomType     = null;
+        this.currentRoom         = null;
         this.bookmarks           = this._loadBookmarks();
         this._roomInfoCardOpen   = false;
         this._infoCardHotspotId  = null;
@@ -29,7 +36,26 @@ class VirtualTourEngine {
         this._audioHotspotId     = null;
         this._autoTourActive     = false;
         this._autoTourTimer      = null;
+        this._autoTourTickTimer  = null;
+        this._autoTourPanRaf     = null;
+        let savedAutoTourProfile = null;
+        try {
+            savedAutoTourProfile = localStorage.getItem('tour_auto_tour_profile');
+        } catch (_) {
+            savedAutoTourProfile = null;
+        }
+        this._autoTourProfile    = this._normalizeAutoTourProfile(savedAutoTourProfile);
+        this._autoTourCycleMs    = AUTO_TOUR_PROFILES[this._autoTourProfile].cycleMs;
+        this._autoTourPanMs      = AUTO_TOUR_PROFILES[this._autoTourProfile].panMs;
+        this._autoTourStepStart  = 0;
+        this._reducedMotion      = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
         this.previewMode         = options.previewMode || window.location.search.includes('preview');
+
+        // Auto-hide UI state
+        this._uiIdleTimer        = null;
+        this._uiIdleDelayMs      = 4000;  // 4 seconds
+        this._uiHidden           = false;
+        this._uiManuallyHidden   = false;  // Manual override via toggle button
 
         // Date-aware availability state
         this._checkIn  = null;   // 'YYYY-MM-DD'
@@ -47,6 +73,10 @@ class VirtualTourEngine {
         this.narrationTooltip  = document.getElementById('narration-tooltip');
         this.progressIndicator = document.getElementById('progress-indicator');
         this.roomInfoBtn       = document.getElementById('room-info-btn');
+        this.autoTourHud       = document.getElementById('auto-tour-hud');
+        this.autoTourCountdown = document.getElementById('auto-tour-countdown');
+        this.autoTourFill      = document.getElementById('auto-tour-progress-fill');
+        this.autoTourSpeedButtons = Array.from(document.querySelectorAll('.auto-tour-speed-btn'));
 
         this._init();
     }
@@ -62,6 +92,8 @@ class VirtualTourEngine {
             defaultPitch: 0,
         });
 
+        this._bindAutoTourSettings();
+
         // Listen for VR state changes (WebXR session start/end)
         this.viewer.addEventListener('vr-changed', (e) => {
             this.vrActive = e.active;
@@ -70,6 +102,10 @@ class VirtualTourEngine {
 
         // Hotspot click → handle action
         this.viewer.addEventListener('select-marker', (e) => {
+            if (this._autoTourActive) {
+                this.stopAutoTour();
+                this._showToast('Auto Tour paused for manual interaction.', 'info');
+            }
             const data = e.marker.config.data;
             if (data?.isRoomInfo) {
                 if (this._roomInfoCardOpen) {
@@ -95,7 +131,7 @@ class VirtualTourEngine {
     _syncVRBtn(isVR) {
         document.getElementById('vr-mode-btn')?.classList.toggle('active', isVR);
         const t = document.getElementById('vr-btn-text');
-        if (t) t.textContent = isVR ? 'Exit VR' : 'VR Mode';
+        if (t) t.textContent = isVR ? 'Exit Stereo' : 'Stereo Mode';
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -119,6 +155,9 @@ class VirtualTourEngine {
             this.minimap?.classList.remove('hidden');
             this.progressIndicator?.classList.remove('hidden');
         }, 1000);
+
+        // Setup auto-hide UI controls
+        this._setupAutoHideUI();
     }
 
     // ── URL deep linking ──────────────────────────────────────────────────────
@@ -132,6 +171,80 @@ class VirtualTourEngine {
         const url = new URL(window.location.href);
         url.searchParams.set('scene', slug);
         window.history.pushState({ scene: slug }, '', url.toString());
+    }
+
+    // ── Auto-hide UI ──────────────────────────────────────────────────────────
+
+    _setupAutoHideUI() {
+        // Elements to auto-hide
+        this._hidableElements = [
+            document.querySelector('.vr-controls'),
+            document.getElementById('minimap'),
+            document.getElementById('help-btn'),
+            document.getElementById('room-info-btn'),
+        ].filter(Boolean);
+
+        // Show UI on any user interaction
+        const interactions = ['mousemove', 'mousedown', 'touchstart', 'touchmove', 'keydown', 'wheel'];
+        interactions.forEach(evt => {
+            this.container.addEventListener(evt, () => this._onUserActivity(), { passive: true });
+        });
+
+        // Start the idle timer immediately
+        this._resetUIIdleTimer();
+    }
+
+    _onUserActivity() {
+        // Show UI if hidden (but only if not manually overridden)
+        if (this._uiHidden && !this._uiManuallyHidden) {
+            this._showUI();
+        }
+        // Reset the idle timer (unless manually hidden)
+        if (!this._uiManuallyHidden) {
+            this._resetUIIdleTimer();
+        }
+    }
+
+    _resetUIIdleTimer() {
+        clearTimeout(this._uiIdleTimer);
+        // Don't hide UI when Auto Tour countdown is visible or manually overridden
+        if (this._autoTourActive || this._uiManuallyHidden) return;
+        this._uiIdleTimer = setTimeout(() => this._hideUI(), this._uiIdleDelayMs);
+    }
+
+    _showUI() {
+        this._uiHidden = false;
+        this._hidableElements.forEach(el => el?.classList.remove('ui-hidden'));
+    }
+
+    _hideUI() {
+        this._uiHidden = true;
+        this._hidableElements.forEach(el => el?.classList.add('ui-hidden'));
+    }
+
+    toggleUIVisibility() {
+        if (this._uiHidden) {
+            // Show UI
+            this._showUI();
+            this._uiManuallyHidden = false;
+            this._resetUIIdleTimer();  // Resume auto-hide
+            this._syncToggleUIBtn(false);
+        } else {
+            // Hide UI
+            this._hideUI();
+            this._uiManuallyHidden = true;
+            clearTimeout(this._uiIdleTimer);  // Prevent auto-show
+            this._syncToggleUIBtn(true);
+        }
+    }
+
+    _syncToggleUIBtn(hidden) {
+        const hideIcon = document.getElementById('ui-hide-icon');
+        const showIcon = document.getElementById('ui-show-icon');
+        const btn = document.getElementById('toggle-ui-btn');
+        if (hideIcon) hideIcon.style.display = hidden ? 'none' : '';
+        if (showIcon) showIcon.style.display = hidden ? '' : 'none';
+        if (btn) btn.title = hidden ? 'Show controls (H)' : 'Hide controls (H)';
     }
 
     async loadWaypoints() {
@@ -179,13 +292,14 @@ class VirtualTourEngine {
         this._resetHotspotFocus = true; // signal setupKeyboardControls to reset Tab index
         if (wp.narration) this.showNarration(wp.narration);
 
-        if (wp.is_room_related && wp.linked_room_type_id) {
+        if (wp.is_room_related && (wp.linked_room_type_id || wp.linked_room_id)) {
             this._fetchRoomInfo(wp);
             if (this.roomInfoBtn) this.roomInfoBtn.classList.add('visible');
         } else {
             if (this.roomInfoBtn) this.roomInfoBtn.classList.remove('visible');
             this.hideRoomInfoOverlay();
             this.currentRoomType = null;
+            this.currentRoom = null;
         }
 
         // Preload adjacent panoramas in the background
@@ -216,12 +330,20 @@ class VirtualTourEngine {
     }
 
     navigatePrevious() {
+        if (this._autoTourActive) {
+            this.stopAutoTour();
+            this._showToast('Auto Tour paused for manual navigation.', 'info');
+        }
         if (!this.currentWaypoint) return;
         const i = this.waypoints.findIndex(w => w.slug === this.currentWaypoint.slug);
         if (i > 0) this.navigateToWaypoint(this.waypoints[i - 1].slug);
     }
 
     navigateNext() {
+        if (this._autoTourActive) {
+            this.stopAutoTour();
+            this._showToast('Auto Tour paused for manual navigation.', 'info');
+        }
         if (!this.currentWaypoint) return;
         const i = this.waypoints.findIndex(w => w.slug === this.currentWaypoint.slug);
         if (i < this.waypoints.length - 1) this.navigateToWaypoint(this.waypoints[i + 1].slug);
@@ -457,43 +579,76 @@ class VirtualTourEngine {
     // ── In-scene room info card ───────────────────────────────────────────────
 
     _openInSceneCard() {
-        if (!this.currentRoomType || !this.currentWaypoint) return;
-        const wp    = this.currentWaypoint;
-        const yaw   = wp.room_info_yaw   ?? wp.default_yaw   ?? 0;
+        // Check for room or room type data
+        const hasSpecificRoom = Boolean(this.currentRoom);
+        const hasRoomType = Boolean(this.currentRoomType);
+        
+        if (!hasSpecificRoom && !hasRoomType) return;
+        if (!this.currentWaypoint) return;
+        
+        const wp = this.currentWaypoint;
+        const yaw = wp.room_info_yaw ?? wp.default_yaw ?? 0;
         const pitch = wp.room_info_pitch ?? ((wp.default_pitch ?? 0) + 15);
-        const rt    = this.currentRoomType;
+        
+        // Extract display data from either room or room type
+        let name, description, price, tags, count, roomSharingType, availText;
+        
+        if (hasSpecificRoom) {
+            const room = this.currentRoom;
+            const roomType = room.room_type || this.currentRoomType;
+            name = `Room ${room.room_number}`;
+            description = roomType?.description || '';
+            price = roomType?.pricing_display || roomType?.formatted_price || '';
+            tags = (roomType?.amenities || []).map(a => a.name);
+            count = room.is_available ? 1 : 0;
+            roomSharingType = roomType?.room_sharing_type || '';
+            const available = room.available_slots || 0;
+            const capacity = room.capacity || 0;
+            availText = room.is_available
+                ? `${available} of ${capacity} slots free`
+                : (room.unavailable_reason || 'Unavailable');
+        } else {
+            const rt = this.currentRoomType;
+            name = rt.name || '';
+            description = rt.description || '';
+            price = rt.pricing_display || rt.formatted_price || '';
+            tags = (rt.amenities || []).map(a => a.name);
+            count = rt.available_rooms_count;
+            roomSharingType = rt.room_sharing_type || '';
+            availText = count != null ? `${count} room(s) available` : '';
+        }
 
         // Hide the compact trigger while the card is open
         try {
             this.viewer.updateMarker({
-                id:     'room-info-marker',
+                id: 'room-info-marker',
                 sprite: { style: 'circle', icon: 'chevron-up', bgColor: '#00491E', opacity: 0.01, size: 4 },
             });
         } catch (e) {}
 
         try { this.viewer.removeMarker('room-info-card'); } catch (e) {}
 
-        const price = rt.pricing_display || rt.formatted_price || '';
-        const tags  = (rt.amenities || []).map(a => a.name);
-        const count = rt.available_rooms_count;
         const headerBadge = count != null
             ? `${count > 0 ? '✓' : '✗'} ${count} avail.`
             : undefined;
 
         // ── Date availability widget ──────────────────────────────────────────
-        const today    = new Date().toISOString().split('T')[0];
+        const today = new Date().toISOString().split('T')[0];
         const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-        const priceEstHtml = this._computePriceEstimateHtml(rt);
+        const roomTypeId = hasSpecificRoom 
+            ? (this.currentRoom.room_type?.id || this.currentRoomType?.id)
+            : this.currentRoomType.id;
+        const priceEstHtml = roomTypeId ? this._computePriceEstimateHtml(hasSpecificRoom ? this.currentRoom.room_type : this.currentRoomType) : '';
 
         let availResultHtml = '';
         if (count != null && this._checkIn && this._checkOut) {
-            const bg  = count > 0 ? '#f0fdf4' : '#fef2f2';
-            const bd  = count > 0 ? '#bbf7d0' : '#fecaca';
+            const bg = count > 0 ? '#f0fdf4' : '#fef2f2';
+            const bd = count > 0 ? '#bbf7d0' : '#fecaca';
             const clr = count > 0 ? '#166534' : '#991b1b';
             const ico = count > 0 ? '✓' : '✗';
             availResultHtml = `<div style="margin-top:6px;padding:6px 8px;background:${bg};border-radius:6px;border:1px solid ${bd}">`
-                + `<div style="font-size:11px;font-weight:700;color:${clr}">${ico} ${count} room(s) available for your dates</div>`
+                + `<div style="font-size:11px;font-weight:700;color:${clr}">${ico} ${availText}</div>`
                 + `</div>`;
         }
 
@@ -511,7 +666,7 @@ class VirtualTourEngine {
           + `<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px">`
           +   `<div style="flex:0 0 110px"><div style="font-size:10px;color:#9ca3af;margin-bottom:2px">Guests</div>`
           +   `<input type="number" value="${this._guests}" min="1" max="20" onclick="event.stopPropagation()" onchange="tourEngine._setGuests(this.value)" style="${inputStyle}"></div>`
-          +   `<button onclick="tourEngine._checkDateAvailability(${rt.id});event.stopPropagation()" style="flex:1;background:#1d4ed8;color:white;border:none;padding:6px;border-radius:6px;font-weight:600;font-size:11px;cursor:pointer">🔍 Check</button>`
+          +   `<button onclick="tourEngine._checkDateAvailability(${roomTypeId});event.stopPropagation()" style="flex:1;background:#1d4ed8;color:white;border:none;padding:6px;border-radius:6px;font-weight:600;font-size:11px;cursor:pointer">🔍 Check</button>`
           + `</div>`
           + priceEstHtml
           + availResultHtml
@@ -527,19 +682,19 @@ class VirtualTourEngine {
           + `</div>`;
 
         this.viewer.addMarker({
-            id:       'room-info-card',
+            id: 'room-info-card',
             position: { yaw: `${yaw}deg`, pitch: `${pitch}deg` },
-            data:     { isRoomInfoCard: true },
+            data: { isRoomInfoCard: true },
             sprite: {
-                style:            'card',
-                title:            rt.name || '',
-                subtitle:         rt.room_sharing_type || '',
-                body:             rt.description || '',
+                style: 'card',
+                title: name,
+                subtitle: roomSharingType,
+                body: description,
                 price,
                 tags,
                 headerBadge,
                 headerBadgeColor: count > 0 ? '#86efac' : '#fca5a5',
-                closeAction:      'tourEngine._closeInSceneCard()',
+                closeAction: 'tourEngine._closeInSceneCard()',
                 buttons,
             },
         });
@@ -560,12 +715,36 @@ class VirtualTourEngine {
         this._roomInfoCardOpen = false;
     }
 
-    _inSceneCardHtml(rt) {
-        const count      = rt.available_rooms_count;
-        const availText  = count != null ? `${count} room(s) available` : '';
-        const availColor = count > 0 ? '#86efac' : '#fca5a5';
+    _inSceneCardHtml(data, isSpecificRoom = false) {
+        let name, count, availText, availColor, pricing, description, amenities, sharingType;
 
-        const amenitiesTags = (rt.amenities || [])
+        if (isSpecificRoom) {
+            // Specific room data
+            name = `Room ${data.room_number}`;
+            const available = data.available_slots || 0;
+            const capacity = data.capacity || 0;
+            count = data.is_available ? 1 : 0;
+            availText = data.is_available
+                ? `Available (${available} of ${capacity} slots free)`
+                : (data.unavailable_reason || 'Unavailable');
+            availColor = data.is_available ? '#86efac' : '#fca5a5';
+            pricing = data.room_type?.pricing_display || data.room_type?.formatted_price || '';
+            description = data.room_type?.description || '';
+            amenities = data.room_type?.amenities || [];
+            sharingType = data.room_type?.room_sharing_type || '';
+        } else {
+            // Room type data
+            name = data.name || '';
+            count = data.available_rooms_count;
+            availText = count != null ? `${count} room(s) available` : '';
+            availColor = count > 0 ? '#86efac' : '#fca5a5';
+            pricing = data.pricing_display || data.formatted_price || '';
+            description = data.description || '';
+            amenities = data.amenities || [];
+            sharingType = data.room_sharing_type || '';
+        }
+
+        const amenitiesTags = amenities
             .map(a => `<span style="display:inline-block;background:#f3f4f6;color:#374151;font-size:11px;padding:3px 8px;border-radius:999px;margin:2px">${a.name}</span>`)
             .join('');
 
@@ -578,13 +757,13 @@ class VirtualTourEngine {
         return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:360px;font-family:sans-serif;display:flex;flex-direction:column;max-height:90vh">
             <div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:16px;position:relative;border-radius:12px 12px 0 0;flex-shrink:0">
                 <button onclick="tourEngine._closeInSceneCard()" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);border:none;color:white;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:14px;line-height:26px;text-align:center">✕</button>
-                <h2 style="font-size:17px;font-weight:700;margin:0 32px 6px 0">${rt.name || ''}</h2>
-                ${rt.room_sharing_type ? `<span style="display:inline-block;background:rgba(255,255,255,.2);font-size:11px;padding:2px 8px;border-radius:999px">${rt.room_sharing_type}</span>` : ''}
+                <h2 style="font-size:17px;font-weight:700;margin:0 32px 6px 0">${name}</h2>
+                ${sharingType ? `<span style="display:inline-block;background:rgba(255,255,255,.2);font-size:11px;padding:2px 8px;border-radius:999px">${sharingType}</span>` : ''}
                 ${availText ? `<div style="margin-top:6px;font-size:12px;font-weight:600;color:${availColor}">${availText}</div>` : ''}
             </div>
             <div style="padding:14px;overflow-y:auto;border-radius:0 0 12px 12px">
-                ${rt.description ? `<p style="color:#6b7280;font-size:12px;margin:0 0 10px">${rt.description}</p>` : ''}
-                ${rt.pricing_display || rt.formatted_price ? `<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px">Price</div><div style="font-size:19px;font-weight:700;color:#d97706">${rt.pricing_display || rt.formatted_price}</div></div>` : ''}
+                ${description ? `<p style="color:#6b7280;font-size:12px;margin:0 0 10px">${description}</p>` : ''}
+                ${pricing ? `<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px">Price</div><div style="font-size:19px;font-weight:700;color:#d97706">${pricing}</div></div>` : ''}
                 ${amenitiesTags ? `<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:4px">Amenities</div>${amenitiesTags}</div>` : ''}
                 ${buttons}
             </div>
@@ -619,72 +798,86 @@ class VirtualTourEngine {
 
     async _fetchRoomInfo(wp) {
         try {
-            const url = new URL(`${this.apiBase}/room-type/${wp.linked_room_type_id}/availability`, window.location.href);
-            if (this._checkIn)    url.searchParams.set('check_in',  this._checkIn);
-            if (this._checkOut)   url.searchParams.set('check_out', this._checkOut);
-            if (this._guests > 1) url.searchParams.set('guests',    this._guests);
-            const res  = await fetch(url);
-            const data = await res.json();
-            if (data.success) {
-                this.currentRoomType = data.data;
-                this._populateRoomInfoOverlay(data.data);
+            // Priority: Fetch specific room if linked, otherwise room type
+            if (wp.linked_room_id) {
+                // Fetch specific room data
+                const url = new URL(`${this.apiBase}/room/${wp.linked_room_id}/availability`, window.location.href);
+                if (this._checkIn)    url.searchParams.set('check_in',  this._checkIn);
+                if (this._checkOut)   url.searchParams.set('check_out', this._checkOut);
+                const res  = await fetch(url);
+                const data = await res.json();
+                if (data.success) {
+                    this.currentRoom = data.data;
+                    this.currentRoomType = data.data.room_type; // Room includes room type data
+                    this._populateRoomInfoOverlay(data.data, true); // true = is specific room
+                }
+            } else if (wp.linked_room_type_id) {
+                // Fetch room type data (existing behavior)
+                const url = new URL(`${this.apiBase}/room-type/${wp.linked_room_type_id}/availability`, window.location.href);
+                if (this._checkIn)    url.searchParams.set('check_in',  this._checkIn);
+                if (this._checkOut)   url.searchParams.set('check_out', this._checkOut);
+                if (this._guests > 1) url.searchParams.set('guests',    this._guests);
+                const res  = await fetch(url);
+                const data = await res.json();
+                if (data.success) {
+                    this.currentRoomType = data.data;
+                    this.currentRoom = null;
+                    this._populateRoomInfoOverlay(data.data, false); // false = is room type
+                }
             }
         } catch (e) { console.error('_fetchRoomInfo:', e); }
     }
 
-    _populateRoomInfoOverlay(rt) {
+    _populateRoomInfoOverlay(data, isSpecificRoom = false) {
         const ov = this.overlay;
         if (!ov) return;
         const setText = (sel, val) => { const el = ov.querySelector(sel); if (el) el.textContent = val ?? ''; };
 
-        setText('.room-name',        rt.name        || '');
-        setText('.room-type-badge',  rt.room_sharing_type || '');
-        setText('.room-description', rt.description || '');
-        setText('.room-price',       rt.pricing_display || rt.formatted_price || '');
+        // Handle room vs room type display
+        if (isSpecificRoom) {
+            // Specific room: show room number + room type
+            setText('.room-name', `Room ${data.room_number}`);
+            setText('.room-type-badge', data.room_type?.room_sharing_type || '');
+            setText('.room-description', data.room_type?.description || '');
+            setText('.room-price', data.room_type?.pricing_display || data.room_type?.formatted_price || '');
+            
+            const avail = ov.querySelector('.availability-badge');
+            if (avail) {
+                if (data.is_available) {
+                    avail.textContent = `Available (${data.available_slots} of ${data.capacity} slots free)`;
+                    avail.className = 'availability-badge mt-3 text-sm font-semibold text-green-300';
+                } else {
+                    avail.textContent = data.unavailable_reason || 'Unavailable';
+                    avail.className = 'availability-badge mt-3 text-sm font-semibold text-red-300';
+                }
+            }
+            
+            const amenitiesEl = ov.querySelector('.room-amenities');
+            if (amenitiesEl && data.room_type?.amenities) {
+                amenitiesEl.innerHTML = data.room_type.amenities.map(a =>
+                    `<span class="inline-block bg-[#FFC600] text-[#00491E] text-xs px-2 py-1 rounded-full mr-2 mb-2">${a.name}</span>`
+                ).join('');
+            }
+        } else {
+            // Room type: existing behavior
+            setText('.room-name', data.name || '');
+            setText('.room-type-badge', data.room_sharing_type || '');
+            setText('.room-description', data.description || '');
+            setText('.room-price', data.pricing_display || data.formatted_price || '');
 
-        const count = rt.available_rooms_count;
-        const avail = ov.querySelector('.availability-badge');
-        if (avail) {
-            avail.textContent = count != null ? `${count} room(s) available` : '';
-            avail.className = 'availability-badge mt-3 text-sm font-semibold '
-                + (count > 0 ? 'text-green-300' : 'text-red-300');
-        }
+            const count = data.available_rooms_count;
+            const avail = ov.querySelector('.availability-badge');
+            if (avail) {
+                avail.textContent = count != null ? `${count} room(s) available` : '';
+                avail.className = 'availability-badge mt-3 text-sm font-semibold '
+                    + (count > 0 ? 'text-green-300' : 'text-red-300');
+            }
 
-        const amenitiesEl = ov.querySelector('.room-amenities');
-        if (amenitiesEl && rt.amenities) {
-            amenitiesEl.innerHTML = rt.amenities
-                .map(a => `<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded-full">${a.name}</span>`)
-                .join('');
-        }
-
-        // Sync overlay date widget with engine state
-        const overlayIn     = document.getElementById('overlay-check-in');
-        const overlayOut    = document.getElementById('overlay-check-out');
-        const overlayGuests = document.getElementById('overlay-guests');
-        if (overlayIn  && this._checkIn)  overlayIn.value  = this._checkIn;
-        if (overlayOut && this._checkOut) overlayOut.value = this._checkOut;
-        if (overlayGuests) overlayGuests.value = this._guests;
-
-        // Price estimate in overlay
-        const overlayPriceEl = document.getElementById('overlay-price-estimate');
-        if (overlayPriceEl) {
-            const est = this._computePriceEstimateHtml(rt);
-            if (est) { overlayPriceEl.innerHTML = est; overlayPriceEl.classList.remove('hidden'); }
-            else     { overlayPriceEl.classList.add('hidden'); }
-        }
-
-        // Date-specific availability result in overlay
-        const overlayAvailEl = document.getElementById('overlay-avail-result');
-        if (overlayAvailEl) {
-            if (count != null && this._checkIn && this._checkOut) {
-                const bg  = count > 0 ? '#f0fdf4' : '#fef2f2';
-                const bd  = count > 0 ? 'border-green-200' : 'border-red-200';
-                const clr = count > 0 ? 'text-green-800' : 'text-red-800';
-                const ico = count > 0 ? '✓' : '✗';
-                overlayAvailEl.innerHTML = `<div style="background:${bg}" class="text-sm font-semibold p-2 rounded-lg border ${bd} ${clr}">${ico} ${count} room(s) available for your dates</div>`;
-                overlayAvailEl.classList.remove('hidden');
-            } else {
-                overlayAvailEl.classList.add('hidden');
+            const amenitiesEl = ov.querySelector('.room-amenities');
+            if (amenitiesEl && data.amenities) {
+                amenitiesEl.innerHTML = data.amenities.map(a =>
+                    `<span class="inline-block bg-[#FFC600] text-[#00491E] text-xs px-2 py-1 rounded-full mr-2 mb-2">${a.name}</span>`
+                ).join('');
             }
         }
     }
@@ -717,12 +910,32 @@ class VirtualTourEngine {
     // ── Reservation modal ─────────────────────────────────────────────────────
 
     openReservationModal() {
-        if (this.reservationModal) this.reservationModal.style.display = 'flex';
-        if (this.currentRoomType) {
-            const sel = document.getElementById('preferred_room_type_id');
-            if (sel) sel.value = this.currentRoomType.id || '';
+        if (this.reservationModal) {
+            this.reservationModal.removeAttribute('hidden');
+            this.reservationModal.classList.remove('hidden');
+            this.reservationModal.style.display = 'flex';
+            this.reservationModal.style.visibility = 'visible';
+            this.reservationModal.style.opacity = '1';
+            this.reservationModal.style.pointerEvents = 'auto';
+        }
+        
+        // Pre-fill room information (room takes priority over room type)
+        if (this.currentRoom) {
+            const roomIdEl = document.getElementById('preferred_room_id');
+            const roomTypeIdEl = document.getElementById('preferred_room_type_id');
+            if (roomIdEl) roomIdEl.value = this.currentRoom.id || '';
+            if (roomTypeIdEl) roomTypeIdEl.value = this.currentRoom.room_type?.id || '';
+            if (this.currentRoomType) {
+                this.onReservationOpened(this.currentRoomType);
+            }
+        } else if (this.currentRoomType) {
+            const roomTypeIdEl = document.getElementById('preferred_room_type_id');
+            const roomIdEl = document.getElementById('preferred_room_id');
+            if (roomTypeIdEl) roomTypeIdEl.value = this.currentRoomType.id || '';
+            if (roomIdEl) roomIdEl.value = ''; // Clear room ID when only room type
             this.onReservationOpened(this.currentRoomType);
         }
+        
         // Pre-fill dates and occupants from the availability widget state
         if (this._checkIn) {
             const ciEl = document.getElementById('check_in_date');
@@ -739,30 +952,78 @@ class VirtualTourEngine {
     }
 
     closeReservationModal() {
-        if (this.reservationModal) this.reservationModal.style.display = 'none';
+        if (this.reservationModal) {
+            this.reservationModal.style.setProperty('display', 'none', 'important');
+            this.reservationModal.style.visibility = 'hidden';
+            this.reservationModal.style.opacity = '0';
+            this.reservationModal.style.pointerEvents = 'none';
+            this.reservationModal.classList.add('hidden');
+            this.reservationModal.setAttribute('hidden', 'hidden');
+        }
     }
 
     async submitReservation(formData) {
         try {
-            const res  = await fetch('/reserve', {
+            const res  = await fetch(`${this.apiBase}/reserve`, {
                 method: 'POST',
                 headers: {
                     'Content-Type':  'application/json',
                     'X-CSRF-TOKEN':  document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'Accept': 'application/json',
                 },
                 body: JSON.stringify(formData),
             });
-            const data = await res.json();
-            if (data.success) {
-                this.closeReservationModal();
-                this._showToast(data.message || 'Reservation submitted!', 'success');
-                return true;
+
+            let data = null;
+            let rawBody = '';
+            try {
+                data = await res.clone().json();
+            } catch {
+                // Some environments return a non-JSON body even when HTTP status is successful.
+                rawBody = await res.text();
             }
-            this._showToast(data.message || 'Submission failed.', 'error');
-            return false;
+
+            if (res.ok && (data?.success ?? true)) {
+                const payload = data && typeof data === 'object'
+                    ? data
+                    : {
+                        success: true,
+                        message: 'Reservation submitted successfully!',
+                        data: {},
+                    };
+
+                this.closeReservationModal();
+                const reservationModal = document.getElementById('reservation-modal');
+                if (reservationModal) {
+                    reservationModal.style.display = 'none';
+                    reservationModal.classList.add('hidden');
+                }
+                this._showToast(payload.message || 'Reservation submitted!', 'success');
+
+                const successModal = document.getElementById('reservation-success-modal');
+                const referenceEl = document.getElementById('success-reference');
+                const trackLinkEl = document.getElementById('success-track-link');
+                if (referenceEl) referenceEl.textContent = payload.data?.reference_number || 'Submitted';
+                if (trackLinkEl && payload.data?.track_url) trackLinkEl.href = payload.data.track_url;
+                if (successModal) successModal.style.display = 'flex';
+
+                return { success: true, data: payload, rawBody };
+            }
+
+            const errors = data?.errors
+                ? Object.values(data.errors).flat().join('\n')
+                : null;
+            const fallbackMessage = res.ok
+                ? 'Submission failed.'
+                : `Submission failed (${res.status}).`;
+            this._showToast(errors || data?.message || fallbackMessage, 'error');
+            return { success: false, data };
         } catch (e) {
             this._showToast('Network error. Please try again.', 'error');
-            return false;
+            return {
+                success: false,
+                error: e,
+            };
         }
     }
 
@@ -888,6 +1149,14 @@ class VirtualTourEngine {
             if (isTyping()) return;
             const k = e.key;
 
+            if (
+                this._autoTourActive
+                && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S', 'Tab', 'Enter'].includes(k)
+            ) {
+                this.stopAutoTour();
+                this._showToast('Auto Tour paused for manual navigation.', 'info');
+            }
+
             // A / D / ←/ → — smooth yaw rotation via RAF loop
             if (['ArrowLeft', 'ArrowRight', 'a', 'A', 'd', 'D'].includes(k)) {
                 e.preventDefault();
@@ -935,6 +1204,12 @@ class VirtualTourEngine {
                 if (this._autoTourActive) this.stopAutoTour();
                 else if (this._roomInfoCardOpen) this._closeInSceneCard();
                 else if (this._infoCardHotspotId) this._closeInfoCard();
+            }
+
+            // H — toggle UI visibility
+            if (k === 'h' || k === 'H') {
+                e.preventDefault();
+                this.toggleUIVisibility();
             }
         });
 
@@ -1017,27 +1292,34 @@ class VirtualTourEngine {
 
     // ── Auto-tour ─────────────────────────────────────────────────────────────
 
-    startAutoTour(intervalMs = 12000) {
+    startAutoTour() {
+        if (!this.waypoints.length) {
+            this._showToast('No tour stops available for Auto Tour.', 'error');
+            return;
+        }
+
         this._autoTourActive = true;
         this._syncAutoTourBtn(true);
-        const advance = () => {
-            if (!this._autoTourActive) return;
-            const i = this.waypoints.findIndex(w => w.slug === this.currentWaypoint?.slug);
-            const next = i < this.waypoints.length - 1
-                ? this.waypoints[i + 1]
-                : this.waypoints[0]; // loop back to start
-            if (next) this.navigateToWaypoint(next.slug);
-            this._autoTourTimer = setTimeout(advance, intervalMs);
-        };
-        this._autoTourTimer = setTimeout(advance, intervalMs);
-        this._showToast('Auto Tour started — advancing every 12s. Press Esc to stop.', 'info');
+
+        // Show UI and keep it visible during Auto Tour
+        this._showUI();
+        this._uiManuallyHidden = false;  // Clear manual override
+        this._syncToggleUIBtn(false);
+        clearTimeout(this._uiIdleTimer);  // Prevent hiding while Auto Tour runs
+
+        this._runAutoTourStep();
+        const profileLabel = AUTO_TOUR_PROFILES[this._autoTourProfile].label;
+        this._showToast(`Auto Tour started (${profileLabel}) - cinematic pan enabled. Press Esc to stop.`, 'info');
     }
 
     stopAutoTour() {
         this._autoTourActive = false;
-        clearTimeout(this._autoTourTimer);
-        this._autoTourTimer = null;
+        this._clearAutoTourTimers();
+        this._setAutoTourHud(false);
         this._syncAutoTourBtn(false);
+
+        // Resume auto-hide behavior
+        this._resetUIIdleTimer();
     }
 
     toggleAutoTour() {
@@ -1051,15 +1333,169 @@ class VirtualTourEngine {
 
     _syncAutoTourBtn(active) {
         document.getElementById('auto-tour-btn')?.classList.toggle('active', active);
+        const playIcon = document.getElementById('auto-tour-play-icon');
+        const stopIcon = document.getElementById('auto-tour-stop-icon');
+        if (playIcon) playIcon.style.display = active ? 'none' : '';
+        if (stopIcon) stopIcon.style.display = active ? '' : 'none';
         const t = document.getElementById('auto-tour-btn-text');
-        if (t) t.textContent = active ? '⏹ Stop Tour' : '▶ Auto Tour';
+        if (t) t.textContent = active ? 'Stop Tour' : 'Auto Tour';
+    }
+
+    _normalizeAutoTourProfile(profile) {
+        return Object.prototype.hasOwnProperty.call(AUTO_TOUR_PROFILES, profile)
+            ? profile
+            : 'normal';
+    }
+
+    _bindAutoTourSettings() {
+        if (!this.autoTourSpeedButtons.length) return;
+        this._syncAutoTourProfileButtons(this._autoTourProfile);
+        this.autoTourSpeedButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.setAutoTourProfile(btn.dataset.profile);
+            });
+        });
+    }
+
+    setAutoTourProfile(profile, opts = {}) {
+        const { persist = true, notify = true } = opts;
+        const normalized = this._normalizeAutoTourProfile(profile);
+        const changed = normalized !== this._autoTourProfile;
+
+        this._autoTourProfile = normalized;
+        this._autoTourCycleMs = AUTO_TOUR_PROFILES[normalized].cycleMs;
+        this._autoTourPanMs = AUTO_TOUR_PROFILES[normalized].panMs;
+
+        this._syncAutoTourProfileButtons(normalized);
+
+        if (persist) {
+            try {
+                localStorage.setItem('tour_auto_tour_profile', normalized);
+            } catch (_) {
+                // Ignore persistence failures in private browsing or restricted environments.
+            }
+        }
+
+        if (this._autoTourActive && changed) {
+            this._runAutoTourStep();
+        }
+
+        if (notify && changed) {
+            this._showToast(`Auto Tour speed set to ${AUTO_TOUR_PROFILES[normalized].label}.`, 'info');
+        }
+    }
+
+    _syncAutoTourProfileButtons(activeProfile) {
+        if (!this.autoTourSpeedButtons.length) return;
+        this.autoTourSpeedButtons.forEach((btn) => {
+            const isActive = btn.dataset.profile === activeProfile;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+    }
+
+    _clearAutoTourTimers() {
+        clearTimeout(this._autoTourTimer);
+        clearInterval(this._autoTourTickTimer);
+        if (this._autoTourPanRaf) cancelAnimationFrame(this._autoTourPanRaf);
+        this._autoTourTimer = null;
+        this._autoTourTickTimer = null;
+        this._autoTourPanRaf = null;
+    }
+
+    _setAutoTourHud(active) {
+        if (!this.autoTourHud) return;
+        this.autoTourHud.classList.toggle('hidden', !active);
+        if (!active) {
+            if (this.autoTourCountdown) this.autoTourCountdown.textContent = 'Auto Tour idle';
+            if (this.autoTourFill) this.autoTourFill.style.width = '0%';
+        }
+    }
+
+    _runAutoTourStep() {
+        if (!this._autoTourActive) return;
+
+        this._clearAutoTourTimers();
+        this._autoTourStepStart = Date.now();
+        this._setAutoTourHud(true);
+        this._startAutoTourPan();
+        this._startAutoTourCountdown();
+
+        this._autoTourTimer = setTimeout(async () => {
+            if (!this._autoTourActive) return;
+            const i = this.waypoints.findIndex(w => w.slug === this.currentWaypoint?.slug);
+            const next = i < this.waypoints.length - 1
+                ? this.waypoints[i + 1]
+                : this.waypoints[0];
+
+            if (next) await this.navigateToWaypoint(next.slug);
+            if (this._autoTourActive) this._runAutoTourStep();
+        }, this._autoTourCycleMs);
+    }
+
+    _startAutoTourPan() {
+        if (this._reducedMotion || !this.viewer) return;
+
+        const start = performance.now();
+        const base = this.viewer.getPosition();
+        const baseYaw = base?.yaw || 0;
+        const basePitch = base?.pitch || 0;
+        const yawAmplitude = 24 * Math.PI / 180;
+        const pitchAmplitude = 2.4 * Math.PI / 180;
+        const yawSway = 3.2 * Math.PI / 180;
+
+        const tick = (now) => {
+            if (!this._autoTourActive || !this.viewer) return;
+
+            const elapsed = now - start;
+            const progress = Math.min(1, elapsed / this._autoTourPanMs);
+            const eased = 0.5 - 0.5 * Math.cos(progress * Math.PI);
+            const yaw = baseYaw + (eased * yawAmplitude) + (Math.sin(progress * Math.PI * 2) * yawSway);
+            const pitch = basePitch + Math.sin(progress * Math.PI * 2) * pitchAmplitude;
+            this.viewer.rotate({ yaw, pitch });
+
+            if (progress < 1) {
+                this._autoTourPanRaf = requestAnimationFrame(tick);
+            }
+        };
+
+        this._autoTourPanRaf = requestAnimationFrame(tick);
+    }
+
+    _startAutoTourCountdown() {
+        const holdMs = this._autoTourCycleMs - this._autoTourPanMs;
+        const update = () => {
+            if (!this._autoTourActive) return;
+
+            const elapsed = Date.now() - this._autoTourStepStart;
+            const remaining = Math.max(0, this._autoTourCycleMs - elapsed);
+            const pct = Math.max(0, Math.min(100, (elapsed / this._autoTourCycleMs) * 100));
+            if (this.autoTourFill) this.autoTourFill.style.width = `${pct}%`;
+
+            if (this.autoTourCountdown) {
+                const remainingSec = Math.ceil(remaining / 1000);
+                this.autoTourCountdown.textContent = remaining <= holdMs
+                    ? `Next scene in ${remainingSec}s`
+                    : `Panning... ${remainingSec}s`;
+            }
+        };
+
+        update();
+        this._autoTourTickTimer = setInterval(update, 100);
     }
 
     // ── Toast ─────────────────────────────────────────────────────────────────
 
     _showToast(msg, type = 'info') {
         const el = document.getElementById('toast-notification');
-        if (!el) return;
+        if (!el) {
+            if (type === 'error') {
+                window.alert(msg);
+            } else {
+                console.log(`[tour:${type}] ${msg}`);
+            }
+            return;
+        }
         el.textContent = msg;
         el.className   = `toast toast-${type} visible`;
         clearTimeout(this._toastTimer);

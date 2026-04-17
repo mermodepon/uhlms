@@ -323,7 +323,7 @@
 
             {{-- Charts Row --}}
             @php
-                $statusColors = ['pending' => '#F59E0B', 'approved' => '#3B82F6', 'declined' => '#EF4444', 'cancelled' => '#6B7280', 'checked_in' => '#10B981', 'checked_out' => '#8B5CF6'];
+                $statusColors = ['pending' => '#F59E0B', 'approved' => '#3B82F6', 'confirmed' => '#10B981', 'pending_payment' => '#8B5CF6', 'declined' => '#EF4444', 'cancelled' => '#6B7280', 'checked_in' => '#059669', 'checked_out' => '#6366F1'];
                 $statusLabels = array_values(array_map(fn($s) => ucwords(str_replace('_', ' ', $s)), array_keys($data['by_status'])));
                 $statusBgColors = array_values(array_map(fn($s) => $statusColors[$s] ?? '#6B7280', array_keys($data['by_status'])));
                 $purposeLabels = array_values(array_map(fn($s) => ucwords($s), array_keys($data['by_purpose'])));

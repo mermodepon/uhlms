@@ -69,21 +69,24 @@ class ReservationObserver
             // Log meaningful status transitions
             $logEvent = match (true) {
                 $oldStatus === 'pending' && $newStatus === 'approved' => 'reservation_approved',
+                $oldStatus === 'approved' && $newStatus === 'confirmed' => 'reservation_confirmed',
                 $newStatus === 'declined' => 'reservation_declined',
                 $newStatus === 'cancelled' => 'reservation_cancelled',
                 $oldStatus === 'checked_in' && $newStatus === 'checked_out' => 'reservation_checked_out',
                 $oldStatus === 'pending_payment' && $newStatus === 'approved' => 'checkin_hold_released',
+                $oldStatus === 'pending_payment' && $newStatus === 'confirmed' => 'checkin_hold_released',
                 default => null,
             };
 
             if ($logEvent) {
                 $description = match ($logEvent) {
                     'reservation_approved' => "Reservation #{$reservation->reference_number} approved.",
+                    'reservation_confirmed' => "Reservation #{$reservation->reference_number} confirmed with rooms assigned.",
                     'reservation_declined' => "Reservation #{$reservation->reference_number} declined.",
                     'reservation_cancelled' => "Reservation #{$reservation->reference_number} cancelled."
                         .($reservation->admin_notes ? " Reason: {$reservation->admin_notes}" : ''),
                     'reservation_checked_out' => "Reservation #{$reservation->reference_number} checked out.",
-                    'checkin_hold_released' => "Payment hold released. Reservation #{$reservation->reference_number} returned to approved.",
+                    'checkin_hold_released' => "Payment hold released. Reservation #{$reservation->reference_number} returned to ".($newStatus === 'confirmed' ? 'confirmed' : 'approved').".",
                     default => "Status changed from {$oldStatus} to {$newStatus}.",
                 };
 

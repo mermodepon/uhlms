@@ -10,7 +10,7 @@
 |---|---|
 | Backend | PHP 8.2+, Laravel 11 |
 | Admin panel | Filament 3.2 (auto-generates CRUD UI, routes, and Livewire) |
-| Frontend | TailwindCSS 3, Vite 6, Pannellum (virtual tours) |
+| Frontend | TailwindCSS 3, Vite 6, Photo Sphere Viewer 5 (virtual tours) |
 | Database | MySQL (production), SQLite (development) |
 | Queue/cache/sessions | Database driver (no Redis) |
 | Testing | PHPUnit 11 |

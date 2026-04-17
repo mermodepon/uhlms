@@ -75,6 +75,15 @@ class PanoramaViewer {
             this._emit('zoom-updated', { zoomLevel: e.zoomLevel });
         });
 
+        this._psv.addEventListener('position-updated', (e) => {
+            this._emit('position-updated', {
+                position: {
+                    yaw: e.position.yaw,
+                    pitch: e.position.pitch,
+                },
+            });
+        });
+
         this._markers.addEventListener('select-marker', (e) => {
             const id = e.marker.id;
             const cfg = this._markerConfigs.get(id);
@@ -363,15 +372,36 @@ class PanoramaViewer {
     // ── Gyroscope ────────────────────────────────────────────────────────────
 
     async toggleGyroscope() {
-        if (!this._gyro) return;
+        if (!this._gyro) {
+            console.error('Gyroscope plugin not available');
+            throw new Error('Gyroscope plugin not initialized');
+        }
+        
+        console.log('Toggle gyroscope - currently enabled:', this._gyro.isEnabled());
+        
         try {
             if (this._gyro.isEnabled()) {
+                console.log('Stopping gyroscope');
                 this._gyro.stop();
             } else {
+                console.log('Starting gyroscope');
+                
+                // iOS 13+ requires explicit permission request
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    console.log('Requesting device orientation permission (iOS)');
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    console.log('Permission result:', permission);
+                    if (permission !== 'granted') {
+                        throw new Error('Device orientation permission denied');
+                    }
+                }
+                
                 await this._gyro.start();
+                console.log('Gyroscope started successfully');
             }
         } catch (e) {
-            console.warn('Gyroscope toggle failed:', e);
+            console.error('Gyroscope toggle failed:', e.message);
+            throw e;
         }
     }
 

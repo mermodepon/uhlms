@@ -27,11 +27,15 @@ class VirtualTourResource extends Resource
 
     protected static ?string $slug = 'virtual-tour';
 
+    protected static ?string $modelLabel = 'Scene';
+
+    protected static ?string $pluralModelLabel = 'Scenes';
+
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-                Forms\Components\Section::make('Waypoint Details')
+                Forms\Components\Section::make('Scene Details')
                     ->schema([
                         Forms\Components\TextInput::make('name')
                             ->required()
@@ -89,7 +93,8 @@ class VirtualTourResource extends Resource
                             ->helperText('Small image for mini-map (optional)'),
                     ]),
 
-                Forms\Components\Section::make('Room Type Link')
+                Forms\Components\Section::make('Room Linking')
+                    ->description('Associate this waypoint with a room type or specific room. If both are set, the specific room takes priority.')
                     ->schema([
                         Forms\Components\Select::make('linked_room_type_id')
                             ->label('Link to Room Type')
@@ -97,7 +102,28 @@ class VirtualTourResource extends Resource
                             ->searchable()
                             ->preload()
                             ->nullable()
-                            ->helperText('Optional: associate with a room type'),
+                            ->live()
+                            ->afterStateUpdated(fn ($set) => $set('linked_room_id', null))
+                            ->helperText('Select a room type to show room information during the tour'),
+                        Forms\Components\Select::make('linked_room_id')
+                            ->label('Specific Room (Optional)')
+                            ->relationship('room', 'room_number')
+                            ->searchable()
+                            ->preload()
+                            ->nullable()
+                            ->visible(fn ($get) => filled($get('linked_room_type_id')))
+                            ->options(function ($get) {
+                                $roomTypeId = $get('linked_room_type_id');
+                                if (!$roomTypeId) {
+                                    return [];
+                                }
+                                return \App\Models\Room::where('room_type_id', $roomTypeId)
+                                    ->where('is_active', true)
+                                    ->orderBy('room_number')
+                                    ->pluck('room_number', 'id')
+                                    ->toArray();
+                            })
+                            ->helperText('🔒 Link to a specific room (e.g., Room 101). Guests will see this exact room\'s status and can request to book it.'),
                         Forms\Components\Grid::make(2)
                             ->schema([
                                 Forms\Components\TextInput::make('room_info_yaw')
@@ -126,7 +152,7 @@ class VirtualTourResource extends Resource
                         Forms\Components\Textarea::make('narration')
                             ->rows(2)
                             ->columnSpanFull()
-                            ->helperText('Auto-displayed tooltip when user reaches this waypoint'),
+                            ->helperText('Auto-displayed tooltip when user reaches this scene'),
                     ]),
             ]);
     }
@@ -139,8 +165,7 @@ class VirtualTourResource extends Resource
                     ->label('Preview')
                     ->size(40)
                     ->disk('public')
-                    ->defaultImageUrl(fn ($record) => $record?->getThumbnailUrl())
-                    ->hidden(fn ($record) => $record && !$record->thumbnail_image),
+                    ->getStateUsing(fn (TourWaypoint $record) => $record->thumbnail_image ?: $record->panorama_image),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()
                     ->sortable()
@@ -195,11 +220,6 @@ class VirtualTourResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\Action::make('manage-hotspots')
-                    ->label('Tour Editor')
-                    ->icon('heroicon-o-map-pin')
-                    ->color('success')
-                    ->url(fn ($record) => Pages\ManageTourHotspots::getUrl(['record' => $record->id])),
                 Tables\Actions\ViewAction::make(),
             ])
             ->bulkActions([
@@ -213,7 +233,7 @@ class VirtualTourResource extends Resource
                                 $record->update(['is_active' => true]);
                             }
                             Notification::make()
-                                ->title('Selected waypoints activated')
+                                ->title('Selected scenes activated')
                                 ->success()
                                 ->send();
                         }),
@@ -226,7 +246,7 @@ class VirtualTourResource extends Resource
                                 $record->update(['is_active' => false]);
                             }
                             Notification::make()
-                                ->title('Selected waypoints deactivated')
+                                ->title('Selected scenes deactivated')
                                 ->success()
                                 ->send();
                         }),

@@ -23,6 +23,7 @@ class TourWaypoint extends Model
         'thumbnail_image',
         'position_order',
         'linked_room_type_id',
+        'linked_room_id',
         'room_info_yaw',
         'room_info_pitch',
         'description',
@@ -48,6 +49,16 @@ class TourWaypoint extends Model
             }
         });
 
+        // Automatically set linked_room_type_id from linked_room if not set
+        static::saving(function (TourWaypoint $waypoint) {
+            if ($waypoint->linked_room_id && !$waypoint->linked_room_type_id) {
+                $room = \App\Models\Room::find($waypoint->linked_room_id);
+                if ($room) {
+                    $waypoint->linked_room_type_id = $room->room_type_id;
+                }
+            }
+        });
+
         static::updating(function (TourWaypoint $waypoint) {
             if ($waypoint->isDirty('name') && empty($waypoint->slug)) {
                 $waypoint->slug = Str::slug($waypoint->name);
@@ -58,6 +69,38 @@ class TourWaypoint extends Model
     public function roomType(): BelongsTo
     {
         return $this->belongsTo(RoomType::class, 'linked_room_type_id');
+    }
+
+    public function room(): BelongsTo
+    {
+        return $this->belongsTo(Room::class, 'linked_room_id');
+    }
+
+    /**
+     * Get the linked room information with priority: specific room > room type.
+     * Returns Room object if linked_room_id is set, otherwise RoomType object.
+     */
+    public function getLinkedRoomInfo()
+    {
+        // Priority 1: Specific room
+        if ($this->linked_room_id && $this->room) {
+            return $this->room;
+        }
+
+        // Priority 2: Room type (fall back)
+        if ($this->linked_room_type_id && $this->roomType) {
+            return $this->roomType;
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if this waypoint is linked to a specific room (not just a room type).
+     */
+    public function hasSpecificRoom(): bool
+    {
+        return !is_null($this->linked_room_id);
     }
 
     public function hotspots(): HasMany

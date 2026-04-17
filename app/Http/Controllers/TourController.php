@@ -49,6 +49,7 @@ class TourController extends Controller
                     'description' => $waypoint->description,
                     'narration' => $waypoint->narration,
                     'linked_room_type_id' => $waypoint->linked_room_type_id,
+                    'linked_room_id' => $waypoint->linked_room_id,
                     'room_info_yaw'       => $waypoint->room_info_yaw !== null ? (float) $waypoint->room_info_yaw : null,
                     'room_info_pitch'     => $waypoint->room_info_pitch !== null ? (float) $waypoint->room_info_pitch : null,
                     'is_room_related' => $waypoint->isRoomRelated(),
@@ -104,6 +105,7 @@ class TourController extends Controller
             'description' => $waypoint->description,
             'narration' => $waypoint->narration,
             'linked_room_type_id' => $waypoint->linked_room_type_id,
+            'linked_room_id' => $waypoint->linked_room_id,
             'room_info_yaw'       => $waypoint->room_info_yaw !== null ? (float) $waypoint->room_info_yaw : null,
             'room_info_pitch'     => $waypoint->room_info_pitch !== null ? (float) $waypoint->room_info_pitch : null,
             'is_room_related' => $waypoint->isRoomRelated(),
@@ -190,6 +192,72 @@ class TourController extends Controller
     }
 
     /**
+     * Get specific room details with real-time availability
+     */
+    public function roomAvailability(int $id, Request $request): JsonResponse
+    {
+        $room = \App\Models\Room::with(['roomType.amenities', 'floor'])->find($id);
+
+        if (!$room || !$room->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Room not found or inactive',
+            ], 404);
+        }
+
+        $checkIn = $request->get('check_in');
+        $checkOut = $request->get('check_out');
+
+        // Determine availability
+        $isAvailable = true;
+        $unavailableReason = null;
+
+        if ($room->status === 'maintenance' || $room->status === 'inactive') {
+            $isAvailable = false;
+            $unavailableReason = 'Room is currently under maintenance';
+        } elseif ($room->status === 'occupied' && $room->roomType->isPrivate()) {
+            $isAvailable = false;
+            $unavailableReason = 'Room is currently occupied';
+        } elseif ($room->isFull()) {
+            $isAvailable = false;
+            $unavailableReason = 'Room is at full capacity';
+        } elseif ($checkIn && $checkOut) {
+            // Check for date-specific conflicts with holds or assignments
+            try {
+                $checkInDate = Carbon::parse($checkIn);
+                $checkOutDate = Carbon::parse($checkOut);
+
+                $hasConflict = app(RoomHoldService::class)->hasConflict($room, $checkInDate, $checkOutDate);
+                
+                if ($hasConflict) {
+                    $isAvailable = false;
+                    $unavailableReason = 'Room is reserved for the selected dates';
+                }
+            } catch (\Exception $e) {
+                // If date parsing fails, do real-time check only
+            }
+        }
+
+        $currentOccupancy = $room->roomAssignments()->where('status', 'checked_in')->count();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $room->id,
+                'room_number' => $room->room_number,
+                'status' => $room->status,
+                'is_available' => $isAvailable,
+                'unavailable_reason' => $unavailableReason,
+                'capacity' => $room->capacity,
+                'current_occupancy' => $currentOccupancy,
+                'available_slots' => max(0, $room->capacity - $currentOccupancy),
+                'floor' => $room->floor?->name,
+                'room_type' => $this->formatRoomTypeData($room->roomType),
+            ],
+        ]);
+    }
+
+    /**
      * Submit reservation request from tour
      */
     public function reserveSubmit(Request $request): JsonResponse
@@ -203,6 +271,7 @@ class TourController extends Controller
             'guest_gender' => 'required|in:Male,Female,Other',
             'guest_address' => 'nullable|string|max:1000',
             'preferred_room_type_id' => 'required|exists:room_types,id',
+            'preferred_room_id' => 'nullable|exists:rooms,id',
             'check_in_date' => 'required|date|after_or_equal:today',
             'check_out_date' => 'required|date|after:check_in_date',
             'number_of_occupants' => 'required|integer|min:1|max:20',
@@ -227,10 +296,36 @@ class TourController extends Controller
         );
 
         $validated['status'] = 'pending';
-        $validated['special_requests'] = ($validated['special_requests'] ?? '')
-            ."\n[Booked via Virtual Tour]";
+        
+        // Build special requests message
+        $tourNotice = "\n[Booked via Virtual Tour]";
+        if (!empty($validated['preferred_room_id'])) {
+            $room = \App\Models\Room::find($validated['preferred_room_id']);
+            if ($room) {
+                $tourNotice .= "\n[Guest requested specific room: {$room->room_number}]";
+            }
+        }
+        $validated['special_requests'] = ($validated['special_requests'] ?? '') . $tourNotice;
+
+        // source is metadata for validation/context only and is not persisted on reservations.
+        unset($validated['source']);
+        
+        // Remove preferred_room_id from validated data (not a column on reservations table)
+        $preferredRoomId = $validated['preferred_room_id'] ?? null;
+        unset($validated['preferred_room_id']);
 
         $reservation = Reservation::create($validated);
+
+        // If specific room requested, attempt to create advance hold
+        if ($preferredRoomId) {
+            try {
+                $result = app(RoomHoldService::class)->createAdvanceHolds($reservation, [$preferredRoomId]);
+                // Successfully created hold
+            } catch (\RuntimeException $e) {
+                // Hold failed but reservation is still created
+                // This is okay - admin can assign room during approval
+            }
+        }
 
         return response()->json([
             'success' => true,

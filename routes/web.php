@@ -18,7 +18,8 @@ Route::get('/track', [GuestController::class, 'track'])->name('guest.track');
 Route::prefix('api/tour')->group(function () {
     Route::get('/waypoints', [TourController::class, 'waypoints'])->name('api.tour.waypoints');
     Route::get('/waypoint/{slug}', [TourController::class, 'waypoint'])->name('api.tour.waypoint');
-    Route::get('/room-type/{id}/availability', [TourController::class, 'roomTypeAvailability'])->name('api.tour.room-availability');
+    Route::get('/room-type/{id}/availability', [TourController::class, 'roomTypeAvailability'])->name('api.tour.room-type-availability');
+    Route::get('/room/{id}/availability', [TourController::class, 'roomAvailability'])->name('api.tour.room-availability');
     Route::post('/reserve', [TourController::class, 'reserveSubmit'])->name('api.tour.reserve');
 });
 
