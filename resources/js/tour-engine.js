@@ -368,6 +368,7 @@ class VirtualTourEngine {
                     icon:    h.icon || 'chevron-up',
                     bgColor: HOTSPOT_COLORS[h.action_type] || '#6b7280',
                     opacity: 1,
+                    size:    h.size || 3,  // Apply size from hotspot (1-5 scale)
                 },
             });
         });
@@ -576,6 +577,33 @@ class VirtualTourEngine {
         }
     }
 
+    async _checkSpecificRoomAvailability() {
+        if (!this.currentRoom) return;
+        if (!this._checkIn || !this._checkOut) {
+            this._showToast('Please select check-in and check-out dates.', 'error');
+            return;
+        }
+        try {
+            const url = new URL(`${this.apiBase}/room/${this.currentRoom.id}/availability`, window.location.href);
+            url.searchParams.set('check_in',  this._checkIn);
+            url.searchParams.set('check_out', this._checkOut);
+            const res  = await fetch(url);
+            const data = await res.json();
+            if (data.success) {
+                this.currentRoom = data.data;
+                this.currentRoomType = data.data.room_type;
+                // Update both in-scene card and overlay
+                this._populateRoomInfoOverlay(data.data, true);
+                this._closeInSceneCard();
+                this._openInSceneCard();
+            } else {
+                this._showToast(data.message || 'Could not check availability.', 'error');
+            }
+        } catch (e) {
+            this._showToast('Network error. Please try again.', 'error');
+        }
+    }
+
     // ── In-scene room info card ───────────────────────────────────────────────
 
     _openInSceneCard() {
@@ -591,7 +619,7 @@ class VirtualTourEngine {
         const pitch = wp.room_info_pitch ?? ((wp.default_pitch ?? 0) + 15);
         
         // Extract display data from either room or room type
-        let name, description, price, tags, count, roomSharingType, availText;
+        let name, description, price, tags, count, roomSharingType, availText, isPrivateRoom, otherAvailCount;
         
         if (hasSpecificRoom) {
             const room = this.currentRoom;
@@ -604,9 +632,13 @@ class VirtualTourEngine {
             roomSharingType = roomType?.room_sharing_type || '';
             const available = room.available_slots || 0;
             const capacity = room.capacity || 0;
-            availText = room.is_available
-                ? `${available} of ${capacity} slots free`
-                : (room.unavailable_reason || 'Unavailable');
+            isPrivateRoom = roomType?.is_private ?? false;
+            otherAvailCount = room.other_available_count ?? null;
+            if (room.is_available) {
+                availText = isPrivateRoom ? 'Available' : `${available} of ${capacity} slots free`;
+            } else {
+                availText = room.unavailable_reason || 'Unavailable';
+            }
         } else {
             const rt = this.currentRoomType;
             name = rt.name || '';
@@ -616,6 +648,7 @@ class VirtualTourEngine {
             count = rt.available_rooms_count;
             roomSharingType = rt.room_sharing_type || '';
             availText = count != null ? `${count} room(s) available` : '';
+            isPrivateRoom = rt.is_private ?? false;
         }
 
         // Hide the compact trigger while the card is open
@@ -629,7 +662,9 @@ class VirtualTourEngine {
         try { this.viewer.removeMarker('room-info-card'); } catch (e) {}
 
         const headerBadge = count != null
-            ? `${count > 0 ? '✓' : '✗'} ${count} avail.`
+            ? hasSpecificRoom
+                ? `${count > 0 ? '✓' : '✗'} ${availText}`
+                : `${count > 0 ? '✓' : '✗'} ${count} avail.`
             : undefined;
 
         // ── Date availability widget ──────────────────────────────────────────
@@ -654,31 +689,70 @@ class VirtualTourEngine {
 
         const inputStyle = 'width:100%;font-size:11px;border:1px solid #d1d5db;border-radius:6px;padding:4px 6px;box-sizing:border-box';
 
-        const availWidget = this.previewMode ? '' :
-            `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;background:#fafafa">`
-          + `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6b7280;margin-bottom:8px">📅 Check Availability</div>`
-          + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">`
-          +   `<div><div style="font-size:10px;color:#9ca3af;margin-bottom:2px">Check-in</div>`
-          +   `<input type="date" value="${this._checkIn || ''}" min="${today}" onclick="event.stopPropagation()" onchange="tourEngine._setCheckIn(this.value)" style="${inputStyle}"></div>`
-          +   `<div><div style="font-size:10px;color:#9ca3af;margin-bottom:2px">Check-out</div>`
-          +   `<input type="date" value="${this._checkOut || ''}" min="${tomorrow}" onclick="event.stopPropagation()" onchange="tourEngine._setCheckOut(this.value)" style="${inputStyle}"></div>`
-          + `</div>`
-          + `<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px">`
-          +   `<div style="flex:0 0 110px"><div style="font-size:10px;color:#9ca3af;margin-bottom:2px">Guests</div>`
-          +   `<input type="number" value="${this._guests}" min="1" max="20" onclick="event.stopPropagation()" onchange="tourEngine._setGuests(this.value)" style="${inputStyle}"></div>`
-          +   `<button onclick="tourEngine._checkDateAvailability(${roomTypeId});event.stopPropagation()" style="flex:1;background:#1d4ed8;color:white;border:none;padding:6px;border-radius:6px;font-weight:600;font-size:11px;cursor:pointer">🔍 Check</button>`
-          + `</div>`
-          + priceEstHtml
-          + availResultHtml
-          + `</div>`;
+        // Build availability widget - hide Guests field for private rooms
+        let availWidget = '';
+        if (!this.previewMode) {
+            availWidget = `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;background:#fafafa">`
+              + `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6b7280;margin-bottom:8px">📅 Check Availability</div>`
+              + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">`
+              +   `<div><div style="font-size:10px;color:#9ca3af;margin-bottom:2px">Check-in</div>`
+              +   `<input type="date" value="${this._checkIn || ''}" min="${today}" onclick="event.stopPropagation()" onchange="tourEngine._setCheckIn(this.value)" style="${inputStyle}"></div>`
+              +   `<div><div style="font-size:10px;color:#9ca3af;margin-bottom:2px">Check-out</div>`
+              +   `<input type="date" value="${this._checkOut || ''}" min="${tomorrow}" onclick="event.stopPropagation()" onchange="tourEngine._setCheckOut(this.value)" style="${inputStyle}"></div>`
+              + `</div>`;
+            
+            // For private rooms: full-width Check button. For dorm rooms: show Guests input
+            if (isPrivateRoom) {
+                availWidget += `<div style="margin-bottom:6px">`
+                  +   `<button onclick="tourEngine.${hasSpecificRoom ? '_checkSpecificRoomAvailability()' : `_checkDateAvailability(${roomTypeId})`};event.stopPropagation()" style="width:100%;background:#1d4ed8;color:white;border:none;padding:8px;border-radius:6px;font-weight:600;font-size:11px;cursor:pointer">🔍 Check</button>`
+                  + `</div>`;
+            } else {
+                availWidget += `<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px">`
+                  +   `<div style="flex:0 0 110px"><div style="font-size:10px;color:#9ca3af;margin-bottom:2px">Guests</div>`
+                  +   `<input type="number" value="${this._guests}" min="1" max="20" onclick="event.stopPropagation()" onchange="tourEngine._setGuests(this.value)" style="${inputStyle}"></div>`
+                  +   `<button onclick="tourEngine.${hasSpecificRoom ? '_checkSpecificRoomAvailability()' : `_checkDateAvailability(${roomTypeId})`};event.stopPropagation()" style="flex:1;background:#1d4ed8;color:white;border:none;padding:6px;border-radius:6px;font-weight:600;font-size:11px;cursor:pointer">🔍 Check</button>`
+                  + `</div>`;
+            }
+            
+            availWidget += priceEstHtml + availResultHtml + `</div>`;
+        }
+
+        const roomIsUnavailable = hasSpecificRoom && count === 0;
+        const typeHasAvailability = hasSpecificRoom && otherAvailCount != null && otherAvailCount > 0;
+
+        // Build contextual note about other rooms when this specific room is unavailable
+        let otherRoomsNote = '';
+        if (hasSpecificRoom) {
+            if (roomIsUnavailable && typeHasAvailability) {
+                otherRoomsNote = `<div style="margin-bottom:8px;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:11px;color:#166534;line-height:1.5">`
+                    + `✓ <strong>${otherAvailCount} other room(s)</strong> of this type are available — you can still request this room type during reservation review.`
+                    + `</div>`;
+            } else if (roomIsUnavailable && otherAvailCount === 0) {
+                otherRoomsNote = `<div style="margin-bottom:8px;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#991b1b;line-height:1.5">`
+                    + `✗ No other rooms of this type are currently available.`
+                    + `</div>`;
+            }
+        }
+
+        const ctaLabel = hasSpecificRoom && !roomIsUnavailable
+            ? '🏨 Request Reservation'
+            : hasSpecificRoom && typeHasAvailability
+                ? '🏨 Request This Room Type'
+                : '🏨 Request Reservation';
+
+        const disclaimer = hasSpecificRoom
+            ? `<div style="text-align:center;font-size:10px;color:#9ca3af;margin-top:6px;line-height:1.4">Room assignment is finalized by staff during reservation review.</div>`
+            : '';
 
         const buttons = this.previewMode ? '' :
             `<div style="display:flex;flex-direction:column;gap:8px">`
           + availWidget
+          + otherRoomsNote
           + `<div style="display:flex;flex-direction:column;gap:6px;align-items:center;margin-top:4px">`
-          +   `<button onclick="tourEngine.openReservationModal();event.stopPropagation()" style="width:100%;background:#FFC600;color:#00491E;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">🏨 Request Reservation</button>`
+          +   `<button onclick="tourEngine.openReservationModal();event.stopPropagation()" style="width:100%;background:#FFC600;color:#00491E;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">${ctaLabel}</button>`
           +   `<button onclick="window.location.href='/reserve';event.stopPropagation()" style="width:100%;background:#00491E;color:white;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">📝 Full Reservation Form</button>`
           + `</div>`
+          + disclaimer
           + `</div>`;
 
         this.viewer.addMarker({
@@ -724,9 +798,12 @@ class VirtualTourEngine {
             const available = data.available_slots || 0;
             const capacity = data.capacity || 0;
             count = data.is_available ? 1 : 0;
-            availText = data.is_available
-                ? `Available (${available} of ${capacity} slots free)`
-                : (data.unavailable_reason || 'Unavailable');
+            const isPrivate = data.is_private_room ?? data.room_type?.is_private ?? false;
+            if (data.is_available) {
+                availText = isPrivate ? 'Available' : `Available (${available} of ${capacity} slots free)`;
+            } else {
+                availText = data.unavailable_reason || 'Unavailable';
+            }
             availColor = data.is_available ? '#86efac' : '#fca5a5';
             pricing = data.room_type?.pricing_display || data.room_type?.formatted_price || '';
             description = data.room_type?.description || '';
@@ -833,6 +910,38 @@ class VirtualTourEngine {
         if (!ov) return;
         const setText = (sel, val) => { const el = ov.querySelector(sel); if (el) el.textContent = val ?? ''; };
 
+        // Determine if private room
+        const isPrivate = isSpecificRoom 
+            ? (data.is_private_room ?? data.room_type?.is_private ?? false)
+            : (data.is_private ?? false);
+
+        // Hide/show guests field based on room type
+        const guestsContainer = ov.querySelector('.flex.gap-2.items-end.mb-2');
+        const guestsField = ov.querySelector('#overlay-guests');
+        const guestsFieldContainer = guestsField?.parentElement;
+        const checkButton = guestsContainer?.querySelector('button');
+        
+        if (guestsContainer && guestsFieldContainer && checkButton) {
+            if (isPrivate) {
+                // Hide guests field, make check button full width
+                guestsFieldContainer.classList.add('hidden');
+                checkButton.classList.remove('flex-1');
+                checkButton.classList.add('w-full');
+            } else {
+                // Show guests field, normal layout
+                guestsFieldContainer.classList.remove('hidden');
+                checkButton.classList.remove('w-full');
+                checkButton.classList.add('flex-1');
+            }
+            
+            // Update check button onclick handler
+            if (isSpecificRoom) {
+                checkButton.setAttribute('onclick', 'tourEngine._checkSpecificRoomAvailability()');
+            } else {
+                checkButton.setAttribute('onclick', `tourEngine._checkDateAvailability(${data.id})`);
+            }
+        }
+
         // Handle room vs room type display
         if (isSpecificRoom) {
             // Specific room: show room number + room type
@@ -840,16 +949,60 @@ class VirtualTourEngine {
             setText('.room-type-badge', data.room_type?.room_sharing_type || '');
             setText('.room-description', data.room_type?.description || '');
             setText('.room-price', data.room_type?.pricing_display || data.room_type?.formatted_price || '');
+
+            // Show disclaimer for specific rooms
+            const disclaimerEl = ov.querySelector('#overlay-room-disclaimer');
+            if (disclaimerEl) disclaimerEl.classList.remove('hidden');
+
+            // Update CTA label based on room + type availability
+            const requestBtn = ov.querySelector('#overlay-request-btn');
+            if (requestBtn) {
+                const roomUnavailable = !data.is_available;
+                const typeHasOthers = data.other_available_count != null && data.other_available_count > 0;
+                requestBtn.textContent = roomUnavailable && typeHasOthers
+                    ? '🏨 Request This Room Type'
+                    : '🏨 Request Reservation';
+            }
             
             const avail = ov.querySelector('.availability-badge');
             if (avail) {
+                let availabilityHtml = '';
+                
+                // Part 1: This room's status
                 if (data.is_available) {
-                    avail.textContent = `Available (${data.available_slots} of ${data.capacity} slots free)`;
-                    avail.className = 'availability-badge mt-3 text-sm font-semibold text-green-300';
+                    if (isPrivate) {
+                        availabilityHtml = '<div class="text-green-300 font-semibold">✓ This room: Available</div>';
+                    } else {
+                        const bedText = data.available_slots === 1 ? 'bed' : 'beds';
+                        availabilityHtml = `<div class="text-green-300 font-semibold">✓ This room: ${data.available_slots} ${bedText} available (${data.current_occupancy}/${data.capacity} occupied)</div>`;
+                    }
                 } else {
-                    avail.textContent = data.unavailable_reason || 'Unavailable';
-                    avail.className = 'availability-badge mt-3 text-sm font-semibold text-red-300';
+                    availabilityHtml = `<div class="text-red-300 font-semibold">✗ This room: ${data.unavailable_reason || 'Unavailable'}</div>`;
                 }
+                
+                // Part 2: Other rooms of the same type
+                if (data.room_type && data.other_available_count !== undefined) {
+                    const roomTypeName = data.room_type.name || 'this type';
+                    
+                    if (data.other_available_count > 0 && data.other_available_rooms && Array.isArray(data.other_available_rooms)) {
+                        const roomNumbers = data.other_available_rooms.map(r => r.room_number).join(', ');
+                        const roomText = data.other_available_count === 1 ? 'room' : 'rooms';
+                        if (!data.is_available) {
+                            // Room is unavailable — make this prominent and actionable
+                            availabilityHtml += `<div class="mt-2 px-3 py-2 bg-green-700 bg-opacity-40 border border-green-400 border-opacity-50 rounded-lg text-xs leading-snug">`
+                                + `<span class="text-green-200 font-semibold">✓ ${data.other_available_count} other ${roomTypeName} ${roomText} available</span>`
+                                + `<br><span class="text-green-300 opacity-80">You can still request this room type — room assignment is confirmed during review.</span>`
+                                + `</div>`;
+                        } else {
+                            availabilityHtml += `<div class="text-gray-300 text-xs mt-2">📊 Other ${roomTypeName}: ${data.other_available_count} ${roomText} available (${roomNumbers})</div>`;
+                        }
+                    } else if (data.other_available_count === 0) {
+                        availabilityHtml += `<div class="text-gray-400 text-xs mt-2">📊 Other ${roomTypeName}: None available</div>`;
+                    }
+                }
+                
+                avail.innerHTML = availabilityHtml;
+                avail.className = 'availability-badge mt-3 text-sm';
             }
             
             const amenitiesEl = ov.querySelector('.room-amenities');
@@ -864,6 +1017,12 @@ class VirtualTourEngine {
             setText('.room-type-badge', data.room_sharing_type || '');
             setText('.room-description', data.description || '');
             setText('.room-price', data.pricing_display || data.formatted_price || '');
+
+            // Hide disclaimer + reset CTA label for room types
+            const disclaimerEl = ov.querySelector('#overlay-room-disclaimer');
+            if (disclaimerEl) disclaimerEl.classList.add('hidden');
+            const requestBtn = ov.querySelector('#overlay-request-btn');
+            if (requestBtn) requestBtn.textContent = '🏨 Request Reservation';
 
             const count = data.available_rooms_count;
             const avail = ov.querySelector('.availability-badge');
@@ -1504,3 +1663,5 @@ class VirtualTourEngine {
 }
 
 window.VirtualTourEngine = VirtualTourEngine;
+
+// Cache bust: 2026-04-21 13:11:49

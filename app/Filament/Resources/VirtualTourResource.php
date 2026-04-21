@@ -124,23 +124,6 @@ class VirtualTourResource extends Resource
                                     ->toArray();
                             })
                             ->helperText('🔒 Link to a specific room (e.g., Room 101). Guests will see this exact room\'s status and can request to book it.'),
-                        Forms\Components\Grid::make(2)
-                            ->schema([
-                                Forms\Components\TextInput::make('room_info_yaw')
-                                    ->label('Room Info Marker — Yaw')
-                                    ->numeric()
-                                    ->step(0.1)
-                                    ->nullable()
-                                    ->helperText('Horizontal angle (degrees). Leave blank to use the scene\'s default yaw.')
-                                    ->visible(fn ($get) => filled($get('linked_room_type_id'))),
-                                Forms\Components\TextInput::make('room_info_pitch')
-                                    ->label('Room Info Marker — Pitch')
-                                    ->numeric()
-                                    ->step(0.1)
-                                    ->nullable()
-                                    ->helperText('Vertical angle (degrees). Leave blank to use default pitch + 15°.')
-                                    ->visible(fn ($get) => filled($get('linked_room_type_id'))),
-                            ]),
                     ]),
 
                 Forms\Components\Section::make('Description & Narration')

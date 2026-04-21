@@ -65,6 +65,7 @@ class TourController extends Controller
                             'yaw' => (float) $hotspot->yaw,
                             'action_type' => $hotspot->action_type,
                             'action_target' => $hotspot->action_target,
+                            'size' => (int) ($hotspot->size ?? 3),
                         ];
                     })->toArray(),
                 ];
@@ -121,6 +122,7 @@ class TourController extends Controller
                     'yaw' => (float) $hotspot->yaw,
                     'action_type' => $hotspot->action_type,
                     'action_target' => $hotspot->action_target,
+                    'size' => (int) ($hotspot->size ?? 3),
                 ];
             })->toArray(),
         ];
@@ -196,65 +198,122 @@ class TourController extends Controller
      */
     public function roomAvailability(int $id, Request $request): JsonResponse
     {
-        $room = \App\Models\Room::with(['roomType.amenities', 'floor'])->find($id);
+        try {
+            $room = \App\Models\Room::with(['roomType.amenities', 'floor'])->find($id);
 
-        if (!$room || !$room->is_active) {
+            if (!$room || !$room->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Room not found or inactive',
+                ], 404);
+            }
+
+            $checkIn = $request->get('check_in');
+            $checkOut = $request->get('check_out');
+
+            // Determine availability
+            $isAvailable = true;
+            $unavailableReason = null;
+
+            if ($room->status === 'maintenance' || $room->status === 'inactive') {
+                $isAvailable = false;
+                $unavailableReason = 'Room is currently under maintenance';
+            } elseif ($room->status === 'occupied' && $room->roomType?->isPrivate()) {
+                $isAvailable = false;
+                $unavailableReason = 'Room is currently occupied';
+            } elseif ($room->isFull()) {
+                $isAvailable = false;
+                $unavailableReason = 'Room is at full capacity';
+            } elseif ($checkIn && $checkOut) {
+                // Check for date-specific conflicts with holds or assignments
+                try {
+                    $checkInDate = Carbon::parse($checkIn);
+                    $checkOutDate = Carbon::parse($checkOut);
+
+                    $hasConflict = app(RoomHoldService::class)->hasConflict($room, $checkInDate, $checkOutDate);
+                    
+                    if ($hasConflict) {
+                        $isAvailable = false;
+                        $unavailableReason = 'Room is reserved for the selected dates';
+                    }
+                } catch (\Exception $e) {
+                    // If date parsing fails, do real-time check only
+                }
+            }
+
+            $currentOccupancy = $room->roomAssignments()->where('status', 'checked_in')->count();
+            $isPrivate = $room->roomType?->isPrivate() ?? false;
+
+            // Get other available rooms of the same type (excluding this room)
+            $otherAvailableRooms = [];
+            $otherAvailableCount = 0;
+            
+            if ($room->roomType) {
+                $checkInDate = null;
+                $checkOutDate = null;
+                
+                if ($checkIn && $checkOut) {
+                    try {
+                        $checkInDate = Carbon::parse($checkIn);
+                        $checkOutDate = Carbon::parse($checkOut);
+                    } catch (\Exception $e) {
+                        // Invalid dates, use null
+                    }
+                }
+                
+                // Get available rooms for the same type
+                if ($checkInDate && $checkOutDate) {
+                    // availableRoomsForDates() returns a Collection, use reject() to filter
+                    $availableRooms = $room->roomType->availableRoomsForDates($checkInDate, $checkOutDate)
+                        ->reject(fn($r) => $r->id === $room->id); // Exclude current room
+                } else {
+                    // availableRooms() is a relationship, use where() on query builder
+                    $availableRooms = $room->roomType->availableRooms()
+                        ->with('floor') // Eager load floor to prevent lazy loading error
+                        ->where('id', '!=', $room->id) // Exclude current room
+                        ->get();
+                }
+                
+                $otherAvailableCount = $availableRooms->count();
+                $otherAvailableRooms = $availableRooms->map(function ($r) {
+                    return [
+                        'id' => $r->id,
+                        'room_number' => $r->room_number,
+                        'floor' => $r->floor?->name,
+                    ];
+                })->toArray();
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $room->id,
+                    'room_number' => $room->room_number,
+                    'status' => $room->status,
+                    'is_available' => $isAvailable,
+                    'unavailable_reason' => $unavailableReason,
+                    'capacity' => $room->capacity,
+                    'current_occupancy' => $currentOccupancy,
+                    'available_slots' => max(0, $room->capacity - $currentOccupancy),
+                    'floor' => $room->floor?->name,
+                    'room_type' => $this->formatRoomTypeData($room->roomType),
+                    'is_private_room' => $isPrivate,
+                    'other_available_rooms' => $otherAvailableRooms,
+                    'other_available_count' => $otherAvailableCount,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Room availability error: ' . $e->getMessage(), [
+                'room_id' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Room not found or inactive',
-            ], 404);
+                'message' => 'Error fetching room availability',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
         }
-
-        $checkIn = $request->get('check_in');
-        $checkOut = $request->get('check_out');
-
-        // Determine availability
-        $isAvailable = true;
-        $unavailableReason = null;
-
-        if ($room->status === 'maintenance' || $room->status === 'inactive') {
-            $isAvailable = false;
-            $unavailableReason = 'Room is currently under maintenance';
-        } elseif ($room->status === 'occupied' && $room->roomType->isPrivate()) {
-            $isAvailable = false;
-            $unavailableReason = 'Room is currently occupied';
-        } elseif ($room->isFull()) {
-            $isAvailable = false;
-            $unavailableReason = 'Room is at full capacity';
-        } elseif ($checkIn && $checkOut) {
-            // Check for date-specific conflicts with holds or assignments
-            try {
-                $checkInDate = Carbon::parse($checkIn);
-                $checkOutDate = Carbon::parse($checkOut);
-
-                $hasConflict = app(RoomHoldService::class)->hasConflict($room, $checkInDate, $checkOutDate);
-                
-                if ($hasConflict) {
-                    $isAvailable = false;
-                    $unavailableReason = 'Room is reserved for the selected dates';
-                }
-            } catch (\Exception $e) {
-                // If date parsing fails, do real-time check only
-            }
-        }
-
-        $currentOccupancy = $room->roomAssignments()->where('status', 'checked_in')->count();
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'id' => $room->id,
-                'room_number' => $room->room_number,
-                'status' => $room->status,
-                'is_available' => $isAvailable,
-                'unavailable_reason' => $unavailableReason,
-                'capacity' => $room->capacity,
-                'current_occupancy' => $currentOccupancy,
-                'available_slots' => max(0, $room->capacity - $currentOccupancy),
-                'floor' => $room->floor?->name,
-                'room_type' => $this->formatRoomTypeData($room->roomType),
-            ],
-        ]);
     }
 
     /**
@@ -310,20 +369,21 @@ class TourController extends Controller
         // source is metadata for validation/context only and is not persisted on reservations.
         unset($validated['source']);
         
-        // Remove preferred_room_id from validated data (not a column on reservations table)
+        // Save preferred_room_id as metadata in special_requests for staff review
         $preferredRoomId = $validated['preferred_room_id'] ?? null;
         unset($validated['preferred_room_id']);
 
         $reservation = Reservation::create($validated);
 
-        // If specific room requested, attempt to create advance hold
+        // Store preferred room as metadata (no hold created - staff will review)
         if ($preferredRoomId) {
-            try {
-                $result = app(RoomHoldService::class)->createAdvanceHolds($reservation, [$preferredRoomId]);
-                // Successfully created hold
-            } catch (\RuntimeException $e) {
-                // Hold failed but reservation is still created
-                // This is okay - admin can assign room during approval
+            $room = \App\Models\Room::find($preferredRoomId);
+            if ($room) {
+                // Update reservation to include preferred room metadata
+                $reservation->update([
+                    'special_requests' => ($reservation->special_requests ?? '') 
+                        . "\n[Preferred Room ID: {$preferredRoomId}]",
+                ]);
             }
         }
 
@@ -340,8 +400,12 @@ class TourController extends Controller
     /**
      * Format room type data for tour API responses
      */
-    protected function formatRoomTypeData(RoomType $roomType): array
+    protected function formatRoomTypeData(?RoomType $roomType): ?array
     {
+        if (!$roomType) {
+            return null;
+        }
+        
         return [
             'id' => $roomType->id,
             'name' => $roomType->name,

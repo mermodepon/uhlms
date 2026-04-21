@@ -18,6 +18,7 @@ class TourEditor {
         this.placingIcon = 'chevron-up';
         this.selectedHotspotId = null;
         this._placingRoomInfo = false;
+        this._repositioningHotspotId = null;
         this._eatNextClick = false;
 
         // Callbacks
@@ -65,8 +66,42 @@ class TourEditor {
 
             // Room Info reposition mode
             if (this._placingRoomInfo) {
-                // Stay in repositioning mode — only exits when user cancels
+                // Update preview marker position
+                this._previewPos = { yaw: yawDeg, pitch: pitchDeg };
+                try {
+                    this.viewer.updateMarker({
+                        id: 'room-info-reposition-preview',
+                        position: { yaw: `${yawDeg}deg`, pitch: `${pitchDeg}deg` },
+                    });
+                } catch (err) {
+                    // First click - create preview marker
+                    this.viewer.addMarker({
+                        id: 'room-info-reposition-preview',
+                        position: { yaw: `${yawDeg}deg`, pitch: `${pitchDeg}deg` },
+                        sprite: this._roomInfoPreviewSpriteOpts(),
+                    });
+                }
                 this.onRoomInfoPlaced({ yaw: yawDeg, pitch: pitchDeg });
+                return;
+            }
+
+            // Hotspot reposition mode
+            if (this._repositioningHotspotId) {
+                // Update preview marker position
+                this._previewPos = { yaw: yawDeg, pitch: pitchDeg };
+                try {
+                    this.viewer.updateMarker({
+                        id: 'hotspot-reposition-preview',
+                        position: { yaw: `${yawDeg}deg`, pitch: `${pitchDeg}deg` },
+                    });
+                } catch (err) {
+                    // First click - create preview marker
+                    this.viewer.addMarker({
+                        id: 'hotspot-reposition-preview',
+                        position: { yaw: `${yawDeg}deg`, pitch: `${pitchDeg}deg` },
+                        sprite: this._repositionPreviewSpriteOpts(),
+                    });
+                }
                 return;
             }
 
@@ -174,8 +209,15 @@ class TourEditor {
     startRoomInfoPlacement() {
         this._placingRoomInfo = true;
         this.placing = false; // make sure hotspot placement is off
+        this._repositioningHotspotId = null;
+        this._previewPos = null;
         this._removePreviewMarker();
         this.container.style.cursor = 'crosshair';
+        
+        // Hide the original Room Info system marker temporarily
+        try {
+            this.viewer.removeMarker('room-info-system');
+        } catch (e) {}
     }
 
     /**
@@ -183,7 +225,90 @@ class TourEditor {
      */
     cancelRoomInfoPlacement() {
         this._placingRoomInfo = false;
+        this._previewPos = null;
         this.container.style.cursor = '';
+        
+        // Remove preview marker
+        try {
+            this.viewer.removeMarker('room-info-reposition-preview');
+        } catch (e) {}
+        
+        // Restore original markers
+        this.viewer.clearMarkers();
+        this._buildMarkers().forEach(m => this.viewer.addMarker(m));
+    }
+
+    /**
+     * Confirm Room Info repositioning and return new position.
+     */
+    confirmRoomInfoPlacement() {
+        if (!this._previewPos || !this._placingRoomInfo) return null;
+        
+        const newPos = { ...this._previewPos };
+        this._placingRoomInfo = false;
+        this._previewPos = null;
+        this.container.style.cursor = '';
+        
+        // Remove preview marker
+        try {
+            this.viewer.removeMarker('room-info-reposition-preview');
+        } catch (e) {}
+        
+        return newPos;
+    }
+
+    /**
+     * Start hotspot repositioning mode.
+     */
+    startHotspotRepositioning(hotspotId) {
+        this._repositioningHotspotId = hotspotId;
+        this.placing = false;
+        this._placingRoomInfo = false;
+        this._previewPos = null;
+        this.container.style.cursor = 'crosshair';
+        
+        // Hide the original hotspot marker temporarily
+        const markerId = `hotspot-${hotspotId}`;
+        try {
+            this.viewer.removeMarker(markerId);
+        } catch (e) {}
+    }
+
+    /**
+     * Cancel hotspot repositioning mode.
+     */
+    cancelHotspotRepositioning() {
+        this._repositioningHotspotId = null;
+        this._previewPos = null;
+        this.container.style.cursor = '';
+        
+        // Remove preview marker
+        try {
+            this.viewer.removeMarker('hotspot-reposition-preview');
+        } catch (e) {}
+        
+        // Restore original markers
+        this.viewer.clearMarkers();
+        this._buildMarkers().forEach(m => this.viewer.addMarker(m));
+    }
+
+    /**
+     * Confirm hotspot repositioning and return new position.
+     */
+    confirmHotspotRepositioning() {
+        if (!this._previewPos || !this._repositioningHotspotId) return null;
+        
+        const newPos = { ...this._previewPos };
+        this._repositioningHotspotId = null;
+        this._previewPos = null;
+        this.container.style.cursor = '';
+        
+        // Remove preview marker
+        try {
+            this.viewer.removeMarker('hotspot-reposition-preview');
+        } catch (e) {}
+        
+        return newPos;
     }
 
     /**
@@ -225,6 +350,37 @@ class TourEditor {
             icon:    this.placingIcon || 'chevron-up',
             bgColor: colors[this.placingType] || '#f59e0b',
             dashed:  true,
+        };
+    }
+
+    /**
+     * Build the repositioning preview marker sprite options.
+     */
+    _repositionPreviewSpriteOpts() {
+        // Find the hotspot being repositioned to use its original icon and color
+        const hotspot = this.hotspots.find(h => h.id === this._repositioningHotspotId);
+        const colors = { navigate: '#3b82f6', info: '#f59e0b', bookmark: '#8b5cf6', 'external-link': '#10b981' };
+        return {
+            style:   'circle',
+            icon:    hotspot?.icon || 'chevron-up',
+            bgColor: colors[hotspot?.action_type] || '#6b7280',
+            dashed:  true,
+            size:    hotspot?.size || 3,
+        };
+    }
+
+    /**
+     * Build the Room Info repositioning preview marker sprite options.
+     */
+    _roomInfoPreviewSpriteOpts() {
+        return {
+            style: 'badge',
+            icon: '📍',
+            label: 'Room Info (preview)',
+            dashed: true,
+            borderColor: '#FFC600',
+            bgColor: 'linear-gradient(135deg,#00491E,#02681E)',
+            opacity: 0.85,
         };
     }
 
@@ -285,6 +441,7 @@ class TourEditor {
                 bgColor:  editorColors[h.action_type] || '#6b7280',
                 opacity:  h.is_active ? 1 : 0.5,
                 selected: this.selectedHotspotId === h.id,
+                size:     h.size || 3,  // Size scale 1-5
                 noCursor: true,
             },
         }));

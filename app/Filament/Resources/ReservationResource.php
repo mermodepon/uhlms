@@ -3,13 +3,12 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ReservationResource\Pages;
-use App\Models\Guest;
 use App\Models\ForceDeletionLog;
+use App\Models\Guest;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\Room;
 use App\Models\RoomAssignment;
-use App\Models\RoomHold;
 use App\Models\Service;
 use App\Models\Setting;
 use App\Services\CheckInService;
@@ -621,6 +620,7 @@ class ReservationResource extends Resource
                                             ->color(fn ($state) => match ((string) $state) {
                                                 'pending' => 'warning',
                                                 'approved' => 'info',
+                                                'confirmed' => 'primary',
                                                 'pending_payment' => 'warning',
                                                 'declined' => 'danger',
                                                 'cancelled' => 'gray',
@@ -655,8 +655,11 @@ class ReservationResource extends Resource
                                                 // Try hold creator
                                                 if ($record->checkin_hold_by && $record->checkin_hold_by > 0 && $record->checkin_hold_by !== null) {
                                                     $user = \App\Models\User::find($record->checkin_hold_by);
-                                                    if ($user) return $user->name;
+                                                    if ($user) {
+                                                        return $user->name;
+                                                    }
                                                 }
+
                                                 return '-';
                                             }),
                                     ])->columns(4),
@@ -766,6 +769,83 @@ class ReservationResource extends Resource
                                             ->label('Submitted At')
                                             ->date(),
                                     ])->columns(2),
+
+                                Infolists\Components\Section::make('Online Payment Link')
+                                    ->description('Secure payment link for guest deposit payment via GCash, Maya, or Card.')
+                                    ->visible(fn (Reservation $record) => Setting::isOnlinePaymentsEnabled() &&
+                                        $record->payment_link_token &&
+                                        in_array($record->status, ['pending', 'approved', 'confirmed', 'pending_payment', 'checked_in'])
+                                    )
+                                    ->schema([
+                                        Infolists\Components\TextEntry::make('payment_link')
+                                            ->label('Payment Link')
+                                            ->default(fn (Reservation $record) => $record->generatePaymentLink())
+                                            ->copyable()
+                                            ->columnSpanFull()
+                                            ->color(fn (Reservation $record) => $record->isPaymentLinkValid() ? 'success' : 'danger')
+                                            ->icon(fn (Reservation $record) => $record->isPaymentLinkValid() ? 'heroicon-o-link' : 'heroicon-o-x-circle'),
+                                        Infolists\Components\TextEntry::make('payment_link_expires_at')
+                                            ->label('Link Expires')
+                                            ->dateTime('M d, Y g:i A')
+                                            ->color(fn (?string $state) => $state && \Carbon\Carbon::parse($state)->isPast() ? 'danger' : 'warning'),
+                                        Infolists\Components\ImageEntry::make('payment_qr_code')
+                                            ->label('QR Code')
+                                            ->default(fn (Reservation $record) => 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='.urlencode($record->generatePaymentLink())
+                                            )
+                                            ->height(200)
+                                            ->extraAttributes(['style' => 'border: 2px solid #e5e7eb; border-radius: 8px; padding: 8px;'])
+                                            ->visible(fn (Reservation $record) => $record->isPaymentLinkValid()),
+                                    ])->columns(2),
+
+                                // Deposit status section — shown whenever gateway payments exist, regardless of toggle
+                                Infolists\Components\Section::make('Online Deposit Status')
+                                    ->description('Status of online deposit payment for this reservation.')
+                                    ->visible(fn (Reservation $record) => $record->payments()
+                                        ->where('gateway', 'paymongo')
+                                        ->where('is_deposit', true)
+                                        ->exists()
+                                    )
+                                    ->schema([
+                                        Infolists\Components\TextEntry::make('payment_status_info')
+                                            ->label('Payment Status')
+                                            ->default(function (Reservation $record) {
+                                                $gatewayPayment = $record->payments()
+                                                    ->where('gateway', 'paymongo')
+                                                    ->where('is_deposit', true)
+                                                    ->latest()
+                                                    ->first();
+
+                                                if (! $gatewayPayment) {
+                                                    return 'No online payment received yet';
+                                                }
+
+                                                return match ($gatewayPayment->gateway_status) {
+                                                    'paid' => '✓ Deposit Paid Online — ₱'.number_format($gatewayPayment->amount, 2),
+                                                    'pending' => '⏳ Payment Pending',
+                                                    'failed' => '✗ Payment Failed',
+                                                    default => $gatewayPayment->gateway_status,
+                                                };
+                                            })
+                                            ->badge()
+                                            ->color(function (Reservation $record) {
+                                                $gatewayPayment = $record->payments()
+                                                    ->where('gateway', 'paymongo')
+                                                    ->where('is_deposit', true)
+                                                    ->latest()
+                                                    ->first();
+
+                                                if (! $gatewayPayment) {
+                                                    return 'gray';
+                                                }
+
+                                                return match ($gatewayPayment->gateway_status) {
+                                                    'paid' => 'success',
+                                                    'pending' => 'warning',
+                                                    'failed' => 'danger',
+                                                    default => 'gray',
+                                                };
+                                            }),
+                                    ])->columns(2),
                             ]),
 
                         Infolists\Components\Tabs\Tab::make('Held Rooms')
@@ -870,7 +950,7 @@ class ReservationResource extends Resource
                                 ->values()
                                 ->toArray();
 
-                            if (!empty($assignedRooms)) {
+                            if (! empty($assignedRooms)) {
                                 return count($assignedRooms) === 1 ? $assignedRooms[0] : $assignedRooms;
                             }
 
@@ -879,14 +959,14 @@ class ReservationResource extends Resource
                                 $holdPayload = $record->checkin_hold_payload ?? [];
                                 $entries = data_get($holdPayload, 'entries', []);
                                 $roomIds = collect($entries)->pluck('room_id')->filter()->unique();
-                                
+
                                 if ($roomIds->isNotEmpty()) {
                                     $heldRooms = \App\Models\Room::whereIn('id', $roomIds)
                                         ->pluck('room_number')
                                         ->toArray();
-                                    
-                                    if (!empty($heldRooms)) {
-                                        return array_map(fn($r) => "🔒 {$r}", $heldRooms);
+
+                                    if (! empty($heldRooms)) {
+                                        return array_map(fn ($r) => "🔒 {$r}", $heldRooms);
                                     }
                                 }
                             }
@@ -907,9 +987,10 @@ class ReservationResource extends Resource
                                     ->values()
                                     ->toArray();
 
-                                if (!empty($heldRooms)) {
+                                if (! empty($heldRooms)) {
                                     // Add lock emoji to indicate these are holds, not actual occupancy
-                                    $displayRooms = array_map(fn($r) => "🔒 {$r}", $heldRooms);
+                                    $displayRooms = array_map(fn ($r) => "🔒 {$r}", $heldRooms);
+
                                     return count($displayRooms) === 1 ? $displayRooms[0] : $displayRooms;
                                 }
                             }
@@ -925,6 +1006,7 @@ class ReservationResource extends Resource
                         if (in_array($record->status, ['approved', 'confirmed', 'pending_payment'], true)) {
                             return 'info';
                         }
+
                         return 'gray';
                     })
                     ->tooltip(function ($state, Reservation $record) {
@@ -937,18 +1019,17 @@ class ReservationResource extends Resource
                         if ($record->status === 'pending_payment') {
                             return 'Short-term hold (payment pending)';
                         }
+
                         return null;
                     })
                     ->searchable(query: function ($query, string $search) {
                         $query->where(function ($q) use ($search) {
                             // Search in room assignments
-                            $q->whereHas('roomAssignments.room', fn ($subQ) => 
-                                $subQ->where('room_number', 'like', "%{$search}%")
+                            $q->whereHas('roomAssignments.room', fn ($subQ) => $subQ->where('room_number', 'like', "%{$search}%")
                             )
                             // Also search in room holds
-                            ->orWhereHas('roomHolds.room', fn ($subQ) => 
-                                $subQ->where('room_number', 'like', "%{$search}%")
-                            );
+                                ->orWhereHas('roomHolds.room', fn ($subQ) => $subQ->where('room_number', 'like', "%{$search}%")
+                                );
                         });
                     })
                     ->wrap(),
@@ -996,6 +1077,7 @@ class ReservationResource extends Resource
                         $state === 'pending' => 'warning',
                         $state === 'approved' && $record->roomAssignments->isEmpty() => 'info',
                         $state === 'approved' => 'primary',
+                        $state === 'confirmed' => 'primary',
                         $state === 'pending_payment' => 'warning',
                         $state === 'declined' => 'danger',
                         $state === 'cancelled' => 'gray',
@@ -1003,6 +1085,81 @@ class ReservationResource extends Resource
                         $state === 'checked_out' => 'gray',
                         default => 'gray',
                     }),
+                Tables\Columns\TextColumn::make('payment_gateway_status')
+                    ->label('Payment')
+                    ->badge()
+                    ->getStateUsing(function (Reservation $record) {
+                        // Check for full payment (is_deposit = false)
+                        $fullPayment = $record->payments()
+                            ->where('gateway', 'paymongo')
+                            ->where('is_deposit', false)
+                            ->where('gateway_status', 'paid')
+                            ->exists();
+
+                        if ($fullPayment) {
+                            return 'Online: Fully Paid';
+                        }
+
+                        // Check for deposit payment (is_deposit = true)
+                        $depositPayment = $record->payments()
+                            ->where('gateway', 'paymongo')
+                            ->where('is_deposit', true)
+                            ->where('gateway_status', 'paid')
+                            ->exists();
+
+                        if ($depositPayment) {
+                            return 'Online: Deposit Paid';
+                        }
+
+                        // Check for pending payments
+                        $pendingPayment = $record->payments()
+                            ->where('gateway', 'paymongo')
+                            ->where('gateway_status', 'pending')
+                            ->exists();
+
+                        if ($pendingPayment) {
+                            return 'Online: Pending';
+                        }
+
+                        return 'Manual';
+                    })
+                    ->color(function (Reservation $record) {
+                        // Full payment = green
+                        $fullPayment = $record->payments()
+                            ->where('gateway', 'paymongo')
+                            ->where('is_deposit', false)
+                            ->where('gateway_status', 'paid')
+                            ->exists();
+
+                        if ($fullPayment) {
+                            return 'success';
+                        }
+
+                        // Deposit payment = yellow/warning
+                        $depositPayment = $record->payments()
+                            ->where('gateway', 'paymongo')
+                            ->where('is_deposit', true)
+                            ->where('gateway_status', 'paid')
+                            ->exists();
+
+                        if ($depositPayment) {
+                            return 'warning';
+                        }
+
+                        // Pending = blue/info
+                        $pendingPayment = $record->payments()
+                            ->where('gateway', 'paymongo')
+                            ->where('gateway_status', 'pending')
+                            ->exists();
+
+                        if ($pendingPayment) {
+                            return 'info';
+                        }
+
+                        return 'gray';
+                    })
+                    ->toggleable(isToggledHiddenByDefault: false)
+                    ->width('120px'),
                 Tables\Columns\TextColumn::make('discount_availed')
                     ->label('Discount')
                     ->badge()
@@ -1105,11 +1262,70 @@ class ReservationResource extends Resource
                             Forms\Components\Section::make('Room Assignment (Optional)')
                                 ->description('Assigning rooms now will hold them exclusively for this reservation. If you skip this, rooms can be assigned later during check-in.')
                                 ->schema([
+                                    Forms\Components\Placeholder::make('preferred_room_info')
+                                        ->label('Guest\'s Room Preference')
+                                        ->content(function (Reservation $record) {
+                                            $preferredRoom = $record->preferred_room;
+                                            if (! $preferredRoom) {
+                                                return '—';
+                                            }
+
+                                            $checkIn = $record->check_in_date ? Carbon::parse($record->check_in_date) : null;
+                                            $checkOut = $record->check_out_date ? Carbon::parse($record->check_out_date) : null;
+
+                                            $isAvailable = false;
+                                            if ($checkIn && $checkOut) {
+                                                $isAvailable = app(RoomHoldService::class)->isRoomAvailable(
+                                                    $preferredRoom,
+                                                    $checkIn,
+                                                    $checkOut
+                                                );
+                                            }
+
+                                            $statusIcon = $isAvailable ? '✅' : '⚠️';
+                                            $statusText = $isAvailable ? 'Currently Available' : 'No Longer Available';
+                                            $statusColor = $isAvailable ? 'success' : 'warning';
+
+                                            return new \Illuminate\Support\HtmlString(
+                                                "<div style='display:flex;align-items:center;gap:8px;'>
+                                                    <strong>{$preferredRoom->room_number}</strong>
+                                                    <span style='color:".($isAvailable ? '#059669' : '#d97706').";font-weight:600;'>
+                                                        {$statusIcon} {$statusText}
+                                                    </span>
+                                                </div>
+                                                <div style='color:#6b7280;font-size:0.875rem;margin-top:4px;'>
+                                                    {$preferredRoom->roomType->name}
+                                                </div>"
+                                            );
+                                        })
+                                        ->visible(fn (Reservation $record) => $record->preferred_room !== null),
                                     Forms\Components\Select::make('assigned_room_ids')
                                         ->label('Select Rooms')
                                         ->multiple()
                                         ->searchable()
                                         ->preload()
+                                        ->default(function (Reservation $record) {
+                                            // Auto-select preferred room if it's available
+                                            $preferredRoom = $record->preferred_room;
+                                            if (! $preferredRoom) {
+                                                return [];
+                                            }
+
+                                            $checkIn = $record->check_in_date ? Carbon::parse($record->check_in_date) : null;
+                                            $checkOut = $record->check_out_date ? Carbon::parse($record->check_out_date) : null;
+
+                                            if (! $checkIn || ! $checkOut) {
+                                                return [];
+                                            }
+
+                                            $isAvailable = app(RoomHoldService::class)->isRoomAvailable(
+                                                $preferredRoom,
+                                                $checkIn,
+                                                $checkOut
+                                            );
+
+                                            return $isAvailable ? [$preferredRoom->id] : [];
+                                        })
                                         ->options(function (callable $get, Reservation $record) {
                                             $checkIn = $record->check_in_date ? Carbon::parse($record->check_in_date) : null;
                                             $checkOut = $record->check_out_date ? Carbon::parse($record->check_out_date) : null;
@@ -1141,6 +1357,7 @@ class ReservationResource extends Resource
                         ->action(function (Reservation $record, array $data) {
                             $record->update([
                                 'status' => 'approved',
+                                'approved_at' => now(),
                                 'admin_notes' => $data['admin_notes'] ?? $record->admin_notes,
                                 'reviewed_by' => auth()->id(),
                                 'reviewed_at' => now(),
@@ -1148,18 +1365,37 @@ class ReservationResource extends Resource
 
                             // Create room holds if rooms were assigned
                             $roomIds = $data['assigned_room_ids'] ?? [];
+                            $preferredRoomId = $record->preferred_room_id;
+
                             if (! empty($roomIds)) {
                                 try {
                                     $result = app(RoomHoldService::class)->createAdvanceHolds($record, $roomIds);
+
+                                    // Check if preferred room was honored
+                                    $roomNumbers = collect($roomIds)->map(fn ($id) => Room::find($id)?->room_number)->filter()->toArray();
+                                    $preferredRoomAssigned = $preferredRoomId && in_array($preferredRoomId, $roomIds);
+
+                                    $logMessage = "Approved with {$result['room_count']} room(s) held: ".implode(', ', $roomNumbers).'.';
+                                    if ($preferredRoomId) {
+                                        $logMessage .= $preferredRoomAssigned
+                                            ? ' Guest\'s preferred room was assigned.'
+                                            : ' Guest\'s preferred room was NOT assigned (unavailable or not selected).';
+                                    }
+
                                     ReservationLog::record(
                                         $record,
                                         'room_holds_created',
-                                        "Approved with {$result['room_count']} room(s) held: ".implode(', ', collect($roomIds)->map(fn ($id) => Room::find($id)?->room_number)->filter()->toArray()).'.',
-                                        ['room_ids' => $roomIds]
+                                        $logMessage,
+                                        ['room_ids' => $roomIds, 'preferred_room_honored' => $preferredRoomAssigned]
                                     );
 
+                                    $notificationTitle = 'Reservation approved with '.$result['room_count'].' room(s) held.';
+                                    if ($preferredRoomId && $preferredRoomAssigned) {
+                                        $notificationTitle .= ' ✓ Guest\'s preferred room assigned.';
+                                    }
+
                                     Notification::make()
-                                        ->title('Reservation approved with '.$result['room_count'].' room(s) held.')
+                                        ->title($notificationTitle)
                                         ->success()
                                         ->send();
                                 } catch (\RuntimeException $e) {
@@ -1172,7 +1408,7 @@ class ReservationResource extends Resource
                                 ReservationLog::record(
                                     $record,
                                     'approved_without_rooms',
-                                    "Approved without room assignment. Rooms will be assigned during check-in."
+                                    'Approved without room assignment. Rooms will be assigned during check-in.'
                                 );
                             }
                         }),
@@ -1286,8 +1522,9 @@ class ReservationResource extends Resource
 
                                             foreach ($holds as $index => $hold) {
                                                 // Skip if room is deleted or inactive
-                                                if (!$hold->room || !$hold->room->is_active) {
+                                                if (! $hold->room || ! $hold->room->is_active) {
                                                     $skippedCount++;
+
                                                     continue;
                                                 }
 
@@ -1296,6 +1533,7 @@ class ReservationResource extends Resource
                                                 // Skip if room is in maintenance or inactive status
                                                 if (in_array($room->status, ['maintenance', 'inactive'], true)) {
                                                     $skippedCount++;
+
                                                     continue;
                                                 }
 
@@ -1322,11 +1560,12 @@ class ReservationResource extends Resource
                                         })
                                         ->helperText(function (Reservation $record) {
                                             $status = session('room_hold_load_status');
-                                            if (!$status) {
+                                            if (! $status) {
                                                 $totalHolds = $record->roomHolds()->advance()->count();
                                                 if ($totalHolds > 0) {
-                                                    return "✓ {$totalHolds} room(s) held from approval stage. Pre-populated below.";
+                                                    return "✓ {$totalHolds} room(s) held from approval stage. Pre-populated above.";
                                                 }
+
                                                 return 'Add one or more rooms to proceed with check-in.';
                                             }
 
@@ -1374,71 +1613,91 @@ class ReservationResource extends Resource
                                                     app(CheckInService::class)->releaseExpiredHolds();
 
                                                     $mode = $get('room_mode');
-                                                    if (! in_array($mode, ['private', 'dorm'], true)) {
-                                                        return [];
-                                                    }
 
                                                     $preferredTypeId = $record->preferred_room_type_id;
-                                                    $preferredTypeName = $record->preferredRoomType->name;
 
-                                                    $query = Room::query()
-                                                        ->with('roomType')
-                                                        ->where('is_active', true)
-                                                        ->whereHas('roomType', function ($q) use ($mode) {
-                                                            // Filter rooms to match the selected room mode
-                                                            if ($mode === 'private') {
-                                                                $q->where('room_sharing_type', 'private');
-                                                            } else {
-                                                                $q->where('room_sharing_type', '!=', 'private');
-                                                            }
-                                                        });
+                                                    // Get rooms already held for this reservation
+                                                    $heldRooms = $record->roomHolds()
+                                                        ->advance()
+                                                        ->with('room.roomType')
+                                                        ->get()
+                                                        ->pluck('room')
+                                                        ->filter();
 
-                                                    if ($mode === 'dorm') {
-                                                        // Dorm: room must be available or occupied (not full), exclude maintenance/inactive/reserved
-                                                        $query->whereIn('status', ['available', 'occupied'])
-                                                            ->whereRaw('capacity > (
-                                                                SELECT COUNT(*) FROM room_assignments
-                                                                WHERE room_assignments.room_id = rooms.id
-                                                                AND room_assignments.status = ?
-                                                            )', ['checked_in']);
-                                                    } else {
-                                                        // Private: room must be fully available
-                                                        $query->where('status', 'available');
+                                                    $heldRoomIds = $heldRooms->pluck('id')->toArray();
+
+                                                    // If no mode selected yet, try to infer from held room
+                                                    if (empty($mode) && $heldRooms->isNotEmpty()) {
+                                                        $firstHeldRoom = $heldRooms->first();
+                                                        if ($firstHeldRoom && $firstHeldRoom->roomType) {
+                                                            $mode = $firstHeldRoom->roomType->isPrivate() ? 'private' : 'dorm';
+                                                        }
                                                     }
 
-                                                    $rooms = $query->get();
-                                                    if ($rooms->isEmpty()) {
-                                                        return ['' => '(No available rooms)'];
-                                                    }
-
-                                                    // Group by room type with preferred first
-                                                    $grouped = $rooms->groupBy('room_type_id')->sortBy(function ($group, $typeId) use ($preferredTypeId) {
-                                                        return $typeId == $preferredTypeId ? 0 : 1;
-                                                    });
-
+                                                    // Build options array
                                                     $options = [];
-                                                    foreach ($grouped as $typeId => $roomsInType) {
-                                                        $typeName = $roomsInType->first()->roomType->name;
-                                                        $isPreferred = $typeId == $preferredTypeId;
-                                                        $groupLabel = $isPreferred ? "{$typeName} (Preferred)" : $typeName;
 
-                                                        $options[$groupLabel] = $roomsInType->mapWithKeys(function ($room) use ($record) {
-                                                            // Check if this room is already on advance hold for this reservation
-                                                            $isHeld = $record->roomHolds()
-                                                                ->advance()
-                                                                ->where('room_id', $room->id)
-                                                                ->exists();
-                                                            $label = "Room {$room->room_number}".($isHeld ? ' (Already held)' : '');
-
-                                                            return [$room->id => $label];
+                                                    // Always show held rooms first in a special group
+                                                    if ($heldRooms->isNotEmpty()) {
+                                                        $options['🔒 Held for this Reservation'] = $heldRooms->mapWithKeys(function ($room) {
+                                                            return [$room->id => "Room {$room->room_number} ({$room->roomType->name})"];
                                                         })->toArray();
+                                                    }
+
+                                                    // If we have a valid mode, show other available rooms
+                                                    if (in_array($mode, ['private', 'dorm'], true)) {
+                                                        $query = Room::query()
+                                                            ->with('roomType')
+                                                            ->where('is_active', true)
+                                                            ->whereNotIn('id', $heldRoomIds) // Exclude held rooms (already shown above)
+                                                            ->whereHas('roomType', function ($q) use ($mode) {
+                                                                if ($mode === 'private') {
+                                                                    $q->where('room_sharing_type', 'private');
+                                                                } else {
+                                                                    $q->where('room_sharing_type', '!=', 'private');
+                                                                }
+                                                            });
+
+                                                        if ($mode === 'dorm') {
+                                                            $query->whereIn('status', ['available', 'occupied'])
+                                                                ->whereRaw('capacity > (
+                                                                    SELECT COUNT(*) FROM room_assignments
+                                                                    WHERE room_assignments.room_id = rooms.id
+                                                                    AND room_assignments.status = ?
+                                                                )', ['checked_in']);
+                                                        } else {
+                                                            $query->where('status', 'available');
+                                                        }
+
+                                                        $availableRooms = $query->get();
+
+                                                        if ($availableRooms->isNotEmpty()) {
+                                                            $grouped = $availableRooms->groupBy('room_type_id')->sortBy(function ($group, $typeId) use ($preferredTypeId) {
+                                                                return $typeId == $preferredTypeId ? 0 : 1;
+                                                            });
+
+                                                            foreach ($grouped as $typeId => $roomsInType) {
+                                                                $typeName = $roomsInType->first()->roomType->name;
+                                                                $isPreferred = $typeId == $preferredTypeId;
+                                                                $groupLabel = $isPreferred ? "{$typeName} (Preferred)" : $typeName;
+
+                                                                $options[$groupLabel] = $roomsInType->mapWithKeys(function ($room) {
+                                                                    return [$room->id => "Room {$room->room_number}"];
+                                                                })->toArray();
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // If no options available at all
+                                                    if (empty($options)) {
+                                                        return ['' => '(No rooms available - select mode first)'];
                                                     }
 
                                                     return $options;
                                                 })
                                                 ->helperText(fn ($get) => filled($get('room_mode') ?? null)
-                                                    ? 'Preferred room type shown first. Rooms already held for this reservation are marked.'
-                                                    : 'Select room mode first'),
+                                                    ? 'Held rooms shown first. Preferred room type shown in other available rooms.'
+                                                    : 'Room mode is pre-filled based on held room'),
                                             Forms\Components\Toggle::make('includes_primary_guest')
                                                 ->label('Include primary guest in this room')
                                                 ->helperText('Primary guest details above are auto-included when enabled.')
@@ -1526,12 +1785,12 @@ class ReservationResource extends Resource
 
                                                     $baseText = 'Add companion guests only. Primary guest is auto-included when enabled above.';
 
-                                                    if (!$roomId || $mode !== 'dorm') {
+                                                    if (! $roomId || $mode !== 'dorm') {
                                                         return $baseText;
                                                     }
 
                                                     $room = \App\Models\Room::find($roomId);
-                                                    if (!$room) {
+                                                    if (! $room) {
                                                         return $baseText;
                                                     }
 
@@ -1854,6 +2113,18 @@ class ReservationResource extends Resource
                                             }
 
                                             $html .= '<div class="font-semibold"><strong>Estimated Payable:</strong> ₱'.number_format($pricing['grand_total'], 2).'</div>';
+
+                                            // Show deposit deduction if any posted payments exist
+                                            $existingPayments = (float) $record->payments()
+                                                ->where('status', 'posted')
+                                                ->sum('amount');
+
+                                            if ($existingPayments > 0) {
+                                                $remaining = max(0, $pricing['grand_total'] - $existingPayments);
+                                                $html .= '<div class="text-blue-600 mt-1"><strong>Less: Prior Payment(s):</strong> -₱'.number_format($existingPayments, 2).'</div>';
+                                                $html .= '<div class="font-bold text-lg mt-1"><strong>Remaining Balance:</strong> ₱'.number_format($remaining, 2).'</div>';
+                                            }
+
                                             $html .= '</div>';
 
                                             return new HtmlString($html);
@@ -1911,6 +2182,36 @@ class ReservationResource extends Resource
                         ->modalHeading('Finalize Check-in After Payment')
                         ->visible(fn (Reservation $record) => $record->status === 'pending_payment')
                         ->form([
+                            Forms\Components\Placeholder::make('fully_paid_notice')
+                                ->label('')
+                                ->content(function (Reservation $record) {
+                                    $fullPayment = $record->payments()
+                                        ->where('gateway', 'paymongo')
+                                        ->where('is_deposit', false)
+                                        ->where('gateway_status', 'paid')
+                                        ->where('status', 'posted')
+                                        ->first();
+
+                                    if ($fullPayment) {
+                                        return new HtmlString(
+                                            '<div class="bg-green-50 border-2 border-green-500 rounded-lg p-4">' .
+                                            '<div class="flex items-center">' .
+                                            '<svg class="w-6 h-6 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">' .
+                                            '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>' .
+                                            '</svg>' .
+                                            '<div>' .
+                                            '<p class="font-bold text-green-900">✓ Fully Paid Online</p>' .
+                                            '<p class="text-sm text-green-800">Guest paid ₱' . number_format($fullPayment->amount, 2) . ' online. No additional payment needed.</p>' .
+                                            '</div>' .
+                                            '</div>' .
+                                            '</div>'
+                                        );
+                                    }
+
+                                    return null;
+                                })
+                                ->visible(fn (Reservation $record) => $record->isFullyPaidOnline())
+                                ->columnSpanFull(),
                             Forms\Components\Placeholder::make('hold_expiry_notice')
                                 ->label('Hold Status')
                                 ->content(fn (Reservation $record) => $record->checkin_hold_expires_at
@@ -1920,6 +2221,22 @@ class ReservationResource extends Resource
                                 ->label('Payable Amount')
                                 ->content(function (Reservation $record) {
                                     $payable = self::computeHoldPayableAmount($record);
+
+                                    // Check if there are existing posted payments (e.g. online deposit)
+                                    $existingPayments = (float) $record->payments()
+                                        ->where('status', 'posted')
+                                        ->sum('amount');
+
+                                    if ($existingPayments > 0) {
+                                        $grossTotal = $payable + $existingPayments;
+                                        $html = '<div class="text-sm space-y-1">';
+                                        $html .= '<div>Total Charges: ₱'.number_format($grossTotal, 2).'</div>';
+                                        $html .= '<div class="text-blue-600">Less: Prior Payment(s): -₱'.number_format($existingPayments, 2).'</div>';
+                                        $html .= '<div class="font-bold text-lg">Remaining Balance: ₱'.number_format($payable, 2).'</div>';
+                                        $html .= '</div>';
+
+                                        return new HtmlString($html);
+                                    }
 
                                     return $payable > 0
                                         ? '₱'.number_format($payable, 2)
@@ -1936,7 +2253,8 @@ class ReservationResource extends Resource
                                     'others' => 'Others',
                                 ])
                                 ->live()
-                                ->required(),
+                                ->disabled(fn (Reservation $record) => $record->isFullyPaidOnline())
+                                ->required(fn (Reservation $record) => !$record->isFullyPaidOnline()),
                             Forms\Components\TextInput::make('payment_mode_other')
                                 ->label('Specify Payment Mode')
                                 ->visible(fn ($get) => $get('payment_mode') === 'others')
@@ -1945,17 +2263,30 @@ class ReservationResource extends Resource
                                 ->label('Paid Amount')
                                 ->numeric()
                                 ->prefix('₱')
-                                ->default(fn (Reservation $record) => self::computeHoldPayableAmount($record))
-                                ->required(),
+                                ->default(function (Reservation $record) {
+                                    // If fully paid online, no additional payment needed
+                                    if ($record->isFullyPaidOnline()) {
+                                        return 0;
+                                    }
+                                    return self::computeHoldPayableAmount($record);
+                                })
+                                ->disabled(fn (Reservation $record) => $record->isFullyPaidOnline())
+                                ->helperText(fn (Reservation $record) => $record->isFullyPaidOnline()
+                                    ? 'Already fully paid online - no additional payment required'
+                                    : null
+                                )
+                                ->required(fn (Reservation $record) => !$record->isFullyPaidOnline()),
                             Forms\Components\TextInput::make('payment_or_number')
                                 ->label('Official Receipt Number')
-                                ->required()
+                                ->required(fn (Reservation $record) => !$record->isFullyPaidOnline())
+                                ->disabled(fn (Reservation $record) => $record->isFullyPaidOnline())
                                 ->maxLength(100),
                             Forms\Components\DatePicker::make('or_date')
                                 ->label('OR Date')
                                 ->displayFormat('M d, Y')
                                 ->default(now()->toDateString())
-                                ->required()
+                                ->required(fn (Reservation $record) => !$record->isFullyPaidOnline())
+                                ->disabled(fn (Reservation $record) => $record->isFullyPaidOnline())
                                 ->helperText('Date on the official receipt'),
                             Forms\Components\Textarea::make('remarks')
                                 ->label('Final Check-in Remarks')
@@ -2238,6 +2569,76 @@ class ReservationResource extends Resource
                                 ->warning()
                                 ->send();
                         }),
+
+                    // Copy Payment Link action
+                    Tables\Actions\Action::make('copy_payment_link')
+                        ->label('Copy Payment Link')
+                        ->icon('heroicon-o-clipboard-document')
+                        ->color('info')
+                        ->visible(fn (Reservation $record) => Setting::isOnlinePaymentsEnabled() &&
+                            $record->isPaymentLinkValid() &&
+                            in_array($record->status, ['approved', 'confirmed'])
+                        )
+                        ->modalHeading('Payment Link & QR Code')
+                        ->modalDescription('Share this payment link or show the QR code to the guest for easy payment.')
+                        ->modalWidth('3xl')
+                        ->form(fn (Reservation $record) => [
+                            Forms\Components\Section::make('Payment Link')
+                                ->schema([
+                                    Forms\Components\TextInput::make('payment_link')
+                                        ->label('Payment URL')
+                                        ->default($record->generatePaymentLink())
+                                        ->disabled()
+                                        ->columnSpanFull()
+                                        ->extraAttributes(['class' => 'font-mono'])
+                                        ->suffixIcon('heroicon-o-clipboard-document')
+                                        ->helperText('Click inside and press Ctrl+A then Ctrl+C to copy'),
+                                    Forms\Components\Placeholder::make('expires_info')
+                                        ->label('Link Expires')
+                                        ->content($record->payment_link_expires_at ? $record->payment_link_expires_at->format('F j, Y \a\t g:i A') : 'N/A'),
+                                ])->columns(2),
+                            Forms\Components\Section::make('QR Code')
+                                ->description('Guest can scan this QR code with their phone camera to access the payment page.')
+                                ->schema([
+                                    Forms\Components\Placeholder::make('qr_code')
+                                        ->label('')
+                                        ->content(fn (Reservation $record) => new HtmlString(
+                                            '<div style="text-align:center;padding:20px;background:#f9fafb;border-radius:8px;">'
+                                            .'<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='.urlencode($record->generatePaymentLink()).'" '
+                                            .'alt="Payment QR Code" '
+                                            .'style="max-width:300px;border:3px solid #00491E;border-radius:12px;padding:15px;background:white;box-shadow:0 4px 6px rgba(0,0,0,0.1);" />'
+                                            .'<p style="margin-top:15px;color:#6b7280;font-size:14px;">Scan to pay with GCash, Maya, or Card</p>'
+                                            .'</div>'
+                                        )),
+                                ]),
+                            Forms\Components\Section::make('Sharing Options')
+                                ->schema([
+                                    Forms\Components\Placeholder::make('share_instructions')
+                                        ->label('')
+                                        ->content(new HtmlString(
+                                            '<div style="color:#374151;font-size:14px;line-height:1.6;">'
+                                            .'<p style="margin-bottom:12px;"><strong>How to share with the guest:</strong></p>'
+                                            .'<ol style="margin-left:20px;margin-bottom:12px;">'
+                                            .'<li><strong>Copy the link:</strong> Click the payment URL field above, press Ctrl+A then Ctrl+C, then paste it into SMS, WhatsApp, Messenger, or any messaging app.</li>'
+                                            .'<li><strong>Show QR code:</strong> Show this screen to the guest so they can scan the QR code with their phone camera.</li>'
+                                            .'<li><strong>Screenshot QR code:</strong> Take a screenshot (Windows+Shift+S) of the QR code and send the image to the guest.</li>'
+                                            .'<li><strong>Print QR code:</strong> Right-click the QR code image → "Save image as...", then print it to give to the guest.</li>'
+                                            .'</ol>'
+                                            .'<p style="color:#059669;"><strong>✓ Tip:</strong> The QR code works great for walk-in guests or phone-based sharing!</p>'
+                                            .'</div>'
+                                        )),
+                                ])->collapsed(),
+                        ])
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Close')
+                        ->action(function (Reservation $record) {
+                            // Log when modal is opened
+                            ReservationLog::record(
+                                $record,
+                                'payment_link_viewed',
+                                'Payment link viewed by '.auth()->user()->name.'.'
+                            );
+                        }),
                 ]),
             ])
             ->bulkActions([
@@ -2262,6 +2663,7 @@ class ReservationResource extends Resource
                                 }
                                 $record->update([
                                     'status' => 'approved',
+                                    'approved_at' => now(),
                                     'reviewed_by' => auth()->id(),
                                     'reviewed_at' => now(),
                                 ]);
@@ -2372,6 +2774,7 @@ class ReservationResource extends Resource
                             foreach ($records as $record) {
                                 if ($record->status === 'checked_in') {
                                     $skipped++;
+
                                     continue;
                                 }
                                 $record->delete();
@@ -2399,6 +2802,7 @@ class ReservationResource extends Resource
     {
         return [
             ReservationResource\RelationManagers\RoomAssignmentsRelationManager::class,
+            ReservationResource\RelationManagers\PaymentsRelationManager::class,
             ReservationResource\RelationManagers\StayLogsRelationManager::class,
         ];
     }
@@ -2626,7 +3030,14 @@ class ReservationResource extends Resource
             (bool) data_get($holdData, 'is_student', false)
         );
 
-        return round((float) ($pricing['grand_total'] ?? 0), 2);
+        $grossTotal = round((float) ($pricing['grand_total'] ?? 0), 2);
+
+        // Subtract existing posted payments (e.g. online deposits) from payable
+        $existingPayments = (float) $record->payments()
+            ->where('status', 'posted')
+            ->sum('amount');
+
+        return round(max(0, $grossTotal - $existingPayments), 2);
     }
 
     /**

@@ -42,4 +42,20 @@ class Setting extends Model
     {
         static::all()->each(fn ($s) => Cache::forget("setting_{$s->key}"));
     }
+
+    /**
+     * Check if online payments feature is enabled.
+     */
+    public static function isOnlinePaymentsEnabled(): bool
+    {
+        return (bool) static::get('online_payments_enabled', false);
+    }
+
+    /**
+     * Get the default deposit percentage for online payments.
+     */
+    public static function getDefaultDepositPercentage(): float
+    {
+        return (float) static::get('online_payment_deposit_percentage', 50.0);
+    }
 }

@@ -6,9 +6,23 @@ use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\RoomAssignment;
 use App\Notifications\NotificationHelper;
+use Illuminate\Support\Str;
 
 class ReservationObserver
 {
+    /**
+     * Handle the Reservation "creating" event.
+     * Generate payment link token before saving to database.
+     */
+    public function creating(Reservation $reservation): void
+    {
+        // Auto-generate payment link token and expiry (48 hours from now)
+        if (empty($reservation->payment_link_token)) {
+            $reservation->payment_link_token = (string) Str::uuid();
+            $reservation->payment_link_expires_at = now()->addHours(48);
+        }
+    }
+
     public function created(Reservation $reservation): void
     {
         ReservationLog::record(

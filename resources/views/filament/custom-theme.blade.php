@@ -1,3 +1,8 @@
+{{-- Google Fonts - Plus Jakarta Sans --}}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
 <style>
 /*
  * CMU Color Theme
@@ -6,6 +11,13 @@
  * Alt Green 1: #02681E
  * Alt Green 2: #919F02
  */
+
+/* ===== Typography ===== */
+body,
+.fi-body,
+.filament-main {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important;
+}
 
 /* ===== Sidebar ===== */
 .fi-sidebar {

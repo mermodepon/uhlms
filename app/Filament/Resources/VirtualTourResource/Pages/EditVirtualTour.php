@@ -20,4 +20,9 @@ class EditVirtualTour extends EditRecord
                 ->url(fn ($record) => ManageTourHotspots::getUrl(['record' => $this->record->id])),
         ];
     }
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
 }

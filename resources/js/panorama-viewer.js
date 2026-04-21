@@ -192,7 +192,11 @@ class PanoramaViewer {
             const style = config.sprite.style || 'circle';
             marker.html = this._spriteToHtml(config.sprite, config);
             if (style === 'circle') {
-                marker.size = { width: 40, height: 40 };
+                // Size scale: 1=0.6x, 2=0.8x, 3=1.0x (default), 4=1.25x, 5=1.5x
+                const sizeScale = { 1: 0.6, 2: 0.8, 3: 1.0, 4: 1.25, 5: 1.5 };
+                const scale = sizeScale[config.sprite.size] ?? 1.0;
+                const scaledSize = Math.round(40 * scale);
+                marker.size = { width: scaledSize, height: scaledSize };
             }
         } else {
             marker.html = '<div style="width:20px;height:20px;background:#ccc;border-radius:50%"></div>';
@@ -223,6 +227,12 @@ class PanoramaViewer {
         const icon = sprite.icon || 'chevron-up';
         const svg = PanoramaViewer.iconSvg(icon, 18, '#fff');
 
+        // Size scale: 1=0.6x, 2=0.8x, 3=1.0x (default), 4=1.25x, 5=1.5x
+        const sizeScale = { 1: 0.6, 2: 0.8, 3: 1.0, 4: 1.25, 5: 1.5 };
+        const scale = sizeScale[sprite.size] ?? 1.0;
+        const scaledSize = 36 * scale;
+        const scaledIconSize = 18 * scale;
+
         let border = sprite.dashed ? '2px dashed #fff' : '2px solid #fff';
         let cursor = sprite.noCursor ? 'default' : 'pointer';
         let animation = sprite.selected || sprite.dashed
@@ -232,7 +242,7 @@ class PanoramaViewer {
             ? '0 0 0 3px #fff, 0 0 0 6px #3b82f6'
             : '';
 
-        return `<div class="pv-hotspot-circle" style="width:36px;height:36px;border-radius:50%;background:${bg};opacity:${opacity};border:${border};${boxShadow ? 'box-shadow:' + boxShadow + ';' : ''}display:flex;align-items:center;justify-content:center;cursor:${cursor};filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));animation:${animation};transition:transform 0.2s">${svg}</div>`;
+        return `<div class="pv-hotspot-circle" style="width:${scaledSize}px;height:${scaledSize}px;border-radius:50%;background:${bg};opacity:${opacity};border:${border};${boxShadow ? 'box-shadow:' + boxShadow + ';' : ''}display:flex;align-items:center;justify-content:center;cursor:${cursor};filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));animation:${animation};transition:transform 0.2s">${PanoramaViewer.iconSvg(icon, scaledIconSize, '#fff')}</div>`;
     }
 
     _badgeSpriteToHtml(sprite) {

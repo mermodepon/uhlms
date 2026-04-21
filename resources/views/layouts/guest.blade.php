@@ -17,6 +17,9 @@
     <title>@yield('title', $siteTitle) - {{ $siteTagline }}</title>
     <link rel="icon" type="image/png" href="{{ $logoSrc }}">
     <link rel="apple-touch-icon" href="{{ $logoSrc }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
@@ -27,7 +30,7 @@
             --cmu-green-alt2: #919F02;
         }
         body {
-            font-family: {{ $themeFont == 'serif' ? 'Georgia, Times, serif' : ($themeFont == 'mono' ? 'Menlo, Monaco, monospace' : 'Inter, Arial, sans-serif') }};
+            font-family: {{ $themeFont == 'serif' ? 'Georgia, Times, serif' : ($themeFont == 'mono' ? 'Menlo, Monaco, monospace' : '"Plus Jakarta Sans", system-ui, -apple-system, sans-serif') }};
         }
         /* Improve form input visibility */
         input[type="text"],

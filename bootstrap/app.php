@@ -13,6 +13,11 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         // Trusted proxies for load balancers / reverse proxies
         $middleware->trustProxies(at: '*');
+
+        // Exclude PayMongo webhook from CSRF protection
+        $middleware->validateCsrfTokens(except: [
+            '/api/webhooks/paymongo',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

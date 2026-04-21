@@ -213,6 +213,170 @@
                 </div>
             </div>
 
+            {{-- Online Payment Section with QR Code --}}
+            @php
+                $onlinePaymentsEnabled = \App\Models\Setting::isOnlinePaymentsEnabled();
+                $hasValidPaymentLink = $reservation->payment_link_token && $reservation->isPaymentLinkValid();
+                $canPay = in_array($reservation->status, ['pending', 'approved', 'confirmed']);
+                
+                // Check if a payment has been made (deposit or full)
+                $gatewayPayment = $reservation->payments
+                    ->where('gateway', 'paymongo')
+                    ->where('gateway_status', 'paid')
+                    ->first()
+                    ?? $reservation->payments
+                        ->where('gateway', 'paymongo')
+                        ->first();
+                
+                $depositPaid = $gatewayPayment && $gatewayPayment->gateway_status === 'paid';
+                $paymentPending = $gatewayPayment && $gatewayPayment->gateway_status === 'pending';
+                $paymentFailed = $gatewayPayment && $gatewayPayment->gateway_status === 'failed';
+                
+                // Show deposit status section whenever a deposit EXISTS (regardless of toggle)
+                $showDepositStatus = $depositPaid || $paymentPending || $paymentFailed;
+                // Show payment link/QR only when toggle is ON and link is valid
+                $showPaymentLink = $onlinePaymentsEnabled && $hasValidPaymentLink && $canPay && !$depositPaid && !$paymentPending;
+            @endphp
+
+            @if($showDepositStatus || $showPaymentLink)
+                <div class="bg-white rounded-xl shadow-md p-6 mt-8">
+                    @if($depositPaid)
+                        {{-- Payment Successful --}}
+                        <div class="text-center">
+                            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+                                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-xl font-bold text-green-700 mb-2">
+                                @if($gatewayPayment->is_deposit)
+                                    ✓ Deposit Payment Received
+                                @else
+                                    ✓ Full Payment Received
+                                @endif
+                            </h3>
+                            <p class="text-gray-600 text-sm mb-4">
+                                @if($gatewayPayment->is_deposit)
+                                    Your online deposit payment has been successfully processed.
+                                @else
+                                    Your online full payment has been successfully processed. No additional payment needed at check-in.
+                                @endif
+                            </p>
+                            <div class="bg-green-50 border border-green-200 rounded-lg p-4 inline-block">
+                                <p class="text-sm text-green-800">
+                                    <strong>Amount Paid:</strong> ₱{{ number_format($gatewayPayment->amount, 2) }}<br>
+                                    <strong>Payment Type:</strong> {{ $gatewayPayment->is_deposit ? 'Deposit' : 'Full Payment' }}<br>
+                                    <strong>Payment Method:</strong> {{ ucfirst($gatewayPayment->payment_mode) }}<br>
+                                    <strong>Transaction ID:</strong> {{ $gatewayPayment->gateway_payment_id }}
+                                </p>
+                            </div>
+                            @php
+                                $estimatedTotal = $reservation->calculateDepositAmount() > 0
+                                    ? round($gatewayPayment->amount / (($reservation->deposit_percentage ?? \App\Models\Setting::getDefaultDepositPercentage()) / 100), 2)
+                                    : 0;
+                                $estimatedRemaining = max(0, $estimatedTotal - $gatewayPayment->amount);
+                            @endphp
+                            @if($gatewayPayment->is_deposit && $estimatedRemaining > 0)
+                                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 inline-block mt-4">
+                                    <p class="text-sm text-gray-700">
+                                        <strong>Estimated Total:</strong> ₱{{ number_format($estimatedTotal, 2) }}<br>
+                                        <strong>Deposit Paid:</strong> -₱{{ number_format($gatewayPayment->amount, 2) }}<br>
+                                        <strong>Estimated Remaining Balance:</strong> ₱{{ number_format($estimatedRemaining, 2) }}
+                                    </p>
+                                </div>
+                            @endif
+                            <p class="text-gray-500 text-xs mt-4">Please complete the remaining balance upon check-in at our facility.</p>
+                        </div>
+                    @elseif($paymentPending)
+                        {{-- Payment Pending --}}
+                        <div class="text-center">
+                            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 mb-4">
+                                <svg class="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-xl font-bold text-yellow-700 mb-2">⏳ Payment Processing</h3>
+                            <p class="text-gray-600 text-sm">Your payment is being processed. Please wait a few moments and refresh this page.</p>
+                        </div>
+                    @elseif($paymentFailed)
+                        {{-- Payment Failed --}}
+                        <div class="text-center mb-6">
+                            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 mb-4">
+                                <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-xl font-bold text-red-700 mb-2">✗ Payment Failed</h3>
+                            <p class="text-gray-600 text-sm mb-4">Your previous payment attempt was unsuccessful. Please try again using the QR code or link below.</p>
+                        </div>
+                    @endif
+
+                    @if($showPaymentLink)
+                        {{-- Show Payment QR Code and Link --}}
+                        <div class="text-center">
+                            @if(!$paymentFailed)
+                                <h3 class="text-xl font-bold text-[#00491E] mb-2">💳 Complete Your Deposit Payment</h3>
+                                <p class="text-gray-600 text-sm mb-6">Scan the QR code below or click the payment link to pay your deposit online.</p>
+                            @endif
+
+                            {{-- QR Code --}}
+                            <div class="flex justify-center mb-6">
+                                <div class="inline-block">
+                                    <div class="bg-gradient-to-br from-[#00491E] to-[#02681E] p-6 rounded-2xl shadow-lg">
+                                        <div class="bg-white p-4 rounded-xl">
+                                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={{ urlencode($reservation->generatePaymentLink()) }}"
+                                                 alt="Payment QR Code"
+                                                 class="w-64 h-64 mx-auto">
+                                        </div>
+                                        <p class="text-white text-sm mt-4 font-medium">Scan with your phone camera</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Payment Link Button --}}
+                            <div class="space-y-4">
+                                <a href="{{ $reservation->generatePaymentLink() }}"
+                                   class="inline-block bg-gradient-to-r from-[#00491E] to-[#02681E] text-white px-8 py-4 rounded-xl font-bold text-lg hover:shadow-lg transition-all transform hover:scale-105">
+                                    🔒 Pay Deposit Now
+                                </a>
+
+                                {{-- Payment Methods --}}
+                                <div class="flex flex-wrap justify-center gap-3 items-center">
+                                    <span class="text-sm text-gray-500">Pay with:</span>
+                                    <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">GCash</span>
+                                    <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Maya</span>
+                                    <span class="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">GrabPay</span>
+                                    <span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">Credit/Debit Card</span>
+                                </div>
+
+                                {{-- Expiry Warning --}}
+                                @if($reservation->payment_link_expires_at)
+                                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 inline-block">
+                                        <p class="text-xs text-amber-800">
+                                            <strong>⏰ Payment link expires:</strong> {{ $reservation->payment_link_expires_at->format('M d, Y \a\t g:i A') }}
+                                        </p>
+                                    </div>
+                                @endif
+
+                                {{-- Info Box --}}
+                                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto text-left">
+                                    <p class="text-sm text-blue-800">
+                                        <strong>ℹ️ What happens next:</strong>
+                                    </p>
+                                    <ol class="text-xs text-blue-700 mt-2 space-y-1 ml-4 list-decimal">
+                                        <li>Scan the QR code or click "Pay Deposit Now"</li>
+                                        <li>Choose your preferred payment method</li>
+                                        <li>Complete the secure payment</li>
+                                        <li>Your reservation will be confirmed</li>
+                                        <li>Pay the remaining balance when you check in</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+                </div>
+            @endif
+
             {{-- Room Assignment - Improved Table View --}}
             @if($reservation->roomAssignments->isNotEmpty())
                 <div class="bg-white rounded-xl shadow-md p-6 mt-8">

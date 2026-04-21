@@ -957,7 +957,7 @@
             </div>
 
             <div class="space-y-3">
-                <button onclick="tourEngine.openReservationModal()" 
+                <button id="overlay-request-btn" onclick="tourEngine.openReservationModal()" 
                         class="w-full bg-cmu-yellow text-cmu-green font-bold py-3 px-4 rounded-lg hover:bg-yellow-500 transition-colors">
                     🏨 Request Reservation
                 </button>
@@ -966,6 +966,10 @@
                         class="w-full bg-cmu-green text-white font-bold py-3 px-4 rounded-lg hover:bg-green-800 transition-colors">
                     📝 Full Reservation Form
                 </button>
+
+                <p id="overlay-room-disclaimer" class="hidden text-center text-xs text-gray-400 mt-1 leading-snug">
+                    Room assignment is finalized by staff during reservation review.
+                </p>
             </div>
             @endif
         </div>
@@ -990,6 +994,7 @@
                     <input type="hidden" id="preferred_room_type_id" name="preferred_room_type_id">
                     <input type="hidden" id="preferred_room_id" name="preferred_room_id">
                     <input type="hidden" name="source" value="virtual_tour">
+                    @honeypot
 
                     <div class="grid grid-cols-2 gap-4">
                         <div class="form-group">
@@ -1058,6 +1063,13 @@
                                   placeholder="Any special requirements or questions..."></textarea>
                     </div>
 
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                        <p class="text-sm text-blue-800">
+                            <strong>ℹ️ Room Preference:</strong> Your selected room will be noted as a preference. 
+                            Our staff will do their best to assign it during review, subject to availability.
+                        </p>
+                    </div>
+
                     <button type="submit" class="btn-submit">
                         Submit Reservation Request
                     </button>
@@ -1084,7 +1096,10 @@
                 <p class="text-sm text-gray-600 mb-1">Reference Number:</p>
                 <p id="success-reference" class="text-2xl font-bold text-blue-600"></p>
             </div>
-            <p class="text-sm text-gray-600 mb-6">Please save this reference number to track your reservation status.</p>
+            <p class="text-sm text-gray-600 mb-2">Please save this reference number to track your reservation status.</p>
+            <p class="text-xs text-blue-700 mb-6">
+                ℹ️ Your room preference has been noted and will be considered during staff review.
+            </p>
             <div class="space-y-3">
                 <a id="success-track-link" href="#" class="block w-full bg-cmu-green text-white font-bold py-3 px-4 rounded-lg hover:bg-green-800 transition-colors">
                     Track Reservation

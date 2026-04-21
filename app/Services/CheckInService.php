@@ -196,10 +196,43 @@ class CheckInService
                     'num_female_guests' => $femaleCount,
                 ]);
 
-                // Clear ALL room holds (both advance and short-term) since they're now converted to assignments
-                RoomHold::query()
+                // Clear ALL room holds (both advance and short-term) since check-in is complete
+                // This includes any advance holds that weren't used (e.g., staff changed the room)
+                $deletedHolds = RoomHold::query()
                     ->where('reservation_id', $reservation->id)
                     ->delete();
+
+                if ($deletedHolds > 0) {
+                    ReservationLog::record(
+                        $reservation,
+                        'room_holds_released',
+                        "Released {$deletedHolds} room hold(s) after successful check-in.",
+                        ['deleted_holds' => $deletedHolds]
+                    );
+                }
+            } else {
+                // If check-in partially succeeded or failed, release advance holds for rooms that weren't actually assigned
+                // This prevents unused held rooms from staying locked
+                $assignedRoomIds = $reservation->roomAssignments()
+                    ->where('status', 'checked_in')
+                    ->pluck('room_id')
+                    ->unique()
+                    ->toArray();
+
+                $deletedHolds = RoomHold::query()
+                    ->where('reservation_id', $reservation->id)
+                    ->where('hold_type', 'advance')
+                    ->whereNotIn('room_id', $assignedRoomIds)
+                    ->delete();
+
+                if ($deletedHolds > 0) {
+                    ReservationLog::record(
+                        $reservation,
+                        'room_holds_released',
+                        "Released {$deletedHolds} unused advance hold(s) after partial check-in.",
+                        ['deleted_holds' => $deletedHolds, 'assigned_rooms' => $assignedRoomIds]
+                    );
+                }
             }
         });
 
@@ -235,7 +268,7 @@ class CheckInService
         // Validate hold_duration_minutes
         $allowedDurations = [30, 45, 60, 90, 120, 240, 480, 720, 1440];
         $holdMinutes = (int) ($payload['hold_duration_minutes'] ?? 30);
-        if (!in_array($holdMinutes, $allowedDurations, true)) {
+        if (! in_array($holdMinutes, $allowedDurations, true)) {
             throw new \RuntimeException('Invalid Payment Hold Duration. Allowed values: 30, 45, 60, 90, 120 minutes, or 4, 8, 12, 24 hours.');
         }
 
@@ -463,7 +496,7 @@ class CheckInService
         }
 
         $currentExpiry = $reservation->checkin_hold_expires_at;
-        if (!$currentExpiry) {
+        if (! $currentExpiry) {
             throw new \RuntimeException('No active hold found for this reservation.');
         }
 
@@ -591,9 +624,14 @@ class CheckInService
 
         // Apply discount
         $discountInfo = $this->calculateDiscount($payload, $subtotal);
-        $finalAmount = max(0, $subtotal - $discountInfo['amount']);
+        $grossTotal = max(0, $subtotal - $discountInfo['amount']);
 
-        return round($finalAmount, 2);
+        // Subtract existing posted payments (e.g. online deposits) from payable
+        $existingPayments = (float) $reservation->payments()
+            ->where('status', 'posted')
+            ->sum('amount');
+
+        return round(max(0, $grossTotal - $existingPayments), 2);
     }
 
     /**
@@ -602,6 +640,17 @@ class CheckInService
      */
     private function validateAndNormalizeFinalizePaymentData(array $paymentData, float $payableAmount): array
     {
+        // If no payment is required (fully paid online), skip payment validation
+        if ($payableAmount <= 0.01) {
+            return [
+                'payment_mode' => $paymentData['payment_mode'] ?? 'online',
+                'payment_amount' => 0.00,
+                'payment_or_number' => $paymentData['payment_or_number'] ?? 'N/A',
+                'or_date' => $paymentData['or_date'] ?? now()->toDateString(),
+                'remarks' => $paymentData['remarks'] ?? null,
+            ];
+        }
+
         $paymentMode = strtolower(trim((string) ($paymentData['payment_mode'] ?? '')));
         if ($paymentMode === '') {
             throw new \RuntimeException('Mode of payment is required to finalize check-in.');
@@ -643,7 +692,7 @@ class CheckInService
         $holdPayload = $reservation->checkin_hold_payload ?? [];
         $entries = $holdPayload['entries'] ?? [];
 
-        DB::transaction(function () use ($entries) {
+        DB::transaction(function () use ($reservation, $entries) {
             foreach ($entries as $entry) {
                 $roomId = $entry['room_id'] ?? null;
                 if ($roomId) {
@@ -654,11 +703,22 @@ class CheckInService
                 }
             }
 
-            // Also delete short-term room holds
+            // Delete short-term room holds from this pending payment session
             RoomHold::query()
                 ->where('reservation_id', $reservation->id)
                 ->where('hold_type', 'short_term')
                 ->delete();
+
+            // Also release any advance holds that aren't for rooms used in this pending payment
+            // This handles cases where staff selected different rooms than originally held
+            $paymentRoomIds = collect($entries)->pluck('room_id')->filter()->toArray();
+            if (! empty($paymentRoomIds)) {
+                RoomHold::query()
+                    ->where('reservation_id', $reservation->id)
+                    ->where('hold_type', 'advance')
+                    ->whereNotIn('room_id', $paymentRoomIds)
+                    ->delete();
+            }
         });
 
         $update = [
@@ -674,7 +734,7 @@ class CheckInService
                 ->where('reservation_id', $reservation->id)
                 ->where('hold_type', 'advance')
                 ->exists();
-            
+
             $update['status'] = $hasAdvanceHolds ? 'confirmed' : 'approved';
         }
 
@@ -886,8 +946,13 @@ class CheckInService
         $discountAmount = $discountInfo['amount'];
 
         // Clear existing ledger rows for this reservation to keep rollout idempotent.
+        // Preserve gateway (online deposit) payments — only delete non-gateway payments.
         $reservation->charges()->delete();
-        $reservation->payments()->delete();
+        $reservation->payments()
+            ->where(function ($query) {
+                $query->whereNull('gateway')->orWhere('gateway', '');
+            })
+            ->delete();
 
         // Store room charges (before discount)
         if ($roomChargesBeforeDiscount > 0) {

@@ -43,7 +43,7 @@
         .te-toolbar button.active { border-color:#3b82f6; background:rgba(59,130,246,.3); }
         .te-toolbar .divider { width:1px; height:24px; background:rgba(255,255,255,.2); }
         .te-status { position:absolute; top:12px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.75); color:#fff; padding:4px 14px; border-radius:999px; font-size:12px; z-index:20; pointer-events:none; }
-        .te-live-stats { position:absolute; top:12px; right:12px; display:flex; gap:8px; z-index:20; pointer-events:none; }
+        .te-live-stats { position:absolute; top:12px; left:12px; display:flex; gap:8px; z-index:20; pointer-events:none; }
         .te-live-stat { min-width:88px; background:rgba(0,0,0,.78); color:#fff; padding:8px 10px; border-radius:10px; backdrop-filter:blur(8px); box-shadow:0 8px 24px rgba(0,0,0,.18); }
         .te-live-stat-label { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:rgba(255,255,255,.65); margin-bottom:2px; }
         .te-live-stat-value { font-size:13px; font-weight:700; color:#f8fafc; }
@@ -239,6 +239,21 @@
                                 <input type="number" step="0.01" x-model.number="editingHotspot.yaw" min="-180" max="180">
                             </div>
                         </div>
+                        <template x-if="editingHotspot.id">
+                            <button class="te-btn te-btn-primary te-btn-block" 
+                                    @click="startRepositioning()" 
+                                    style="margin-top:8px"
+                                    x-show="!repositioning">
+                                📍 Reposition Hotspot
+                            </button>
+                        </template>
+                        <template x-if="repositioning">
+                            <div style="margin-top:8px;padding:8px;background:#eff6ff;border:1px solid #93c5fd;border-radius:6px">
+                                <p style="font-size:11px;color:#1e40af;margin-bottom:6px">Click on the panorama to reposition this hotspot</p>
+                                <button class="te-btn te-btn-success te-btn-block" @click="confirmRepositioning()" style="margin-bottom:4px">✓ Confirm Position</button>
+                                <button class="te-btn te-btn-ghost te-btn-block" @click="cancelRepositioning()">✕ Cancel</button>
+                            </div>
+                        </template>
                     </div>
 
                     <div class="te-props-section">
@@ -350,6 +365,33 @@
                             </label>
                             <span style="font-size:12px;color:#475569">Active</span>
                         </div>
+                        <div class="te-field">
+                            <label>Size</label>
+                            <div style="display:flex;gap:4px;align-items:center">
+                                <template x-for="(label, idx) in ['XS','S','M','L','XL']" :key="'sz-'+idx">
+                                    <button :title="'Size ' + (idx+1) + ' (' + ['Extra Small','Small','Medium','Large','Extra Large'][idx] + ')'"
+                                            @click="updateHotspotSize(idx + 1)"
+                                            :style="`
+                                                border-radius:50%;
+                                                border: ${editingHotspot.size === idx + 1 ? '2px solid #3b82f6' : '2px solid transparent'};
+                                                background: ${editingHotspot.size === idx + 1 ? '#eff6ff' : '#f1f5f9'};
+                                                color: ${editingHotspot.size === idx + 1 ? '#3b82f6' : '#64748b'};
+                                                cursor:pointer;
+                                                display:flex;
+                                                align-items:center;
+                                                justify-content:center;
+                                                font-size:9px;
+                                                font-weight:700;
+                                                transition:all .15s;
+                                                width: ${20 + idx * 4}px;
+                                                height: ${20 + idx * 4}px;
+                                            `">
+                                        <span x-text="label"></span>
+                                    </button>
+                                </template>
+                                <span style="font-size:11px;color:#94a3b8;margin-left:4px" x-text="'(' + editingHotspot.size + ')'"></span>
+                            </div>
+                        </div>
 
                     </div>
 
@@ -437,14 +479,19 @@
                         <template x-if="activeScene?.linked_room_type_id">
                             <div style="margin-top:8px">
                                 <button
-                                    @click="placingRoomInfo ? cancelRoomInfoPlacing() : startRoomInfoPlacing()"
+                                    @click="startRoomInfoPlacing()"
                                     class="te-btn te-btn-block"
-                                    :style="placingRoomInfo
-                                        ? 'background:#fef3c7;border-color:#f59e0b;color:#92400e;font-size:11px'
-                                        : 'background:#f0fdf4;border-color:#86efac;color:#166534;font-size:11px'">
-                                    <span x-text="placingRoomInfo ? '✕ Cancel — click panorama to place' : '📍 Reposition Room Info Marker'"></span>
+                                    x-show="!placingRoomInfo"
+                                    style="background:#f0fdf4;border-color:#86efac;color:#166534;font-size:11px">
+                                    📍 Reposition Room Info Marker
                                 </button>
-
+                                <template x-if="placingRoomInfo">
+                                    <div style="padding:8px;background:#eff6ff;border:1px solid #93c5fd;border-radius:6px">
+                                        <p style="font-size:11px;color:#1e40af;margin-bottom:6px">Click on the panorama to reposition the Room Info marker</p>
+                                        <button class="te-btn te-btn-success te-btn-block" @click="confirmRoomInfoPlacing()" style="margin-bottom:4px">✓ Confirm Position</button>
+                                        <button class="te-btn te-btn-ghost te-btn-block" @click="cancelRoomInfoPlacing()">✕ Cancel</button>
+                                    </div>
+                                </template>
                             </div>
                         </template>
                     </div>
@@ -481,6 +528,7 @@
                 livePitch: 0,
                 liveZoom: 0,
                 placingRoomInfo: false,
+                repositioning: false,
                 draggedHotspotId: null,
                 dragOverIdx: null,
                 icons: [
@@ -539,6 +587,7 @@
                                     action_target: '',
                                     sort_order: this.hotspots.length,
                                     is_active: true,
+                                    size: 3,  // Default size
                                 };
                                 // Rotate panorama to the confirmed hotspot position
                                 this.editor?.viewer?.rotate({ yaw: `${data.yaw}deg`, pitch: `${data.pitch}deg` });
@@ -561,14 +610,9 @@
                             onHotspotDeselected: () => {
                                 this.editingHotspot = null;
                             },
-                            onRoomInfoPlaced: async (data) => {
-                                // Stay in placing mode until user explicitly cancels
-                                await this.$wire.setRoomInfoPosition(this.activeWaypointId, data.yaw, data.pitch);
-                                // Move marker immediately in the editor
-                                this.editor?.updateRoomInfoMarkerPosition(data.yaw, data.pitch);
-                                // Update local waypoint data
-                                const wp = this.waypoints.find(w => w.id === this.activeWaypointId);
-                                if (wp) { wp.room_info_yaw = data.yaw; wp.room_info_pitch = data.pitch; }
+                            onRoomInfoPlaced: (data) => {
+                                // Preview mode - just show the position, don't save yet
+                                // User must click Confirm to actually save
                             },
                         });
                         this.editor.init();
@@ -652,14 +696,40 @@
                 startRoomInfoPlacing() {
                     this.placingRoomInfo = true;
                     this.placing = false;
+                    this.repositioning = false;
                     this.editor?.cancelPlacement();
+                    this.editor?.cancelHotspotRepositioning();
                     this.editor?.startRoomInfoPlacement();
-                    this.statusText = '📍 Click on the panorama to set the Room Info marker position';
+                    this.statusText = '📍 Click on the panorama to reposition the Room Info marker';
                 },
 
                 cancelRoomInfoPlacing() {
                     this.placingRoomInfo = false;
                     this.editor?.cancelRoomInfoPlacement();
+                    this.statusText = '';
+                },
+
+                async confirmRoomInfoPlacing() {
+                    if (!this.placingRoomInfo || !this.editor) return;
+                    const newPos = this.editor.confirmRoomInfoPlacement();
+                    if (newPos && this.activeWaypointId) {
+                        // Save to server
+                        await this.$wire.setRoomInfoPosition(this.activeWaypointId, newPos.yaw, newPos.pitch);
+                        
+                        // Update local waypoint data
+                        const wp = this.waypoints.find(w => w.id === this.activeWaypointId);
+                        if (wp) {
+                            wp.room_info_yaw = newPos.yaw;
+                            wp.room_info_pitch = newPos.pitch;
+                        }
+                        
+                        // Update the marker position in editor
+                        this.editor.waypoint.room_info_yaw = newPos.yaw;
+                        this.editor.waypoint.room_info_pitch = newPos.pitch;
+                        this.editor.viewer.clearMarkers();
+                        this.editor._buildMarkers().forEach(m => this.editor.viewer.addMarker(m));
+                    }
+                    this.placingRoomInfo = false;
                     this.statusText = '';
                 },
 
@@ -673,9 +743,72 @@
                     }
                 },
 
+                // Update hotspot size when clicking size buttons
+                updateHotspotSize(size) {
+                    if (!this.editingHotspot) return;
+                    this.editingHotspot.size = size;
+                    
+                    // Only refresh markers if editing an existing hotspot
+                    if (this.editingHotspot.id && this.editor && this.editor.viewer) {
+                        // Update the size in the hotspots array
+                        const idx = this.hotspots.findIndex(h => h.id === this.editingHotspot.id);
+                        if (idx >= 0) {
+                            this.hotspots[idx].size = size;
+                            this.editor.hotspots = this.hotspots;
+                            
+                            // Rebuild and refresh all markers (PSV doesn't support partial marker updates)
+                            this.editor.viewer.clearMarkers();
+                            this.editor._buildMarkers().forEach(m => this.editor.viewer.addMarker(m));
+                            
+                            // Re-highlight the selected hotspot after refresh
+                            this.editor._highlightMarker(this.editingHotspot.id);
+                        }
+                    }
+                },
+
                 deselectHotspot() {
                     this.editingHotspot = null;
                     this.editor?.deselectHotspot();
+                },
+
+                startRepositioning() {
+                    if (!this.editingHotspot || !this.editingHotspot.id) return;
+                    this.repositioning = true;
+                    this.placing = false;
+                    this.editor?.cancelPlacement();
+                    this.editor?.startHotspotRepositioning(this.editingHotspot.id);
+                    this.statusText = '📍 Click on the panorama to reposition this hotspot';
+                },
+
+                cancelRepositioning() {
+                    this.repositioning = false;
+                    this.editor?.cancelHotspotRepositioning();
+                    this.statusText = '';
+                },
+
+                confirmRepositioning() {
+                    if (!this.repositioning || !this.editor) return;
+                    const newPos = this.editor.confirmHotspotRepositioning();
+                    if (newPos && this.editingHotspot) {
+                        // Update the editing form with new position
+                        this.editingHotspot.yaw = newPos.yaw;
+                        this.editingHotspot.pitch = newPos.pitch;
+                        
+                        // Update in hotspots array
+                        const idx = this.hotspots.findIndex(h => h.id === this.editingHotspot.id);
+                        if (idx >= 0) {
+                            this.hotspots[idx].yaw = newPos.yaw;
+                            this.hotspots[idx].pitch = newPos.pitch;
+                            this.editor.hotspots = this.hotspots;
+                            
+                            // Refresh markers to show final position
+                            this.editor.viewer.clearMarkers();
+                            this.editor._buildMarkers().forEach(m => this.editor.viewer.addMarker(m));
+                            this.editor._highlightMarker(this.editingHotspot.id);
+                        }
+                    }
+                    this.repositioning = false;
+                    this.statusText = '';
                 },
 
                 async saveCurrentHotspot() {
@@ -687,7 +820,8 @@
                             h.id, h.title, h.description || '', h.icon,
                             h.pitch, h.yaw, h.action_type, h.action_target || null,
                             h.sort_order, h.is_active,
-                            h.media_type || null, h.media_url || null
+                            h.media_type || null, h.media_url || null,
+                            h.size || 3
                         );
                     } else {
                         await this.$wire.saveHotspot(
@@ -695,7 +829,8 @@
                             h.title, h.description || '', h.icon,
                             h.pitch, h.yaw, h.action_type, h.action_target || null,
                             h.sort_order, h.is_active,
-                            h.media_type || null, h.media_url || null
+                            h.media_type || null, h.media_url || null,
+                            h.size || 3
                         );
                     }
                     this.editingHotspot = null;
@@ -756,6 +891,7 @@
                         is_active: h.is_active,
                         media_type: h.media_type,
                         media_url: h.media_url,
+                        size: h.size || 3,
                     };
                 },
 

@@ -30,6 +30,7 @@ class Reservation extends Model
         'purpose',
         'special_requests',
         'status',
+        'approved_at',
         'admin_notes',
         'checkin_hold_payload',
         'checkin_hold_started_at',
@@ -39,8 +40,15 @@ class Reservation extends Model
         'payments_total',
         'balance_due',
         'payment_status',
+        'payment_link_token',
+        'payment_link_expires_at',
+        'deposit_percentage',
         'reviewed_by',
         'reviewed_at',
+        'discount_declared',
+        'discount_declared_type',
+        'discount_verified',
+        'discount_verification_notes',
     ];
 
     protected function casts(): array
@@ -57,7 +65,12 @@ class Reservation extends Model
             'addons_total' => 'decimal:2',
             'payments_total' => 'decimal:2',
             'balance_due' => 'decimal:2',
+            'payment_link_expires_at' => 'datetime',
+            'deposit_percentage' => 'decimal:2',
+            'approved_at' => 'datetime',
             'reviewed_at' => 'datetime',
+            'discount_declared' => 'boolean',
+            'discount_verified' => 'boolean',
         ];
     }
 
@@ -190,4 +203,121 @@ class Reservation extends Model
             default => 'gray',
         };
     }
+
+    /**
+     * Extract preferred room ID from special_requests metadata (virtual tour).
+     */
+    public function getPreferredRoomIdAttribute(): ?int
+    {
+        if (empty($this->special_requests)) {
+            return null;
+        }
+
+        // Match: [Preferred Room ID: 123]
+        if (preg_match('/\[Preferred Room ID: (\d+)\]/', $this->special_requests, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the preferred Room model if it exists and is valid.
+     */
+    public function getPreferredRoomAttribute(): ?Room
+    {
+        $roomId = $this->getPreferredRoomIdAttribute();
+        if (!$roomId) {
+            return null;
+        }
+
+        return Room::with('roomType')->find($roomId);
+    }
+
+    /**
+     * Generate the guest payment link URL.
+     */
+    public function generatePaymentLink(): ?string
+    {
+        if (empty($this->payment_link_token)) {
+            return null;
+        }
+
+        return url("/reserve/pay/{$this->payment_link_token}");
+    }
+
+    /**
+     * Check if the payment link token is still valid (exists and not expired).
+     */
+    public function isPaymentLinkValid(): bool
+    {
+        if (empty($this->payment_link_token) || empty($this->payment_link_expires_at)) {
+            return false;
+        }
+
+        return now()->lessThan($this->payment_link_expires_at);
+    }
+
+    /**
+     * Calculate the deposit amount for online payment.
+     * Uses reservation-specific percentage or global default.
+     */
+    public function calculateDepositAmount(): float
+    {
+        // First, try to use actual charges if they exist
+        $totalCharges = $this->balance_due + $this->payments_total;
+
+        // If no charges calculated yet (new reservation), estimate based on room type
+        if ($totalCharges <= 0 && $this->preferredRoomType) {
+            $nights = $this->nights ?? 1;
+            $guests = $this->number_of_occupants ?? 1;
+            
+            // Calculate estimated rate from preferred room type
+            $totalCharges = $this->preferredRoomType->calculateRate($nights, $guests);
+        }
+
+        if ($totalCharges <= 0) {
+            return 0.0;
+        }
+
+        $percentage = $this->deposit_percentage ?? Setting::getDefaultDepositPercentage();
+
+        return round($totalCharges * ($percentage / 100), 2);
+    }
+
+    /**
+     * Calculate the full payment amount for online payment.
+     * This is the estimated total charges for the reservation.
+     */
+    public function calculateFullAmount(): float
+    {
+        // First, try to use actual charges if they exist
+        $totalCharges = $this->balance_due + $this->payments_total;
+
+        // If no charges calculated yet (new reservation), estimate based on room type
+        if ($totalCharges <= 0 && $this->preferredRoomType) {
+            $nights = $this->nights ?? 1;
+            $guests = $this->number_of_occupants ?? 1;
+
+            // Calculate estimated rate from preferred room type
+            $totalCharges = $this->preferredRoomType->calculateRate($nights, $guests);
+        }
+
+        return round($totalCharges, 2);
+    }
+
+    /**
+     * Check if this reservation has been fully paid online.
+     */
+    public function isFullyPaidOnline(): bool
+    {
+        return $this->payments()
+            ->where('gateway', 'paymongo')
+            ->where('is_deposit', false)
+            ->where('gateway_status', 'paid')
+            ->where('status', 'posted')
+            ->exists();
+    }
 }
+
+

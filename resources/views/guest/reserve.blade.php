@@ -13,6 +13,7 @@
     <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <form action="{{ route('guest.reserve.submit') }}" method="POST" class="space-y-8">
             @csrf
+            @honeypot
 
             {{-- Guest Info --}}
             <div class="bg-white rounded-xl shadow-md p-6">
@@ -139,6 +140,49 @@
                                   placeholder="Any special requirements or requests..."
                                   class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">{{ old('special_requests') }}</textarea>
                         @error('special_requests') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+
+                    {{-- Discount Declaration --}}
+                    <div class="md:col-span-2 bg-blue-50 border-2 border-blue-200 rounded-xl p-6" x-data="{ discountDeclared: {{ old('discount_declared') ? 'true' : 'false' }} }">
+                        <div class="flex items-start gap-3 mb-4">
+                            <input type="checkbox" 
+                                   name="discount_declared" 
+                                   id="discount_declared" 
+                                   value="1"
+                                   x-model="discountDeclared"
+                                   {{ old('discount_declared') ? 'checked' : '' }}
+                                   class="w-5 h-5 text-[#00491E] focus:ring-[#00491E] mt-1 rounded">
+                            <div class="flex-1">
+                                <label for="discount_declared" class="block text-base font-semibold text-gray-900 cursor-pointer">
+                                    I am eligible for a discount (PWD / Senior Citizen / Student)
+                                </label>
+                                <p class="text-sm text-gray-600 mt-1">
+                                    If you qualify for a discount, you can only pay a deposit now. The remaining balance (with discount applied) will be due at check-in upon ID verification.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div x-show="discountDeclared" x-transition class="mt-4">
+                            <label for="discount_declared_type" class="block text-sm font-medium text-gray-700 mb-1">
+                                Discount Type <span class="text-red-500">*</span>
+                            </label>
+                            <select name="discount_declared_type" 
+                                    id="discount_declared_type"
+                                    :required="discountDeclared"
+                                    class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                                <option value="">Select discount type...</option>
+                                <option value="senior_citizen" {{ old('discount_declared_type') === 'senior_citizen' ? 'selected' : '' }}>Senior Citizen (20% discount)</option>
+                                <option value="pwd" {{ old('discount_declared_type') === 'pwd' ? 'selected' : '' }}>PWD - Person with Disability (20% discount)</option>
+                                <option value="student" {{ old('discount_declared_type') === 'student' ? 'selected' : '' }}>Student (10% discount)</option>
+                            </select>
+                            @error('discount_declared_type') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                            
+                            <div class="mt-3 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
+                                <p class="text-sm text-yellow-800">
+                                    <strong>⚠️ Important:</strong> You must present a valid ID at check-in to verify your discount eligibility. If you cannot provide valid proof, you will be charged the full undiscounted balance.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

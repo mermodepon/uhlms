@@ -11,6 +11,12 @@ class ReservationPayment extends Model
         'reservation_id',
         'amount',
         'payment_mode',
+        'gateway',
+        'gateway_payment_id',
+        'gateway_source_id',
+        'gateway_status',
+        'gateway_metadata',
+        'is_deposit',
         'reference_no',
         'or_date',
         'status',
@@ -26,6 +32,8 @@ class ReservationPayment extends Model
             'amount' => 'decimal:2',
             'received_at' => 'datetime',
             'meta' => 'array',
+            'gateway_metadata' => 'array',
+            'is_deposit' => 'boolean',
         ];
     }
 

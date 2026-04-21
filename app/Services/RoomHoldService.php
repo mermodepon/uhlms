@@ -24,14 +24,38 @@ class RoomHoldService
 
     /**
      * Check if a specific room has a conflicting hold for the given date range.
+     * Checks both RoomHolds (advance reservations) and RoomAssignments (checked-in guests).
      */
     public function hasConflict(Room $room, Carbon $checkIn, Carbon $checkOut): bool
     {
-        return RoomHold::query()
+        // Check for RoomHolds (advance reservations with assigned rooms)
+        $hasHoldConflict = RoomHold::query()
             ->where('room_id', $room->id)
             ->active()
             ->conflictingWith($checkIn, $checkOut)
             ->exists();
+
+        if ($hasHoldConflict) {
+            return true;
+        }
+
+        // Check for RoomAssignments (actual checked-in guests)
+        // A room assignment conflicts if:
+        // 1. The guest hasn't checked out yet (checked_out_at is null)
+        // 2. The reservation's date range overlaps with the requested dates
+        $hasAssignmentConflict = \App\Models\RoomAssignment::query()
+            ->where('room_id', $room->id)
+            ->whereNull('checked_out_at') // Guest is still checked in
+            ->whereHas('reservation', function ($query) use ($checkIn, $checkOut) {
+                $query->where(function ($q) use ($checkIn, $checkOut) {
+                    // Overlapping date ranges
+                    $q->where('check_in_date', '<', $checkOut->format('Y-m-d'))
+                      ->where('check_out_date', '>', $checkIn->format('Y-m-d'));
+                });
+            })
+            ->exists();
+
+        return $hasAssignmentConflict;
     }
 
     /**
@@ -51,7 +75,7 @@ class RoomHoldService
             return collect();
         }
 
-        // Find rooms that have NO conflicting active holds
+        // Find rooms that have NO conflicting active holds or assignments
         $conflictingRoomIds = RoomHold::query()
             ->whereIn('room_id', $roomId)
             ->active()
@@ -59,10 +83,27 @@ class RoomHoldService
             ->pluck('room_id')
             ->unique();
 
+        // Also check for rooms with active assignments (checked-in guests)
+        $assignmentConflictIds = \App\Models\RoomAssignment::query()
+            ->whereIn('room_id', $roomId)
+            ->whereNull('checked_out_at') // Guest is still checked in
+            ->whereHas('reservation', function ($query) use ($checkIn, $checkOut) {
+                $query->where(function ($q) use ($checkIn, $checkOut) {
+                    // Overlapping date ranges
+                    $q->where('check_in_date', '<', $checkOut->format('Y-m-d'))
+                      ->where('check_out_date', '>', $checkIn->format('Y-m-d'));
+                });
+            })
+            ->pluck('room_id')
+            ->unique();
+
+        // Merge both conflict lists
+        $allConflictingIds = $conflictingRoomIds->merge($assignmentConflictIds)->unique();
+
         return Room::query()
             ->whereIn('id', $roomId)
-            ->whereNotIn('id', $conflictingRoomIds)
-            ->with('roomType')
+            ->whereNotIn('id', $allConflictingIds)
+            ->with(['roomType', 'floor'])
             ->orderBy('room_number')
             ->get();
     }

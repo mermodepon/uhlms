@@ -124,6 +124,7 @@ class ManageTourHotspots extends Page
             'action_target' => $h->action_target,
             'sort_order' => $h->sort_order,
             'is_active' => (bool) $h->is_active,
+            'size' => (int) ($h->size ?? 3),
         ])->values()->toJson();
     }
 
@@ -143,6 +144,7 @@ class ManageTourHotspots extends Page
         bool $isActive,
         ?string $mediaType = null,
         ?string $mediaUrl = null,
+        int $size = 3,
     ): void {
         TourHotspot::create([
             'waypoint_id' => $waypointId,
@@ -157,6 +159,7 @@ class ManageTourHotspots extends Page
             'action_target' => $actionTarget,
             'sort_order' => $sortOrder,
             'is_active' => $isActive,
+            'size' => $size,
         ]);
 
         Notification::make()->title('Hotspot created!')->success()->send();
@@ -179,6 +182,7 @@ class ManageTourHotspots extends Page
         bool $isActive,
         ?string $mediaType = null,
         ?string $mediaUrl = null,
+        int $size = 3,
     ): void {
         $hotspot = TourHotspot::findOrFail($hotspotId);
         $hotspot->update([
@@ -193,6 +197,7 @@ class ManageTourHotspots extends Page
             'action_target' => $actionTarget,
             'sort_order' => $sortOrder,
             'is_active' => $isActive,
+            'size' => $size,
         ]);
 
         Notification::make()->title('Hotspot updated!')->success()->send();
@@ -275,6 +280,7 @@ class ManageTourHotspots extends Page
             'action_target' => $h->action_target,
             'sort_order' => $h->sort_order,
             'is_active' => (bool) $h->is_active,
+            'size' => (int) ($h->size ?? 3),
         ])->values()->toJson();
     }
 }

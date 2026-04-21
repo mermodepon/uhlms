@@ -109,6 +109,8 @@ class GuestController extends Controller
             'number_of_occupants' => 'required|integer|min:1|max:20',
             'purpose' => 'nullable|string|max:100',
             'special_requests' => 'nullable|string|max:2000',
+            'discount_declared' => 'nullable|boolean',
+            'discount_declared_type' => 'required_if:discount_declared,1|nullable|in:senior_citizen,pwd,student',
         ]);
 
         // Combine name fields for guest_name (backward compatibility)
@@ -119,6 +121,7 @@ class GuestController extends Controller
         );
 
         $validated['status'] = 'pending';
+        $validated['discount_declared'] = $request->has('discount_declared');
 
         $reservation = Reservation::create($validated);
 
@@ -145,7 +148,12 @@ class GuestController extends Controller
 
         if ($reference) {
             $reservation = Reservation::where('reference_number', $reference)
-                ->with(['preferredRoomType', 'roomAssignments.room', 'roomAssignments.room.roomType'])
+                ->with([
+                    'preferredRoomType',
+                    'roomAssignments.room',
+                    'roomAssignments.room.roomType',
+                    'payments' => fn($q) => $q->where('gateway', 'paymongo')->latest(),
+                ])
                 ->first();
 
             if ($reservation) {
@@ -167,7 +175,12 @@ class GuestController extends Controller
                             'checked_out_at' => now(),
                         ]);
 
-                    $reservation->load(['preferredRoomType', 'roomAssignments.room', 'roomAssignments.room.roomType']);
+                    $reservation->load([
+                        'preferredRoomType',
+                        'roomAssignments.room',
+                        'roomAssignments.room.roomType',
+                        'payments' => fn($q) => $q->where('gateway', 'paymongo')->latest(),
+                    ]);
                 }
             }
         }

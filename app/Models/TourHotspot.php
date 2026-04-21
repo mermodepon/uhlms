@@ -23,6 +23,7 @@ class TourHotspot extends Model
         'action_target',
         'sort_order',
         'is_active',
+        'size',
     ];
 
     protected $casts = [
@@ -30,6 +31,7 @@ class TourHotspot extends Model
         'yaw' => 'decimal:4',
         'sort_order' => 'integer',
         'is_active' => 'boolean',
+        'size' => 'integer',
     ];
 
     public function waypoint(): BelongsTo
