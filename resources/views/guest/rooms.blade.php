@@ -33,7 +33,7 @@
                     <div class="md:flex">
                         @if($roomType->images && count($roomType->images))
                             <div class="md:w-1/3 h-48 md:h-auto bg-gray-200">
-                                <img src="{{ asset('storage/' . collect($roomType->images)->first()) }}" alt="{{ $roomType->name }}" class="w-full h-full object-cover">
+                                <img src="{{ \App\Support\MediaUrl::url(collect($roomType->images)->first()) }}" alt="{{ $roomType->name }}" class="w-full h-full object-cover">
                             </div>
                         @else
                             <div class="md:w-1/3 h-48 md:h-auto bg-gradient-to-br from-[#00491E] to-[#02681E] flex items-center justify-center">

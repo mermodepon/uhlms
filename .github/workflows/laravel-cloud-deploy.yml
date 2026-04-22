@@ -1,0 +1,17 @@
+name: Laravel Cloud Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Laravel Cloud deploy hook
+        if: ${{ secrets.LARAVEL_CLOUD_DEPLOY_HOOK_URL != '' }}
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.LARAVEL_CLOUD_DEPLOY_HOOK_URL }}
+        run: curl --fail --silent --show-error --request POST "$DEPLOY_HOOK_URL"

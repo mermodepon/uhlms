@@ -46,7 +46,7 @@
                         <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 shadow-2xl">
                             <a href="{{ route('guest.tour.viewer') }}" class="block rounded-xl overflow-hidden bg-black group cursor-pointer" style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;position:relative;">
                                 @if($previewWaypoint && $previewWaypoint->panorama_image)
-                                    <img src="{{ asset('storage/' . $previewWaypoint->panorama_image) }}" alt="Virtual Tour Preview" class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110">
+                                    <img src="{{ \App\Support\MediaUrl::url($previewWaypoint->panorama_image) }}" alt="Virtual Tour Preview" class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110">
                                 @endif
                                 <div class="absolute inset-0 bg-gradient-to-br from-[#02681E]/70 to-black/80 flex flex-col items-center justify-center transition-opacity duration-300 group-hover:opacity-90">
                                     <svg class="w-16 h-16 text-[#FFC600] mb-3 transition-transform duration-300 group-hover:scale-110" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
@@ -92,7 +92,7 @@
                 @foreach($amenities as $amenity)
                     <div class="bg-white rounded-lg shadow p-4 flex flex-col items-center w-40">
                         @if(!empty($amenity['image']))
-                            <img src="{{ asset('storage/' . $amenity['image']) }}" alt="{{ $amenity['name'] }}" class="h-16 w-16 object-cover rounded mb-2" />
+                            <img src="{{ \App\Support\MediaUrl::url($amenity['image']) }}" alt="{{ $amenity['name'] }}" class="h-16 w-16 object-cover rounded mb-2" />
                         @endif
                         <span class="font-semibold text-[#00491E]">{{ $amenity['name'] }}</span>
                     </div>
@@ -114,7 +114,7 @@
                 <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition group">
                     @if($roomType->images && count($roomType->images))
                         <div class="h-48 bg-gray-200 overflow-hidden">
-                            <img src="{{ asset('storage/' . collect($roomType->images)->first()) }}" alt="{{ $roomType->name }}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+                            <img src="{{ \App\Support\MediaUrl::url(collect($roomType->images)->first()) }}" alt="{{ $roomType->name }}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
                         </div>
                     @else
                         <div class="h-48 bg-gradient-to-br from-[#00491E] to-[#02681E] flex items-center justify-center">

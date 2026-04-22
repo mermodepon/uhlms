@@ -5,6 +5,7 @@ namespace App\Filament\Resources\VirtualTourResource\Pages;
 use App\Filament\Resources\VirtualTourResource;
 use App\Models\TourHotspot;
 use App\Models\TourWaypoint;
+use App\Support\MediaUrl;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -54,10 +55,10 @@ class ManageTourHotspots extends Page
             'hotspotImageFile' => ['required', 'file', 'mimes:jpeg,jpg,png,webp,gif', 'max:2048'],
         ]);
 
-        $path = $this->hotspotImageFile->store('virtual-tour/hotspot-media', 'public');
+        $path = $this->hotspotImageFile->store('virtual-tour/hotspot-media', MediaUrl::disk());
         $this->hotspotImageFile = null;
 
-        return asset('storage/' . $path);
+        return MediaUrl::url($path) ?? '';
     }
 
     /**

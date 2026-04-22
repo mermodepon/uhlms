@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\MediaUrl;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -117,7 +118,7 @@ class TourWaypoint extends Model
 
     public function getPanoramaUrl(): string
     {
-        return asset('storage/'.$this->panorama_image);
+        return MediaUrl::url($this->panorama_image) ?? '';
     }
 
     public function getThumbnailUrl(): ?string
@@ -125,7 +126,7 @@ class TourWaypoint extends Model
         if (!$this->thumbnail_image) {
             return null;
         }
-        return asset('storage/'.$this->thumbnail_image);
+        return MediaUrl::url($this->thumbnail_image);
     }
 
     public function getTypeLabel(): string

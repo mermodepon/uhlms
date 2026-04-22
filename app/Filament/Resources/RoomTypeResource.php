@@ -88,6 +88,7 @@ class RoomTypeResource extends Resource
                         Forms\Components\FileUpload::make('images')
                             ->image()
                             ->multiple()
+                            ->disk(config('media.disk'))
                             ->maxFiles(5)
                             ->reorderable()
                             ->directory('room-types')
@@ -102,6 +103,7 @@ class RoomTypeResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\ImageColumn::make('images')
+                    ->disk(config('media.disk'))
                     ->circular()
                     ->stacked()
                     ->limit(3)

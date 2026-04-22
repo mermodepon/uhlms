@@ -55,7 +55,7 @@
                         <div class="rounded-xl overflow-hidden shadow-md">
                             @foreach($roomType->images as $index => $image)
                                 <img x-show="activeImage === {{ $index }}"
-                                     src="{{ asset('storage/' . $image) }}"
+                                     src="{{ \App\Support\MediaUrl::url($image) }}"
                                      alt="{{ $roomType->name }} - Image {{ $index + 1 }}"
                                      class="w-full h-80 object-cover">
                             @endforeach
@@ -67,7 +67,7 @@
                                     <button @click="activeImage = {{ $index }}"
                                             :class="activeImage === {{ $index }} ? 'ring-2 ring-[#FFC600] opacity-100' : 'opacity-60 hover:opacity-90'"
                                             class="flex-shrink-0 rounded-lg overflow-hidden transition w-20 h-16">
-                                        <img src="{{ asset('storage/' . $image) }}"
+                                        <img src="{{ \App\Support\MediaUrl::url($image) }}"
                                              alt="Thumbnail {{ $index + 1 }}"
                                              class="w-full h-full object-cover">
                                     </button>

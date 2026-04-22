@@ -7,6 +7,7 @@ use App\Models\RoomHold;
 use App\Models\TourWaypoint;
 use App\Models\RoomType;
 use App\Services\RoomHoldService;
+use App\Support\MediaUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -393,7 +394,7 @@ class TourController extends Controller
             'is_public' => $roomType->isPublic(),
             'images' => $roomType->images ?? [],
             'primary_image' => is_array($roomType->images) && count($roomType->images) > 0
-                ? asset('storage/'.$roomType->images[0])
+                ? MediaUrl::url($roomType->images[0])
                 : null,
             'amenities' => $roomType->amenities->map(fn ($amenity) => [
                 'id' => $amenity->id,
