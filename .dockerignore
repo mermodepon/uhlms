@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+vendor
+storage/logs
+storage/framework/cache
+storage/framework/sessions
+storage/framework/testing
+storage/framework/views
+storage/app/backups
+.env
+.env.backup
+.env.cloud.example
+.phpunit.result.cache
+npm-debug.log
+yarn-error.log
+docker-compose.yml
