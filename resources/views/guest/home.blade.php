@@ -44,13 +44,17 @@
                 <div class="flex items-center justify-center">
                     <div class="relative w-full max-w-md">
                         <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 shadow-2xl">
-                            <div class="rounded-xl overflow-hidden bg-black" style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;position:relative;">
-                                <div class="absolute inset-0 bg-gradient-to-br from-[#02681E]/70 to-black/80 flex flex-col items-center justify-center">
-                                    <svg class="w-16 h-16 text-[#FFC600] mb-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                            <a href="{{ route('guest.tour.viewer') }}" class="block rounded-xl overflow-hidden bg-black group cursor-pointer" style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;position:relative;">
+                                @if($previewWaypoint && $previewWaypoint->panorama_image)
+                                    <img src="{{ asset('storage/' . $previewWaypoint->panorama_image) }}" alt="Virtual Tour Preview" class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110">
+                                @endif
+                                <div class="absolute inset-0 bg-gradient-to-br from-[#02681E]/70 to-black/80 flex flex-col items-center justify-center transition-opacity duration-300 group-hover:opacity-90">
+                                    <svg class="w-16 h-16 text-[#FFC600] mb-3 transition-transform duration-300 group-hover:scale-110" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                                     <p class="text-white font-semibold text-lg">360° Interactive Tour</p>
                                     <p class="text-gray-300 text-sm mt-1">Navigate. Explore. Reserve.</p>
+                                    <div class="mt-3 px-4 py-2 bg-[#FFC600] text-[#00491E] rounded-full font-semibold text-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300">Click to Explore →</div>
                                 </div>
-                            </div>
+                            </a>
                             <div class="mt-4 flex items-center justify-between text-sm text-white/70">
                                 <span class="flex items-center gap-1.5">
                                     <span class="w-2 h-2 bg-[#FFC600] rounded-full inline-block"></span>
@@ -155,6 +159,105 @@
                     <p>No room types available at the moment. Please check back later.</p>
                 </div>
             @endforelse
+        </div>
+    </section>
+
+    <section class="py-16 bg-gradient-to-b from-white to-[#00491E]/5 border-y border-[#00491E]/10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-10">
+                <span class="inline-flex items-center rounded-full bg-[#FFC600]/20 px-4 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[#00491E]">
+                    Stay Guide
+                </span>
+                <h2 class="text-3xl font-bold text-[#00491E] mt-4 mb-3">Stay Inclusions &amp; Optional Add-ons</h2>
+                <p class="text-gray-600 max-w-3xl mx-auto">
+                    A quick overview of what guests commonly enjoy during their stay and the extra services that may be arranged when needed.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white rounded-2xl shadow-md border border-[#00491E]/10 p-8">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-12 h-12 rounded-2xl bg-[#00491E] flex items-center justify-center">
+                            <svg class="w-6 h-6 text-[#FFC600]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-bold text-[#00491E]">Included in Most Stays</h3>
+                            <p class="text-sm text-gray-500">Core essentials guests can usually expect.</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        @foreach($stayInclusions as $item)
+                            <div class="rounded-xl bg-[#00491E]/5 border border-[#00491E]/10 px-4 py-3 text-sm text-[#00491E] font-medium flex items-start gap-3">
+                                <span class="mt-0.5 text-[#02681E]">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                </span>
+                                <span>
+                                    {{ $item->name }}
+                                    @if($item->description)
+                                        <span class="block mt-1 text-xs font-normal text-gray-500">{{ $item->description }}</span>
+                                    @endif
+                                </span>
+                            </div>
+                        @endforeach
+                        @if($stayInclusions->isEmpty())
+                            <div class="sm:col-span-2 rounded-xl bg-[#00491E]/5 border border-dashed border-[#00491E]/20 px-4 py-4 text-sm text-gray-500">
+                                Included stay highlights will appear here as active room amenities are configured.
+                            </div>
+                        @endif
+                    </div>
+                </div>
+
+                <div class="bg-[#00491E] rounded-2xl shadow-md border border-[#02681E] p-8 text-white">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-12 h-12 rounded-2xl bg-[#FFC600] text-[#00491E] flex items-center justify-center">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6v6l4 2m5-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-bold">Available Upon Request</h3>
+                            <p class="text-sm text-white/70">Helpful extras that may be arranged in advance.</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        @foreach($optionalAddOns as $item)
+                            <div class="rounded-xl bg-white/10 border border-white/10 px-4 py-3 text-sm font-medium flex items-start gap-3">
+                                <span class="mt-0.5 text-[#FFC600]">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.5v15m7.5-7.5h-15"/>
+                                    </svg>
+                                </span>
+                                <span class="flex-1">
+                                    <span class="block">{{ $item->name }}</span>
+                                    @if($item->description)
+                                        <span class="block mt-1 text-xs font-normal text-white/70">{{ $item->description }}</span>
+                                    @endif
+                                </span>
+                                <span class="shrink-0 rounded-full bg-[#FFC600] px-2.5 py-1 text-xs font-bold text-[#00491E]">
+                                    {{ $item->formatted_price }}
+                                </span>
+                            </div>
+                        @endforeach
+                        @if($optionalAddOns->isEmpty())
+                            <div class="rounded-xl bg-white/10 border border-dashed border-white/20 px-4 py-4 text-sm text-white/70">
+                                Optional add-ons will appear here as active services are configured.
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 text-center">
+                <p class="inline-flex items-center justify-center rounded-full bg-white border border-[#00491E]/10 px-5 py-2 text-sm text-gray-600 shadow-sm">
+                    Availability may vary by room type, season, and reservation arrangement. Room detail pages remain the best source for exact inclusions.
+                </p>
+            </div>
         </div>
     </section>
 

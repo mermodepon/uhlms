@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Amenity;
 use App\Models\Reservation;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
+use App\Models\Service;
+use App\Models\TourWaypoint;
 use Illuminate\Http\Request;
 
 class GuestController extends Controller
@@ -19,7 +22,29 @@ class GuestController extends Controller
             ->with('amenities')
             ->get();
 
-        return view('guest.home', compact('roomTypes'));
+        $stayInclusions = Amenity::query()
+            ->where('is_active', true)
+            ->whereHas('roomTypes', fn ($query) => $query->where('room_types.is_active', true))
+            ->withCount([
+                'roomTypes as active_room_types_count' => fn ($query) => $query->where('room_types.is_active', true),
+            ])
+            ->orderByDesc('active_room_types_count')
+            ->orderBy('name')
+            ->limit(4)
+            ->get();
+
+        $optionalAddOns = Service::query()
+            ->active()
+            ->ordered()
+            ->limit(4)
+            ->get();
+
+        // Get first active waypoint for tour preview
+        $previewWaypoint = TourWaypoint::where('is_active', true)
+            ->orderBy('position_order')
+            ->first();
+
+        return view('guest.home', compact('roomTypes', 'previewWaypoint', 'stayInclusions', 'optionalAddOns'));
     }
 
     /**
@@ -43,24 +68,36 @@ class GuestController extends Controller
         $roomType->load('amenities');
         $roomType->loadCount(['rooms', 'availableRooms']);
 
-        // Load rooms with slot availability
-        $rooms = $roomType->rooms()
-            ->withCount(['roomAssignments as checked_in_count' => fn ($q) => $q->where('status', 'checked_in')])
-            ->orderBy('room_number')
-            ->get()
-            ->map(function ($room) {
-                $totalBeds = $room->capacity ?? 0;
-                $availableBeds = max(0, $totalBeds - ($room->checked_in_count ?? 0));
+        $tourWaypointSlug = TourWaypoint::query()
+            ->active()
+            ->where('linked_room_type_id', $roomType->id)
+            ->orderByRaw("
+                CASE
+                    WHEN type = 'room-interior' THEN 0
+                    WHEN type = 'room-door' THEN 1
+                    ELSE 2
+                END
+            ")
+            ->ordered()
+            ->value('slug');
 
-                return (object) [
-                    'room' => $room,
-                    'total_beds' => $totalBeds,
-                    'available_beds' => $availableBeds,
-                    'occupancy_rate' => $totalBeds > 0 ? round((($totalBeds - $availableBeds) / $totalBeds) * 100) : 0,
-                ];
+        // Calculate aggregate availability only (no individual room details for security)
+        $isPrivate = $roomType->isPrivate();
+        
+        if ($isPrivate) {
+            // For private rooms, just use the count relationships
+            $totalCount = $roomType->rooms_count;
+            $availableCount = $roomType->available_rooms_count;
+        } else {
+            // For shared rooms, calculate total beds
+            $totalBeds = $roomType->rooms()->sum('capacity');
+            $availableBeds = $roomType->rooms()->get()->sum(function ($room) {
+                $checkedIn = $room->roomAssignments()->where('status', 'checked_in')->count();
+                return max(0, ($room->capacity ?? 0) - $checkedIn);
             });
+        }
 
-        return view('guest.room-detail', compact('roomType', 'rooms'));
+        return view('guest.room-detail', compact('roomType', 'tourWaypointSlug'));
     }
 
     /**

@@ -103,7 +103,8 @@ npm run dev
 
 3. **Room Information:**
    - When you reach a "Room Door" waypoint, a side panel automatically opens
-   - Shows: Room name, description, price, amenities, availability
+   - Shows: Room type name, description, price, amenities, aggregate availability
+   - Specific room numbers and occupancy details are hidden for security
    - Click "🏨 Request Reservation" to book from within the tour
 
 4. **Bookmarks:**

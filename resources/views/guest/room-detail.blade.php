@@ -13,10 +13,20 @@
             <h1 class="text-3xl font-bold mb-2">{{ $roomType->name }}</h1>
             @php
                 $isPrivate = $roomType->isPrivate();
-                $totalBeds = $rooms->sum('total_beds');
-                $availableBeds = $rooms->sum('available_beds');
                 $totalRooms = $roomType->rooms_count;
                 $availableRooms = $roomType->available_rooms_count;
+                
+                // Calculate aggregate bed availability for shared rooms
+                if (!$isPrivate) {
+                    $totalBeds = $roomType->rooms()->sum('capacity');
+                    $availableBeds = $roomType->rooms()->get()->sum(function ($room) {
+                        $checkedIn = $room->roomAssignments()->where('status', 'checked_in')->count();
+                        return max(0, ($room->capacity ?? 0) - $checkedIn);
+                    });
+                } else {
+                    $totalBeds = 0;
+                    $availableBeds = 0;
+                }
             @endphp
             <div class="flex items-center gap-4 text-gray-200">
                 <span>{{ $roomType->getFormattedPrice() }}</span>
@@ -125,55 +135,6 @@
                         <p class="text-xs text-gray-500 mt-2">{{ $availabilityPercent }}% {{ $isPrivate ? 'rooms' : 'beds' }} available</p>
                     </div>
 
-                    {{-- Room Breakdown --}}
-                    @if($rooms->count())
-                        <div class="mb-6 space-y-2 max-h-48 overflow-y-auto">
-                            <h3 class="text-sm font-semibold text-gray-700 mb-3">Rooms & Availability</h3>
-                            @foreach($rooms as $item)
-                                <div class="flex items-center justify-between p-3 rounded-lg border bg-gray-50 border-gray-200">
-                                    <div class="flex-1">
-                                        <p class="text-sm font-medium text-gray-900">{{ $item->room->room_number }}</p>
-                                        <div class="flex items-center gap-2 mt-1">
-                                            @if($isPrivate)
-                                                <span class="text-xs text-gray-500">
-                                                    Status:
-                                                    <span class="font-semibold {{ $item->room->status === 'available' ? 'text-[#02681E]' : 'text-red-600' }}">
-                                                        {{ ucfirst($item->room->status) }}
-                                                    </span>
-                                                </span>
-                                            @else
-                                                <span class="text-xs text-gray-500">
-                                                    <span class="text-[#02681E] font-semibold">{{ $item->available_beds }}</span>/{{ $item->total_beds }} beds
-                                                </span>
-                                            @endif
-                                        </div>
-                                        @if($isPrivate)
-                                            <p class="text-xs {{ $item->room->status === 'available' ? 'text-green-600' : 'text-red-600' }} mt-1">
-                                                {{ $item->room->status === 'available' ? 'Ready for booking' : 'Not available' }}
-                                            </p>
-                                        @elseif($item->available_beds == 0)
-                                            <p class="text-xs text-red-600 mt-1">Full</p>
-                                        @elseif($item->available_beds == $item->total_beds)
-                                            <p class="text-xs text-green-600 mt-1">All Open</p>
-                                        @endif
-                                    </div>
-                                    <div class="text-right ml-3">
-                                        <div class="w-12 h-12 rounded-lg flex items-center justify-center text-xs font-bold
-                                            {{ $isPrivate
-                                                ? ($item->room->status === 'available' ? 'bg-green-100 text-[#02681E]' : 'bg-red-100 text-red-600')
-                                                : ($item->available_beds > 0 ? 'bg-green-100 text-[#02681E]' : 'bg-red-100 text-red-600') }}">
-                                            @if($isPrivate)
-                                                {{ $item->room->status === 'available' ? 'OK' : 'X' }}
-                                            @else
-                                                {{ $item->available_beds }}
-                                            @endif
-                                        </div>
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
-                    @endif
-
                     <div class="space-y-3 text-sm text-gray-600 mb-6">
                         <div class="flex justify-between">
                             <span>Capacity per Room</span>
@@ -207,9 +168,11 @@
                         <svg class="w-6 h-6 text-[#FFC600]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                     </div>
                     <h3 class="font-bold text-lg mb-1">See It in 360°</h3>
-                    <p class="text-gray-200 text-sm mb-4">Explore the establishment in an interactive virtual tour before you book.</p>
-                    <a href="{{ route('guest.tour.viewer') }}" class="inline-block w-full bg-[#FFC600] text-[#00491E] font-bold py-2.5 px-4 rounded-lg hover:bg-yellow-400 transition text-sm">
-                        Take the Virtual Tour &rarr;
+                    <p class="text-gray-200 text-sm mb-4">
+                        {{ $tourWaypointSlug ? 'Jump straight into this room in the interactive virtual tour before you book.' : 'Explore the establishment in an interactive virtual tour before you book.' }}
+                    </p>
+                    <a href="{{ route('guest.tour.viewer', $tourWaypointSlug ? ['slug' => $tourWaypointSlug] : []) }}" class="inline-block w-full bg-[#FFC600] text-[#00491E] font-bold py-2.5 px-4 rounded-lg hover:bg-yellow-400 transition text-sm">
+                        {{ $tourWaypointSlug ? 'View This Room in 360° →' : 'Start Virtual Tour →' }}
                     </a>
                 </div>
             </div>

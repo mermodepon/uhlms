@@ -123,7 +123,7 @@ class VirtualTourResource extends Resource
                                     ->pluck('room_number', 'id')
                                     ->toArray();
                             })
-                            ->helperText('🔒 Link to a specific room (e.g., Room 101). Guests will see this exact room\'s status and can request to book it.'),
+                            ->helperText('🔒 Link to a specific room for internal tracking. Guests see the room type name and general availability only (room numbers are hidden for security).'),
                     ]),
 
                 Forms\Components\Section::make('Description & Narration')

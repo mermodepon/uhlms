@@ -272,7 +272,7 @@ class PanoramaViewer {
         // Media
         let mediaHtml = '';
         if (sprite.mediaYouTubeId) {
-            const src = `https://www.youtube-nocookie.com/embed/${sprite.mediaYouTubeId}?rel=0`;
+            const src = this._buildYouTubeEmbedUrl(sprite.mediaYouTubeId);
             mediaHtml = `<div style="position:relative;padding-top:56.25%;background:#000;overflow:hidden;flex-shrink:0">`
                 + `<iframe src="${src}" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media;fullscreen" allowfullscreen loading="lazy"></iframe>`
                 + `</div>`;
@@ -298,7 +298,7 @@ class PanoramaViewer {
             ? `<button onclick="${closeAction};event.stopPropagation()" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);border:none;color:white;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:14px;line-height:26px;text-align:center">✕</button>`
             : `<div style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);color:white;width:26px;height:26px;border-radius:50%;font-size:14px;line-height:26px;text-align:center">✕</div>`;
 
-        return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:360px;font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;max-height:90vh;pointer-events:auto">`
+        return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:380px;font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;max-height:90vh;pointer-events:auto">`
             + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 16px;position:relative;flex-shrink:0">`
             + closeBtn
             + `<h2 style="font-size:16px;font-weight:700;margin:0 32px 0 0">${title}</h2>`
@@ -311,6 +311,22 @@ class PanoramaViewer {
             + (amenitiesTags ? `<div style="padding:0 14px 14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:4px">Amenities</div>${amenitiesTags}</div>` : '')
             + (buttons ? `<div style="padding:0 14px 14px">${buttons}</div>` : '')
             + `</div>`;
+    }
+
+    _buildYouTubeEmbedUrl(videoId) {
+        if (!videoId) return '';
+
+        const params = new URLSearchParams({
+            rel: '0',
+            playsinline: '1',
+            modestbranding: '1',
+        });
+
+        if (window.location?.origin) {
+            params.set('origin', window.location.origin);
+        }
+
+        return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
     }
 
     updateMarker(updates) {

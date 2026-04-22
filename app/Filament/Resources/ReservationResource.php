@@ -2182,17 +2182,24 @@ class ReservationResource extends Resource
                         ->modalHeading('Finalize Check-in After Payment')
                         ->visible(fn (Reservation $record) => $record->status === 'pending_payment')
                         ->form([
-                            Forms\Components\Placeholder::make('fully_paid_notice')
+                            Forms\Components\Placeholder::make('payment_status_notice')
                                 ->label('')
                                 ->content(function (Reservation $record) {
-                                    $fullPayment = $record->payments()
+                                    // Calculate remaining balance after prior payments
+                                    $payable = self::computeHoldPayableAmount($record);
+                                    $priorPayments = (float) $record->payments()
+                                        ->where('status', 'posted')
+                                        ->sum('amount');
+                                    
+                                    // Check if there was an online payment
+                                    $onlinePayment = $record->payments()
                                         ->where('gateway', 'paymongo')
-                                        ->where('is_deposit', false)
                                         ->where('gateway_status', 'paid')
                                         ->where('status', 'posted')
                                         ->first();
 
-                                    if ($fullPayment) {
+                                    if ($onlinePayment && $payable <= 0.01) {
+                                        // Fully paid with no additional balance
                                         return new HtmlString(
                                             '<div class="bg-green-50 border-2 border-green-500 rounded-lg p-4">' .
                                             '<div class="flex items-center">' .
@@ -2200,8 +2207,23 @@ class ReservationResource extends Resource
                                             '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>' .
                                             '</svg>' .
                                             '<div>' .
-                                            '<p class="font-bold text-green-900">✓ Fully Paid Online</p>' .
-                                            '<p class="text-sm text-green-800">Guest paid ₱' . number_format($fullPayment->amount, 2) . ' online. No additional payment needed.</p>' .
+                                            '<p class="font-bold text-green-900">Fully Paid Online</p>' .
+                                            '<p class="text-sm text-green-800">Guest paid ₱' . number_format($onlinePayment->amount, 2) . ' online. No additional payment needed.</p>' .
+                                            '</div>' .
+                                            '</div>' .
+                                            '</div>'
+                                        );
+                                    } elseif ($onlinePayment && $payable > 0.01) {
+                                        // Had online payment but there's now a balance due (add-ons added)
+                                        return new HtmlString(
+                                            '<div class="bg-amber-50 border-2 border-amber-500 rounded-lg p-4">' .
+                                            '<div class="flex items-center">' .
+                                            '<svg class="w-6 h-6 text-amber-600 mr-2" fill="currentColor" viewBox="0 0 20 20">' .
+                                            '<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>' .
+                                            '</svg>' .
+                                            '<div>' .
+                                            '<p class="font-bold text-amber-900">Balance Due After Online Payment</p>' .
+                                            '<p class="text-sm text-amber-800">Guest paid ₱' . number_format($priorPayments, 2) . ' online, but add-ons/charges were added. Balance of ₱' . number_format($payable, 2) . ' must be collected.</p>' .
                                             '</div>' .
                                             '</div>' .
                                             '</div>'
@@ -2210,7 +2232,7 @@ class ReservationResource extends Resource
 
                                     return null;
                                 })
-                                ->visible(fn (Reservation $record) => $record->isFullyPaidOnline())
+                                ->visible(fn (Reservation $record) => $record->payments()->where('gateway', 'paymongo')->where('status', 'posted')->exists())
                                 ->columnSpanFull(),
                             Forms\Components\Placeholder::make('hold_expiry_notice')
                                 ->label('Hold Status')
@@ -2253,8 +2275,8 @@ class ReservationResource extends Resource
                                     'others' => 'Others',
                                 ])
                                 ->live()
-                                ->disabled(fn (Reservation $record) => $record->isFullyPaidOnline())
-                                ->required(fn (Reservation $record) => !$record->isFullyPaidOnline()),
+                                ->disabled(fn (Reservation $record) => self::computeHoldPayableAmount($record) <= 0.01)
+                                ->required(fn (Reservation $record) => self::computeHoldPayableAmount($record) > 0.01),
                             Forms\Components\TextInput::make('payment_mode_other')
                                 ->label('Specify Payment Mode')
                                 ->visible(fn ($get) => $get('payment_mode') === 'others')
@@ -2264,29 +2286,26 @@ class ReservationResource extends Resource
                                 ->numeric()
                                 ->prefix('₱')
                                 ->default(function (Reservation $record) {
-                                    // If fully paid online, no additional payment needed
-                                    if ($record->isFullyPaidOnline()) {
-                                        return 0;
-                                    }
+                                    // Return computed payable amount (accounts for prior payments)
                                     return self::computeHoldPayableAmount($record);
                                 })
-                                ->disabled(fn (Reservation $record) => $record->isFullyPaidOnline())
-                                ->helperText(fn (Reservation $record) => $record->isFullyPaidOnline()
+                                ->disabled(fn (Reservation $record) => self::computeHoldPayableAmount($record) <= 0.01)
+                                ->helperText(fn (Reservation $record) => self::computeHoldPayableAmount($record) <= 0.01
                                     ? 'Already fully paid online - no additional payment required'
                                     : null
                                 )
-                                ->required(fn (Reservation $record) => !$record->isFullyPaidOnline()),
+                                ->required(fn (Reservation $record) => self::computeHoldPayableAmount($record) > 0.01),
                             Forms\Components\TextInput::make('payment_or_number')
                                 ->label('Official Receipt Number')
-                                ->required(fn (Reservation $record) => !$record->isFullyPaidOnline())
-                                ->disabled(fn (Reservation $record) => $record->isFullyPaidOnline())
+                                ->required(fn (Reservation $record) => self::computeHoldPayableAmount($record) > 0.01)
+                                ->disabled(fn (Reservation $record) => self::computeHoldPayableAmount($record) <= 0.01)
                                 ->maxLength(100),
                             Forms\Components\DatePicker::make('or_date')
                                 ->label('OR Date')
                                 ->displayFormat('M d, Y')
                                 ->default(now()->toDateString())
-                                ->required(fn (Reservation $record) => !$record->isFullyPaidOnline())
-                                ->disabled(fn (Reservation $record) => $record->isFullyPaidOnline())
+                                ->required(fn (Reservation $record) => self::computeHoldPayableAmount($record) > 0.01)
+                                ->disabled(fn (Reservation $record) => self::computeHoldPayableAmount($record) <= 0.01)
                                 ->helperText('Date on the official receipt'),
                             Forms\Components\Textarea::make('remarks')
                                 ->label('Final Check-in Remarks')

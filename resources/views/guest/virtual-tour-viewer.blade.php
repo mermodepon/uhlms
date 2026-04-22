@@ -59,25 +59,9 @@
         100% { transform: rotate(360deg); }
     }
 
-    /* Room Info Overlay */
+    /* Room Info Overlay - HIDDEN (using in-scene card only) */
     #room-info-overlay {
-        position: absolute;
-        right: 0;
-        top: 0;
-        height: 100%;
-        width: 400px;
-        max-width: 90%;
-        background: white;
-        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
-        z-index: 9999;
-        transform: translateX(100%);
-        transition: opacity 0.4s ease-in-out;
-        transition: transform 0.3s ease-in-out;
-        overflow-y: auto;
-    }
-
-    #room-info-overlay.slide-in {
-        transform: translateX(0);
+        display: none !important;
     }
 
     .overlay-header {
@@ -523,28 +507,9 @@
         }
     }
 
-    /* Room Info Button (inside top-right-controls) */
+    /* Room Info Button - HIDDEN (using in-scene card only) */
     #room-info-btn {
         display: none !important;
-        background: linear-gradient(135deg, #00491E 0%, #02681E 100%) !important;
-        transition: opacity 0.4s ease-in-out;
-    }
-    #room-info-btn:hover {
-        background: linear-gradient(135deg, #02681E 0%, #089030 100%) !important;
-    }
-    #room-info-btn.visible {
-        display: flex !important;
-    }
-    #room-info-btn.ui-hidden {
-        opacity: 0;
-        pointer-events: none;
-    }
-    #room-info-btn.visible.ui-hidden {
-        display: flex !important;
-    }
-    #room-info-btn.ui-hidden {
-        opacity: 0;
-        pointer-events: none;
     }
 
     /* Panorama Viewer Marker Styling — injected by panorama-viewer.js for consistency */
@@ -898,82 +863,7 @@
     </div>
 
     <!-- Room Info Overlay -->
-    <div id="room-info-overlay" class="hidden">
-        <div class="overlay-header">
-            <button onclick="tourEngine.hideRoomInfoOverlay()" class="text-white hover:text-gray-200" style="position:absolute;top:1rem;right:1rem;">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-            </button>
-            <h2 class="text-2xl font-bold room-name pr-8"></h2>
-            <span class="room-type-badge inline-block mt-2 px-2 py-1 bg-white bg-opacity-20 rounded text-sm"></span>
-            <div class="availability-badge mt-3"></div>
-        </div>
-
-        <div class="overlay-content">
-            <p class="room-description text-gray-600 mb-4"></p>
-
-            <div class="mb-6">
-                <h3 class="font-semibold text-gray-900 mb-2">Price</h3>
-                <p class="room-price text-2xl font-bold text-cmu-yellow"></p>
-            </div>
-
-            <div class="mb-6">
-                <h3 class="font-semibold text-gray-900 mb-2">Amenities</h3>
-                <div class="room-amenities flex flex-wrap gap-2"></div>
-            </div>
-
-            @if(!request()->has('preview'))
-            <div class="mb-6">
-                <h3 class="font-semibold text-gray-900 mb-3">📅 Check Availability</h3>
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                    <div>
-                        <label class="text-xs text-gray-500 block mb-1">Check-in</label>
-                        <input type="date" id="overlay-check-in"
-                               class="w-full text-sm border border-gray-300 rounded-lg px-2 py-1.5"
-                               onchange="tourEngine._setCheckIn(this.value)">
-                    </div>
-                    <div>
-                        <label class="text-xs text-gray-500 block mb-1">Check-out</label>
-                        <input type="date" id="overlay-check-out"
-                               class="w-full text-sm border border-gray-300 rounded-lg px-2 py-1.5"
-                               onchange="tourEngine._setCheckOut(this.value)">
-                    </div>
-                </div>
-                <div class="flex gap-2 items-end mb-2">
-                    <div class="flex-1">
-                        <label class="text-xs text-gray-500 block mb-1">Guests</label>
-                        <input type="number" id="overlay-guests" value="1" min="1" max="20"
-                               class="w-full text-sm border border-gray-300 rounded-lg px-2 py-1.5"
-                               onchange="tourEngine._setGuests(this.value)">
-                    </div>
-                    <button onclick="tourEngine._checkDateAvailability(tourEngine.currentRoomType?.id)"
-                            class="flex-1 bg-blue-700 text-white font-semibold text-sm py-1.5 px-3 rounded-lg hover:bg-blue-800 transition-colors">
-                        🔍 Check
-                    </button>
-                </div>
-                <div id="overlay-price-estimate" class="hidden"></div>
-                <div id="overlay-avail-result" class="hidden"></div>
-            </div>
-
-            <div class="space-y-3">
-                <button id="overlay-request-btn" onclick="tourEngine.openReservationModal()" 
-                        class="w-full bg-cmu-yellow text-cmu-green font-bold py-3 px-4 rounded-lg hover:bg-yellow-500 transition-colors">
-                    🏨 Request Reservation
-                </button>
-
-                <button onclick="window.location.href='/reserve'" 
-                        class="w-full bg-cmu-green text-white font-bold py-3 px-4 rounded-lg hover:bg-green-800 transition-colors">
-                    📝 Full Reservation Form
-                </button>
-
-                <p id="overlay-room-disclaimer" class="hidden text-center text-xs text-gray-400 mt-1 leading-snug">
-                    Room assignment is finalized by staff during reservation review.
-                </p>
-            </div>
-            @endif
-        </div>
-    </div>
+    {{-- Room Info Overlay - REMOVED (using in-scene card only) --}}
 
     <!-- Reservation Modal -->
     @if(!request()->has('preview'))
@@ -981,7 +871,7 @@
         <div class="modal-content relative">
             <div class="modal-header">
                 <h2 class="text-2xl font-bold">Request Reservation</h2>
-                <p class="text-sm opacity-90 mt-1">Room: <span id="modal-room-name"></span></p>
+                <p class="text-sm opacity-90 mt-1"><span id="modal-room-name">Selected room type</span></p>
                 <button onclick="tourEngine.closeReservationModal()" class="btn-close-modal">
                     ✕
                 </button>
@@ -1266,7 +1156,12 @@
                 console.log('Reached room door:', waypoint.name);
             },
             onReservationOpened: function(roomType) {
-                console.log('Opened reservation for:', roomType.name);
+                const roomTypeName = roomType?.name || tourEngine?.currentRoom?.room_type?.name || tourEngine?.currentRoomType?.name || 'Selected room type';
+                const modalRoomName = document.getElementById('modal-room-name');
+                if (modalRoomName) {
+                    modalRoomName.textContent = roomTypeName;
+                }
+                console.log('Opened reservation for:', roomTypeName);
             }
         });
 

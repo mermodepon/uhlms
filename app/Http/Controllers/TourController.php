@@ -194,7 +194,8 @@ class TourController extends Controller
     }
 
     /**
-     * Get specific room details with real-time availability
+     * Get room availability status (aggregate data only for security)
+     * Returns availability and room type info, but hides room numbers, occupancy, and floor details
      */
     public function roomAvailability(int $id, Request $request): JsonResponse
     {
@@ -213,17 +214,13 @@ class TourController extends Controller
 
             // Determine availability
             $isAvailable = true;
-            $unavailableReason = null;
 
             if ($room->status === 'maintenance' || $room->status === 'inactive') {
                 $isAvailable = false;
-                $unavailableReason = 'Room is currently under maintenance';
             } elseif ($room->status === 'occupied' && $room->roomType?->isPrivate()) {
                 $isAvailable = false;
-                $unavailableReason = 'Room is currently occupied';
             } elseif ($room->isFull()) {
                 $isAvailable = false;
-                $unavailableReason = 'Room is at full capacity';
             } elseif ($checkIn && $checkOut) {
                 // Check for date-specific conflicts with holds or assignments
                 try {
@@ -234,18 +231,15 @@ class TourController extends Controller
                     
                     if ($hasConflict) {
                         $isAvailable = false;
-                        $unavailableReason = 'Room is reserved for the selected dates';
                     }
                 } catch (\Exception $e) {
                     // If date parsing fails, do real-time check only
                 }
             }
 
-            $currentOccupancy = $room->roomAssignments()->where('status', 'checked_in')->count();
             $isPrivate = $room->roomType?->isPrivate() ?? false;
 
-            // Get other available rooms of the same type (excluding this room)
-            $otherAvailableRooms = [];
+            // Get aggregate count of other available rooms (no specific details)
             $otherAvailableCount = 0;
             
             if ($room->roomType) {
@@ -261,44 +255,25 @@ class TourController extends Controller
                     }
                 }
                 
-                // Get available rooms for the same type
+                // Get available rooms count only (excluding this room)
                 if ($checkInDate && $checkOutDate) {
-                    // availableRoomsForDates() returns a Collection, use reject() to filter
-                    $availableRooms = $room->roomType->availableRoomsForDates($checkInDate, $checkOutDate)
-                        ->reject(fn($r) => $r->id === $room->id); // Exclude current room
+                    $otherAvailableCount = $room->roomType->availableRoomsForDates($checkInDate, $checkOutDate)
+                        ->reject(fn($r) => $r->id === $room->id)
+                        ->count();
                 } else {
-                    // availableRooms() is a relationship, use where() on query builder
-                    $availableRooms = $room->roomType->availableRooms()
-                        ->with('floor') // Eager load floor to prevent lazy loading error
-                        ->where('id', '!=', $room->id) // Exclude current room
-                        ->get();
+                    $otherAvailableCount = $room->roomType->availableRooms()
+                        ->where('id', '!=', $room->id)
+                        ->count();
                 }
-                
-                $otherAvailableCount = $availableRooms->count();
-                $otherAvailableRooms = $availableRooms->map(function ($r) {
-                    return [
-                        'id' => $r->id,
-                        'room_number' => $r->room_number,
-                        'floor' => $r->floor?->name,
-                    ];
-                })->toArray();
             }
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'id' => $room->id,
-                    'room_number' => $room->room_number,
-                    'status' => $room->status,
                     'is_available' => $isAvailable,
-                    'unavailable_reason' => $unavailableReason,
-                    'capacity' => $room->capacity,
-                    'current_occupancy' => $currentOccupancy,
-                    'available_slots' => max(0, $room->capacity - $currentOccupancy),
-                    'floor' => $room->floor?->name,
                     'room_type' => $this->formatRoomTypeData($room->roomType),
                     'is_private_room' => $isPrivate,
-                    'other_available_rooms' => $otherAvailableRooms,
                     'other_available_count' => $otherAvailableCount,
                 ],
             ]);

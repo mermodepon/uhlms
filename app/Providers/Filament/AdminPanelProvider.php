@@ -98,6 +98,8 @@ class AdminPanelProvider extends PanelProvider
                     ->icon('heroicon-o-calendar-days'),
                 NavigationGroup::make('Room Management')
                     ->icon('heroicon-o-home-modern'),
+                NavigationGroup::make('Virtual Tour')
+                    ->icon('heroicon-o-globe-alt'),
                 NavigationGroup::make('Reports')
                     ->icon('heroicon-o-chart-bar'),
                 NavigationGroup::make('Administration')

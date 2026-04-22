@@ -8,6 +8,7 @@ use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
+use App\Models\TourWaypoint;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -118,6 +119,50 @@ class GuestControllerTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('Deluxe Suite');
+    }
+
+    public function test_room_detail_links_to_matching_room_tour_scene_when_available(): void
+    {
+        $roomType = $this->createRoomType(['name' => 'Deluxe Suite']);
+        $this->createRoom($roomType);
+
+        TourWaypoint::create([
+            'name' => 'Deluxe Suite Door',
+            'slug' => 'deluxe-suite-door',
+            'type' => 'room-door',
+            'panorama_image' => 'virtual-tour/panoramas/deluxe-door.jpg',
+            'position_order' => 2,
+            'linked_room_type_id' => $roomType->id,
+            'is_active' => true,
+        ]);
+
+        TourWaypoint::create([
+            'name' => 'Deluxe Suite Interior',
+            'slug' => 'deluxe-suite-interior',
+            'type' => 'room-interior',
+            'panorama_image' => 'virtual-tour/panoramas/deluxe-interior.jpg',
+            'position_order' => 3,
+            'linked_room_type_id' => $roomType->id,
+            'is_active' => true,
+        ]);
+
+        $response = $this->get(route('guest.room-detail', $roomType));
+
+        $response->assertStatus(200);
+        $response->assertSee(route('guest.tour.viewer', ['slug' => 'deluxe-suite-interior']), false);
+        $response->assertSee('View This Room in 360', false);
+    }
+
+    public function test_room_detail_falls_back_to_default_tour_when_no_matching_scene_exists(): void
+    {
+        $roomType = $this->createRoomType(['name' => 'Economy Room']);
+        $this->createRoom($roomType);
+
+        $response = $this->get(route('guest.room-detail', $roomType));
+
+        $response->assertStatus(200);
+        $response->assertSee(route('guest.tour.viewer'), false);
+        $response->assertSee('Start Virtual Tour', false);
     }
 
     // ── Virtual Tours ────────────────────────────────────────
