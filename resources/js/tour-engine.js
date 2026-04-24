@@ -1494,7 +1494,11 @@ class VirtualTourEngine {
         };
         window.addEventListener('resize', onResize);
 
+        let cleanupCalled = false;
         const cleanup = () => {
+            if (cleanupCalled) return; // Prevent double cleanup
+            cleanupCalled = true;
+            
             renderer.setAnimationLoop(null);
             window.removeEventListener('resize', onResize);
             closePanel();
@@ -1514,6 +1518,8 @@ class VirtualTourEngine {
             renderer.dispose();
             layer.remove();
             this._webXRTest = null;
+            
+            // Restore the panorama viewer
             if (this.currentWaypoint?.slug) {
                 this.navigateToWaypoint(this.currentWaypoint.slug).catch(() => {});
             }
@@ -1538,10 +1544,19 @@ class VirtualTourEngine {
     async stopWebXRTest() {
         if (!this._webXRTest) return;
         const { session, cleanup } = this._webXRTest;
-        if (session?.end) {
-            await session.end().catch(() => {});
-        } else {
-            cleanup?.();
+        
+        // Always run cleanup, even if session.end() fails
+        try {
+            if (session?.end) {
+                await session.end();
+            }
+        } catch (error) {
+            console.warn('Session end error:', error);
+        } finally {
+            // Ensure cleanup runs to restore the viewer
+            if (cleanup) {
+                cleanup();
+            }
         }
     }
 
