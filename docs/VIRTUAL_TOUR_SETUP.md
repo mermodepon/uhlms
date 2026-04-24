@@ -1,268 +1,96 @@
-# Virtual Tour Feature - Setup & Usage Guide
+# Virtual Tour Setup
 
-## 🎯 Overview
+## Overview
 
-The Virtual Tour feature provides an immersive, guided experience of the University Homestay establishment. Guests can:
+The virtual tour currently uses:
 
-- Navigate through 360° panoramic views of rooms, hallways, and amenities
-- View real-time room availability and details when reaching room doors
-- Make reservation requests directly from within the tour
-- Bookmark favorite locations for easy reference
-- Use keyboard navigation (Arrow keys, ESC)
+- `app/Http/Controllers/TourController.php` for guest pages and APIs
+- `app/Models/TourWaypoint.php` and `app/Models/TourHotspot.php` for tour data
+- `app/Filament/Resources/VirtualTourResource.php` for admin management
+- `app/Filament/Resources/VirtualTourResource/Pages/ManageTourHotspots.php` for hotspot editing
+- `resources/js/panorama-viewer.js`, `resources/js/tour-engine.js`, and `resources/js/tour-editor.js` for the frontend
 
----
+## Required App State
 
-## 📋 Setup Instructions
+Before testing the tour, make sure:
 
-### 1. Start XAMPP
+- the application is already set up with the existing database schema
+- `php artisan storage:link` has been run
+- frontend assets have been built with `npm run build` or are running with `npm run dev`
+- waypoint panorama files and optional hotspot media exist on the configured public media disk
 
-Ensure MySQL and Apache are running:
-```bash
-# Open XAMPP Control Panel
-# Start MySQL
-# Start Apache
+This guide intentionally avoids fresh-install and migration-specific setup steps.
+
+## Media Locations
+
+With the default local/public media setup, tour files are typically stored under:
+
+```text
+storage/app/public/virtual-tour/panoramas/
+storage/app/public/virtual-tour/hotspot-media/
 ```
 
-### 2. Run Migrations
+Guests access those files through the app's media URL helpers rather than hardcoded local paths.
 
-```bash
-cd D:\xampp\htdocs\MIS\uhlms
-php artisan migrate
-```
+## Admin Workflow
 
-This will create:
-- `tour_waypoints` - Tour navigation points
-- `tour_hotspots` - Interactive elements within panoramas
+Use the admin panel at `/admin`:
 
-### 3. Seed Sample Data (Optional)
+1. Open `Virtual Tour`.
+2. Create or edit a waypoint.
+3. Upload the panorama image and optional thumbnail.
+4. Save the waypoint.
+5. Open the waypoint's `Manage Hotspots` page.
+6. Place, edit, reorder, or remove hotspots.
+7. Use the guest preview from the editor when needed.
 
-```bash
-php artisan db:seed --class=VirtualTourSeeder
-```
+The current codebase manages waypoints and hotspots through one Filament resource, not separate `TourWaypointResource` or `TourHotspotResource` classes.
 
-This creates sample waypoints and hotspots for testing.
+## Guest Workflow
 
-### 4. Upload Panorama Images
+Guests can:
 
-You need to upload 360° equirectangular panorama images:
+- browse `/virtual-tours`
+- open `/tour/{slug?}`
+- navigate between scenes
+- view room information panels
+- follow hotspot actions
+- start a reservation flow from the tour when enabled by the current scene
 
-**Directory Structure:**
-```
-storage/app/public/virtual-tour/
-├── panoramas/          # 360° images (JPEG/PNG, max 10MB each)
-│   ├── entrance.jpg
-│   ├── lobby.jpg
-│   ├── hallway-1f.jpg
-│   ├── dorm-door.jpg
-│   ├── dorm-interior.jpg
-│   ├── private-door.jpg
-│   ├── private-interior.jpg
-│   └── lounge.jpg
-└── thumbnails/         # Small preview images for mini-map (optional)
-    ├── entrance-thumb.jpg
-    ├── lobby-thumb.jpg
-    └── ...
-```
+## Frontend Entry Points
 
-**Upload via Storage Link:**
-```bash
-php artisan storage:link
-```
+These are the active entry points in the current repo:
 
-**How to Create Panorama Images:**
-- Use a 360° camera (Ricoh Theta, Insta360, etc.)
-- Hire a professional photographer
-- Use panorama stitching software from multiple photos
+- `resources/js/tour-engine.js` for the guest viewer
+- `resources/js/tour-editor.js` for the admin editor
+- `resources/js/panorama-viewer.js` as the shared panorama wrapper
 
-### 5. Build Frontend Assets
+There is no active `device-orientation-controls.js` file in this codebase.
 
-```bash
-npm run build
-```
+## Quick Verification Checklist
 
-For development with hot-reload:
-```bash
-npm run dev
-```
+- `php artisan storage:link` succeeds or the `public/storage` symlink already exists
+- `npm run build` completes successfully
+- at least one waypoint exists with a valid panorama image
+- `/virtual-tours` loads
+- `/tour/{slug}` loads a panorama
+- hotspot placement and save actions work in the admin editor
 
----
+## Troubleshooting
 
-## 🎮 How to Use
+### Panorama does not load
 
-### For Guests
+- Confirm the stored media path exists on the selected public media disk.
+- Confirm the app can serve `storage` URLs.
+- Confirm the waypoint has a valid panorama image value saved.
 
-1. **Start the Tour:**
-   - Visit `/virtual-tours`
-   - Click "🚀 Start Interactive Tour"
+### Hotspot editor appears blank
 
-2. **Navigation:**
-   - **Click hotspots** (📍 markers) in the panorama for info or navigation
-   - **Use arrow buttons** at the bottom (Previous/Next)
-   - **Keyboard:** ← → arrow keys to navigate
-   - **Mini-map:** Click any location on the bottom-right map
+- Rebuild frontend assets.
+- Check browser console errors related to `tour-editor.js` or `panorama-viewer.js`.
+- Confirm the waypoint has a panorama image before opening the hotspot editor.
 
-3. **Room Information:**
-   - When you reach a "Room Door" waypoint, a side panel automatically opens
-   - Shows: Room type name, description, price, amenities, aggregate availability
-   - Specific room numbers and occupancy details are hidden for security
-   - Click "🏨 Request Reservation" to book from within the tour
+### Guest room info is missing
 
-4. **Bookmarks:**
-   - Click the bookmark hotspot at any location to save it
-   - Click "🔖 Bookmarks" button (top-right) to view saved locations
-
-5. **Exit Tour:**
-   - Click "✕ Exit Tour" button (top-right)
-   - Press ESC to close overlays/modals
-
-### For Admins (Filament)
-
-Access the admin panel at `/admin`:
-
-1. **Manage Waypoints:**
-   - Navigate to "Virtual Tour > Tour Waypoints"
-   - Add/edit/delete tour stops
-   - Set order, type, link to room types
-   - Upload panorama images
-
-2. **Manage Hotspots:**
-   - Navigate to "Virtual Tour > Tour Hotspots"
-   - Add interactive points within each waypoint
-   - Set position (pitch/yaw coordinates)
-   - Define actions (navigate, info, bookmark, external link)
-
-**Finding Pitch/Yaw Coordinates:**
-- Open the tour viewer
-- Navigate to desired position in panorama
-- Check browser console - coordinates are logged
-- Or use the built-in Tour Editor in the admin panel
-
----
-
-## 🔧 Customization
-
-### Change Tour Colors
-
-Edit `resources/views/guest/virtual-tour-viewer.blade.php`:
-```css
-/* Find and modify these in the <style> section */
-.overlay-header {
-    background: linear-gradient(135deg, #00491E 0%, #02681E 100%);
-}
-.btn-submit {
-    background: #FFC600;
-    color: #00491E;
-}
-```
-
-### Add Custom Narration
-
-In Filament admin, edit any waypoint and fill in the "Narration" field. This text auto-appears when users reach that location.
-
-### Enable Auto-Rotate
-
-Edit `resources/js/tour-engine.js`, line ~70:
-```javascript
-autoRotate: -2, // Negative = rotate left, positive = right (degrees/sec)
-```
-
----
-
-## 🧪 Testing Checklist
-
-- [ ] MySQL is running
-- [ ] Migrations executed successfully
-- [ ] Panorama images uploaded to `storage/app/public/virtual-tour/panoramas/`
-- [ ] Storage link created (`php artisan storage:link`)
-- [ ] Frontend built (`npm run build`)
-- [ ] Visit `/virtual-tours` - see tour banner
-- [ ] Click "Start Interactive Tour" - tour loads
-- [ ] Navigate using hotspots, arrow buttons, keyboard
-- [ ] Reach a room door - info panel opens automatically
-- [ ] Click "Request Reservation" - modal opens
-- [ ] Submit reservation - success message appears
-- [ ] Test bookmark functionality
-- [ ] Test mini-map navigation
-- [ ] Test ESC key to close overlays
-
----
-
-## 📁 File Structure
-
-```
-app/
-├── Http/Controllers/
-│   └── TourController.php              # API & viewer
-├── Models/
-│   ├── TourWaypoint.php                # Waypoint model
-│   └── TourHotspot.php                 # Hotspot model
-├── Filament/Resources/
-│   ├── TourWaypointResource.php        # Admin CRUD for waypoints
-│   └── TourHotspotResource.php         # Admin CRUD for hotspots
-
-database/
-├── migrations/
-│   ├── 2026_04_11_000001_create_tour_waypoints_table.php
-│   └── 2026_04_11_000002_create_tour_hotspots_table.php
-└── seeders/
-    └── VirtualTourSeeder.php           # Sample data
-
-resources/
-├── views/guest/
-│   ├── virtual-tours.blade.php         # Tour listing (modified)
-│   └── virtual-tour-viewer.blade.php   # Main tour viewer
-├── js/
-│   ├── panorama-viewer.js              # Three.js panorama core
-│   ├── device-orientation-controls.js  # Gyroscope support
-│   ├── tour-engine.js                  # Guest tour viewer
-│   └── tour-editor.js                  # Admin hotspot editor
-
-routes/
-└── web.php                             # Tour routes added
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Panorama not loading
-- Check image path: `storage/app/public/virtual-tour/panoramas/filename.jpg`
-- Run `php artisan storage:link`
-- Check file permissions
-- Verify image is equirectangular format (2:1 aspect ratio)
-
-### Tour viewer shows black screen
-- Open browser console for errors
-- Ensure Pannellum is installed: `npm list pannellum`
-- Rebuild assets: `npm run build`
-
-### API returns 404
-- Check routes: `php artisan route:list | grep tour`
-- Ensure web.php has tour routes
-
-### Reservation submission fails
-- Check CSRF token in meta tag
-- Verify all required fields are sent
-- Check Laravel logs: `storage/logs/laravel.log`
-
----
-
-## 🚀 Next Steps (Future Enhancements)
-
-- [ ] Add ambient audio support
-- [ ] Day/night mode toggle
-- [ ] Multi-language narration
-- [ ] Analytics tracking (most visited rooms, drop-off points)
-- [ ] Social sharing (share room with friends)
-- [ ] Mobile app integration
-- [ ] VR headset support (WebXR)
-- [ ] Floor plan mini-map with real-time position
-- [ ] Animated guide arrow for first-time users
-
----
-
-## 📞 Support
-
-For questions or issues, check the Laravel logs or contact the development team.
-
-**Enjoy the Virtual Tour! 🎉**
+- Confirm the waypoint is linked to the room or room-type data expected by the current tour flow.
+- Confirm the related room and room type records still exist.
