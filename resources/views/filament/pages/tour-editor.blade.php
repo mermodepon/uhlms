@@ -27,6 +27,9 @@
 
         /* ── Sidebar ────────────────────────────────── */
         .te-sidebar-header { padding:12px 14px; border-bottom:1px solid #333; font-weight:700; font-size:13px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; }
+        .te-sidebar-return { display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid rgba(255,255,255,.08); color:#e5e7eb; font-size:12px; font-weight:700; text-decoration:none; transition:background .15s,color .15s; }
+        .te-sidebar-return:hover { background:rgba(255,255,255,.08); color:#fff; }
+        .te-sidebar-return-icon { width:22px; height:22px; border-radius:999px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.1); color:#cbd5e1; font-size:14px; line-height:1; }
         .te-scene-item { display:flex; align-items:center; gap:10px; padding:8px 14px; cursor:pointer; transition:background .15s; border-bottom:1px solid rgba(255,255,255,.05); }
         .te-scene-item:hover { background:rgba(255,255,255,.08); }
         .te-scene-item.active { background:rgba(59,130,246,.25); border-left:3px solid #3b82f6; }
@@ -57,6 +60,8 @@
         .te-field input, .te-field select, .te-field textarea { width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; background:#f9fafb; }
         .te-field input:focus, .te-field select:focus, .te-field textarea:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,.15); background:#fff; }
         .te-field textarea { resize:vertical; min-height:48px; }
+        .te-field-error { margin-top:4px; font-size:10px; line-height:1.35; color:#dc2626; }
+        .te-validation-summary { margin:10px 16px 0; padding:8px 10px; border:1px solid #fecaca; border-radius:6px; background:#fef2f2; color:#991b1b; font-size:11px; font-weight:600; }
         .te-coords { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
         .te-btn { display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; border:none; transition:all .15s; }
         .te-btn-primary { background:#3b82f6; color:#fff; }
@@ -109,6 +114,10 @@
 
         {{-- ─── Left Sidebar: Scenes ──────────────────────── --}}
         <div class="te-sidebar">
+            <a class="te-sidebar-return" href="{{ \App\Filament\Resources\VirtualTourResource::getUrl('index') }}">
+                <span class="te-sidebar-return-icon">&larr;</span>
+                <span>Back to Scene List</span>
+            </a>
             <div class="te-sidebar-header">
                 Scenes
                 <span x-text="waypoints.length" style="float:right;opacity:.6"></span>
@@ -203,12 +212,16 @@
                         <span x-text="editingHotspot.id ? 'Edit Hotspot' : 'New Hotspot'"></span>
                         <button class="te-btn te-btn-ghost" @click="deselectHotspot()" title="Close">✕</button>
                     </div>
+                    <div class="te-validation-summary" x-show="Object.keys(validationErrors).length">
+                        <span x-text="validationErrors.form || 'Please complete the required hotspot fields before saving.'"></span>
+                    </div>
 
                     <div class="te-props-section">
                         <h4>Details</h4>
                         <div class="te-field">
                             <label>Title *</label>
-                            <input type="text" x-model="editingHotspot.title" placeholder="e.g. Enter Lobby">
+                            <input type="text" x-model="editingHotspot.title" @input="clearValidationError('title')" placeholder="e.g. Enter Lobby">
+                            <div class="te-field-error" x-show="validationErrors.title" x-text="validationErrors.title"></div>
                         </div>
                         <div class="te-field">
                             <label>Description</label>
@@ -260,7 +273,7 @@
                         <h4>Action</h4>
                         <div class="te-field">
                             <label>Type</label>
-                            <select x-model="editingHotspot.action_type">
+                            <select x-model="editingHotspot.action_type" @change="clearValidationError('action_type'); clearValidationError('action_target')">
                                 <option value="navigate">🔗 Navigate to Scene</option>
                                 <option value="info">ℹ️ Show Info</option>
                                 <option value="bookmark">🔖 Bookmark</option>
@@ -269,17 +282,20 @@
                         </div>
                         <div class="te-field" x-show="editingHotspot.action_type === 'navigate'">
                             <label>Target Scene</label>
-                            <select x-model="editingHotspot.action_target">
+                            <select x-model="editingHotspot.action_target" @change="clearValidationError('action_target')">
                                 <option value="">— Select scene —</option>
                                 <template x-for="wp in waypoints" :key="'target-'+wp.id">
                                     <option :value="wp.slug" x-text="wp.name" :disabled="wp.id === activeWaypointId"></option>
                                 </template>
                             </select>
+                            <div class="te-field-error" x-show="validationErrors.action_target" x-text="validationErrors.action_target"></div>
                         </div>
                         <div class="te-field" x-show="editingHotspot.action_type === 'external-link'">
                             <label>URL</label>
                             <input type="url" x-model="editingHotspot.action_target"
+                                   @input="clearValidationError('action_target')"
                                    placeholder="https://…">
+                            <div class="te-field-error" x-show="validationErrors.action_target" x-text="validationErrors.action_target"></div>
                         </div>
                     </div>
 
@@ -288,7 +304,7 @@
                         <div class="te-field">
                             <label>Type</label>
                             <select x-model="editingHotspot.media_type"
-                                    @change="editingHotspot.media_url = ''">
+                                    @change="editingHotspot.media_url = ''; clearValidationError('media_url')">
                                 <option value="">None</option>
                                 <option value="image">Images</option>
                                 <option value="video">▶️ YouTube Video</option>
@@ -310,6 +326,16 @@
                                            uploading = true; uploadError = ''; uploadProgress = 0;
                                            (async () => {
                                                try {
+                                                   const getUploadPercent = (evt) => {
+                                                       const raw = evt?.detail?.progress
+                                                           ?? evt?.progress
+                                                           ?? (evt?.lengthComputable && evt.total ? (evt.loaded / evt.total) * 100 : null)
+                                                           ?? evt;
+                                                       const progress = Number(raw);
+
+                                                       return Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0;
+                                                   };
+
                                                    for (const [index, file] of files.entries()) {
                                                        uploadProgress = Math.round((index / files.length) * 100);
                                                        await new Promise((resolve, reject) => {
@@ -320,6 +346,7 @@
                                                                    try {
                                                                        const url = await $wire.uploadHotspotImage();
                                                                        appendImageUrl(url);
+                                                                       clearValidationError('media_url');
                                                                        resolve();
                                                                    } catch (e) {
                                                                        reject(e);
@@ -327,7 +354,7 @@
                                                                },
                                                                reject,
                                                                (evt) => {
-                                                                   uploadProgress = Math.round(((index + (evt.detail.progress / 100)) / files.length) * 100);
+                                                                   uploadProgress = Math.round(((index + (getUploadPercent(evt) / 100)) / files.length) * 100);
                                                                }
                                                            );
                                                        });
@@ -343,12 +370,19 @@
                             </label>
 
                             {{-- Progress bar --}}
-                            <div x-show="uploading" style="margin-top:5px;height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden">
-                                <div style="height:100%;background:#3b82f6;transition:width .2s" :style="'width:' + uploadProgress + '%'"></div>
+                            <div x-show="uploading" style="margin-top:5px">
+                                <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#64748b;margin-bottom:3px">
+                                    <span>Uploading...</span>
+                                    <span x-text="uploadProgress + '%'"></span>
+                                </div>
+                                <div style="height:5px;background:#e2e8f0;border-radius:999px;overflow:hidden">
+                                    <div style="height:100%;background:#2563eb;border-radius:999px;transition:width .15s ease-out" :style="'width:' + uploadProgress + '%'"></div>
+                                </div>
                             </div>
 
                             {{-- Error --}}
                             <div x-show="uploadError" x-text="uploadError" style="margin-top:4px;font-size:10px;color:#ef4444"></div>
+                            <div class="te-field-error" x-show="validationErrors.media_url" x-text="validationErrors.media_url"></div>
 
                             <div x-show="imageMediaUrls().length" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px">
                                 <template x-for="(url, index) in imageMediaUrls()" :key="url + index">
@@ -364,7 +398,8 @@
                         </div>
                         <div class="te-field" x-show="editingHotspot.media_type === 'video'">
                             <label>YouTube URL</label>
-                            <input type="url" x-model="editingHotspot.media_url" placeholder="https://youtube.com/watch?v=...">
+                            <input type="url" x-model="editingHotspot.media_url" @input="clearValidationError('media_url')" placeholder="https://youtube.com/watch?v=...">
+                            <div class="te-field-error" x-show="validationErrors.media_url" x-text="validationErrors.media_url"></div>
                             <div style="font-size:10px;color:#94a3b8;margin-top:3px">Supports youtube.com, youtu.be, and /shorts/ links.</div>
                         </div>
                     </div>
@@ -409,7 +444,7 @@
                     </div>
 
                     <div class="te-props-section" style="display:flex;gap:8px">
-                        <button class="te-btn te-btn-success te-btn-block" @click="saveCurrentHotspot()" :disabled="!editingHotspot.title">
+                        <button class="te-btn te-btn-success te-btn-block" @click="saveCurrentHotspot()">
                             <span x-text="editingHotspot.id ? '✓ Update' : '✓ Create'"></span>
                         </button>
                         <template x-if="editingHotspot.id">                            <button class="te-btn te-btn-ghost" @click="duplicateCurrentHotspot()" title="Duplicate this hotspot">⊕</button>
@@ -535,6 +570,7 @@
                 placing: false,
                 placingIcon: 'chevron-up',
                 editingHotspot: null,
+                validationErrors: {},
                 pendingHotspot: null,
                 statusText: '',
                 liveYaw: 0,
@@ -587,6 +623,7 @@
                                 this.placing = false;
                                 this.pendingHotspot = null;
                                 this.statusText = '';
+                                this.validationErrors = {};
                                 this.editingHotspot = {
                                     id: null,
                                     title: '',
@@ -618,9 +655,11 @@
                                 }
                             },
                             onHotspotSelected: (h) => {
+                                this.validationErrors = {};
                                 this.editingHotspot = { ...h, media_type: this.normalizeMediaType(h.media_type) };
                             },
                             onHotspotDeselected: () => {
+                                this.validationErrors = {};
                                 this.editingHotspot = null;
                             },
                             onRoomInfoPlaced: (data) => {
@@ -642,6 +681,7 @@
                     if (waypointId === this.activeWaypointId) return;
                     this.activeWaypointId = waypointId;
                     this.editingHotspot = null;
+                    this.validationErrors = {};
                     this.placingRoomInfo = false;
                     this.editor?.cancelRoomInfoPlacement();
 
@@ -682,6 +722,7 @@
                         this.cancelPlacing();
                         return;
                     }
+                    this.validationErrors = {};
                     // If already in 'move' mode, discard the pending preview first
                     if (this.placing) {
                         this.editor?.cancelPlacement();
@@ -747,6 +788,7 @@
                 },
 
                 selectHotspot(h) {
+                    this.validationErrors = {};
                     this.editingHotspot = { ...h, media_type: this.normalizeMediaType(h.media_type) };
                     if (this.editor) {
                         this.editor.selectedHotspotId = h.id;
@@ -780,6 +822,7 @@
                 },
 
                 deselectHotspot() {
+                    this.validationErrors = {};
                     this.editingHotspot = null;
                     this.editor?.deselectHotspot();
                 },
@@ -824,28 +867,121 @@
                     this.statusText = '';
                 },
 
+                clearValidationError(field) {
+                    if (!this.validationErrors[field] && !this.validationErrors.form) return;
+                    const { [field]: removed, form, ...remaining } = this.validationErrors;
+                    this.validationErrors = remaining;
+                },
+
+                isValidUrl(value) {
+                    try {
+                        const url = new URL(String(value || '').trim());
+                        return ['http:', 'https:'].includes(url.protocol);
+                    } catch (e) {
+                        return false;
+                    }
+                },
+
+                isValidYouTubeUrl(value) {
+                    try {
+                        const url = new URL(String(value || '').trim());
+                        const host = url.hostname.replace(/^www\./, '');
+                        let id = '';
+
+                        if (host === 'youtu.be') {
+                            id = url.pathname.split('/').filter(Boolean)[0] || '';
+                        } else if (host === 'youtube.com' || host === 'm.youtube.com') {
+                            id = url.searchParams.get('v') || '';
+
+                            if (!id && url.pathname.startsWith('/shorts/')) {
+                                id = url.pathname.split('/').filter(Boolean)[1] || '';
+                            }
+
+                            if (!id && url.pathname.startsWith('/embed/')) {
+                                id = url.pathname.split('/').filter(Boolean)[1] || '';
+                            }
+                        }
+
+                        return /^[A-Za-z0-9_-]{11}$/.test(id);
+                    } catch (e) {
+                        return false;
+                    }
+                },
+
+                validateHotspot(h) {
+                    const errors = {};
+                    const mediaType = this.normalizeMediaType(h?.media_type);
+
+                    if (!String(h?.title || '').trim()) {
+                        errors.title = 'Title is required.';
+                    }
+
+                    if (!h?.action_type) {
+                        errors.action_type = 'Action type is required.';
+                    }
+
+                    if (h?.action_type === 'navigate' && !h?.action_target) {
+                        errors.action_target = 'Choose a target scene.';
+                    }
+
+                    if (h?.action_type === 'external-link') {
+                        if (!String(h?.action_target || '').trim()) {
+                            errors.action_target = 'URL is required for external links.';
+                        } else if (!this.isValidUrl(h.action_target)) {
+                            errors.action_target = 'Enter a valid http or https URL.';
+                        }
+                    }
+
+                    if (h?.action_type === 'info' && mediaType === 'video') {
+                        if (!String(h?.media_url || '').trim()) {
+                            errors.media_url = 'YouTube URL is required when video media is selected.';
+                        } else if (!this.isValidYouTubeUrl(h.media_url)) {
+                            errors.media_url = 'Enter a valid YouTube video, Shorts, or youtu.be link.';
+                        }
+                    }
+
+                    if (h?.action_type === 'info' && mediaType === 'image' && !this.imageMediaUrls(h.media_url).length) {
+                        errors.media_url = 'Upload at least one image or choose no media.';
+                    }
+
+                    this.validationErrors = errors;
+                    return Object.keys(errors).length === 0;
+                },
+
                 async saveCurrentHotspot() {
                     const h = this.editingHotspot;
-                    if (!h || !h.title) return;
+                    if (!h) return;
+                    if (!this.validateHotspot(h)) {
+                        this.statusText = 'Please complete the required hotspot fields';
+                        setTimeout(() => {
+                            if (this.statusText === 'Please complete the required hotspot fields') this.statusText = '';
+                        }, 2500);
+                        return;
+                    }
                     const mediaType = this.normalizeMediaType(h.media_type);
 
-                    if (h.id) {
-                        await this.$wire.updateHotspot(
-                            h.id, h.title, h.description || '', h.icon,
-                            h.pitch, h.yaw, h.action_type, h.action_target || null,
-                            h.sort_order, h.is_active,
-                            mediaType || null, h.media_url || null,
-                            h.size || 3
-                        );
-                    } else {
-                        await this.$wire.saveHotspot(
-                            this.activeWaypointId,
-                            h.title, h.description || '', h.icon,
-                            h.pitch, h.yaw, h.action_type, h.action_target || null,
-                            h.sort_order, h.is_active,
-                            mediaType || null, h.media_url || null,
-                            h.size || 3
-                        );
+                    try {
+                        if (h.id) {
+                            await this.$wire.updateHotspot(
+                                h.id, h.title, h.description || '', h.icon,
+                                h.pitch, h.yaw, h.action_type, h.action_target || null,
+                                h.sort_order, h.is_active,
+                                mediaType || null, h.media_url || null,
+                                h.size || 3
+                            );
+                        } else {
+                            await this.$wire.saveHotspot(
+                                this.activeWaypointId,
+                                h.title, h.description || '', h.icon,
+                                h.pitch, h.yaw, h.action_type, h.action_target || null,
+                                h.sort_order, h.is_active,
+                                mediaType || null, h.media_url || null,
+                                h.size || 3
+                            );
+                        }
+                    } catch (e) {
+                        this.validationErrors = { form: e?.message || 'Unable to save hotspot. Please check the fields and try again.' };
+                        return;
                     }
                     this.editingHotspot = null;
                 },

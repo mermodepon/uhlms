@@ -372,7 +372,6 @@ class PanoramaViewer {
         this._markers.clearMarkers();
         this._markerConfigs.clear();
     }
-
     // ── Gyroscope ────────────────────────────────────────────────────────────
 
     async toggleGyroscope() {

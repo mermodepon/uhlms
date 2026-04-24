@@ -872,8 +872,7 @@ class VirtualTourEngine {
         </div>`;
     }
 
-    // ── Gyroscope ─────────────────────────────────────────────────────────────
-
+    // ── Motion / WebXR ───────────────────────────────────────────────────────
     async startWebXRTest() {
         if (!('xr' in navigator)) {
             this._showToast('WebXR is not available in this browser.', 'error');
@@ -1045,21 +1044,29 @@ class VirtualTourEngine {
             ctx.restore();
         };
 
-        const makeIconTexture = (icon, options = {}) => {
+        const makeHotspotTexture = (icon, options = {}) => {
             const canvas = document.createElement('canvas');
             const size = options.size || 256;
             canvas.width = size;
             canvas.height = size;
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, size, size);
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,0.42)';
+            ctx.shadowBlur = size * 0.06;
+            ctx.shadowOffsetY = size * 0.03;
             ctx.beginPath();
-            ctx.arc(size / 2, size / 2, size * 0.43, 0, Math.PI * 2);
+            ctx.arc(size / 2, size / 2, size * 0.37, 0, Math.PI * 2);
             ctx.fillStyle = options.background || '#6b7280';
             ctx.fill();
-            ctx.lineWidth = size * 0.045;
+            ctx.restore();
+
+            ctx.beginPath();
+            ctx.arc(size / 2, size / 2, size * 0.37, 0, Math.PI * 2);
+            ctx.lineWidth = size * 0.042;
             ctx.strokeStyle = '#ffffff';
             ctx.stroke();
-            drawXRIcon(ctx, icon || 'chevron-up', size / 2, size / 2, size * 0.82, options.color || '#ffffff');
+            drawXRIcon(ctx, icon || 'chevron-up', size / 2, size / 2, size * 0.62, options.color || '#ffffff');
             const tex = new THREE.CanvasTexture(canvas);
             tex.colorSpace = THREE.SRGBColorSpace;
             textTextures.add(tex);
@@ -1275,22 +1282,30 @@ class VirtualTourEngine {
             if (!this.currentRoomType) return;
             const rt = this.currentRoomType;
             const count = rt.available_rooms_count;
+            const amenities = (rt.amenities || []).map(a => a.name).filter(Boolean);
+            const amenitiesText = amenities.length
+                ? `Amenities: ${amenities.slice(0, 3).join(', ')}${amenities.length > 3 ? '...' : ''}`
+                : '';
+            const description = truncateXRText(rt.description || '', 52);
             const lines = [
                 rt.name || 'Room Type',
+                rt.room_sharing_type || '',
                 rt.pricing_display || rt.formatted_price || '',
                 count != null ? `${count} room(s) available` : 'Availability available in form',
+                description,
+                truncateXRText(amenitiesText, 58),
             ].filter(Boolean);
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             const center = camera.position.clone().add(forward.multiplyScalar(3.2));
             const panel = makePlane(makeTextTexture(lines, {
-                width: 768,
-                height: 300,
+                width: 1024,
+                height: 520,
                 background: 'rgba(255,255,255,0.96)',
                 color: '#00491E',
-                font: 'bold 44px sans-serif',
-                lineHeight: 70,
+                font: 'bold 34px sans-serif',
+                lineHeight: 66,
                 border: '#FFC600',
-            }), center, { x: 2.4, y: 0.95 }, { panel: true, action: 'noop' });
+            }), center.clone().add(new THREE.Vector3(0, 0.22, 0)), { x: 3.05, y: 1.55 }, { panel: true, action: 'noop' });
             panelGroup.add(panel);
 
             const request = makePlane(makeTextTexture('Request Reservation', {
@@ -1299,21 +1314,21 @@ class VirtualTourEngine {
                 background: '#FFC600',
                 color: '#00491E',
                 font: 'bold 40px sans-serif',
-            }), center.clone().add(new THREE.Vector3(0, -0.85, 0)), { x: 1.6, y: 0.38 }, { panel: true, action: 'reservation' });
+            }), center.clone().add(new THREE.Vector3(0, -1.05, 0)), { x: 1.6, y: 0.38 }, { panel: true, action: 'reservation' });
             const full = makePlane(makeTextTexture('Full Form', {
                 width: 512,
                 height: 120,
                 background: '#00491E',
                 color: '#ffffff',
                 font: 'bold 40px sans-serif',
-            }), center.clone().add(new THREE.Vector3(0, -1.3, 0)), { x: 1.6, y: 0.38 }, { panel: true, action: 'reserve-page' });
+            }), center.clone().add(new THREE.Vector3(0, -1.5, 0)), { x: 1.6, y: 0.38 }, { panel: true, action: 'reserve-page' });
             const close = makePlane(makeTextTexture('Close', {
                 width: 360,
                 height: 100,
                 background: '#374151',
                 color: '#ffffff',
                 font: 'bold 34px sans-serif',
-            }), center.clone().add(new THREE.Vector3(0, 0.85, 0)), { x: 0.9, y: 0.25 }, { panel: true, action: 'close-panel' });
+            }), center.clone().add(new THREE.Vector3(0, 1.18, 0)), { x: 0.9, y: 0.25 }, { panel: true, action: 'close-panel' });
             panelGroup.add(request, full, close);
         };
 
@@ -1324,9 +1339,11 @@ class VirtualTourEngine {
             const spots = (this.currentWaypoint?.hotspots || []).filter(h => h.is_active !== false);
             spots.forEach((hs) => {
                 const color = HOTSPOT_COLORS[hs.action_type] || '#6b7280';
-                const hotspot = makePlane(makeIconTexture(hs.icon || 'chevron-up', {
+                const sizeScale = { 1: 0.6, 2: 0.8, 3: 1.0, 4: 1.25, 5: 1.5 }[hs.size || 3] ?? 1.0;
+                const planeSize = 0.62 * sizeScale;
+                const hotspot = makePlane(makeHotspotTexture(hs.icon || 'chevron-up', {
                     background: color,
-                }), yawPitchToVector(hs.yaw, hs.pitch), { x: 0.9, y: 0.9 }, { action: 'hotspot', hotspot: hs });
+                }), yawPitchToVector(hs.yaw, hs.pitch), { x: planeSize, y: planeSize }, { action: 'hotspot', hotspot: hs });
                 hotspotGroup.add(hotspot);
             });
             if (this.currentWaypoint?.is_room_related && this.currentWaypoint?.linked_room_type_id) {

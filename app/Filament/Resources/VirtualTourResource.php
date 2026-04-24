@@ -65,7 +65,7 @@ class VirtualTourResource extends Resource
                             ->label('Order')
                             ->required()
                             ->numeric()
-                            ->default(0)
+                            ->default(fn (): int => ((int) TourWaypoint::max('position_order')) + 1)
                             ->helperText('Lower numbers appear first'),
                         Forms\Components\Toggle::make('is_active')
                             ->label('Active')
@@ -77,6 +77,7 @@ class VirtualTourResource extends Resource
                         Forms\Components\FileUpload::make('panorama_image')
                             ->label('360° Panorama Image')
                             ->image()
+                            ->previewable(false)
                             ->disk(config('media.disk'))
                             ->directory('virtual-tour/panoramas')
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])

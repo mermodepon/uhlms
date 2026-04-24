@@ -1235,40 +1235,112 @@
                 <button onclick="closeTourHelp()" aria-label="Close guide">✕</button>
             </div>
             <div class="help-body">
-                <!-- Looking Around -->
+                <!-- Navigation Controls -->
                 <div class="help-section">
                     <h3>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/></svg>
-                        Looking Around
+                        Navigation Controls
                     </h3>
                     <ul class="help-list">
                         <li>
+                            <div style="display:flex;gap:0.25rem;flex-shrink:0;margin-top:0.05rem;">
+                                <span class="help-kbd">W</span><span class="help-kbd">S</span>
+                            </div>
+                            <div><strong>Quick Navigation Keys</strong><br>Press <strong>W</strong> to jump to the nearest scene in front of you, or <strong>S</strong> to jump to the nearest scene behind you</div>
+                        </li>
+                        <li>
+                            <span class="help-icon">🖱️</span>
+                            <div><strong>Mouse/Touch</strong><br>Drag to look around in any direction, scroll to zoom in/out. On mobile, swipe to pan and pinch to zoom</div>
+                        </li>
+                        <li>
+                            <span class="help-icon">👆</span>
+                            <div><strong>Hotspots</strong><br>Click colored markers in the scene to navigate rooms, view info, or access room details (see legends below)</div>
+                        </li>
+                        <li>
                             <span class="help-icon">📡</span>
-                            <div><strong>Motion Look</strong><br>Tilt your phone to look around — available on supported mobile devices only (top-left)</div>
+                            <div><strong>Motion Look</strong><br>Tilt your phone to look around — available on supported mobile devices only (top-left button)</div>
                         </li>
                         <li>
                             <span class="help-icon">VR</span>
-                            <div><strong>VR Mode</strong><br>Enter an immersive WebXR session on supported VR browsers and headsets (top-left)</div>
+                            <div><strong>VR Mode</strong><br>Enter an immersive WebXR session on supported VR browsers and headsets (top-left button)</div>
                         </li>
+                    </ul>
+                </div>
+
+                <!-- On-Screen Controls -->
+                <div class="help-section">
+                    <h3>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18m6-18v18M3 9h18M3 15h18"/></svg>
+                        On-Screen Controls
+                    </h3>
+                    <ul class="help-list">
                         <li>
                             <span class="help-icon">⛶</span>
-                            <div><strong>Fullscreen</strong><br>Expand the tour to fill your entire screen (top-right)</div>
+                            <div><strong>Fullscreen</strong><br>Expand the tour to fill your entire screen for an immersive experience (top-right corner)</div>
                         </li>
                         <li>
                             <span class="help-icon">🏠</span>
-                            <div><strong>Room Info</strong><br>Appears on room scenes — click for pricing details (top-right)</div>
+                            <div><strong>Room Info</strong><br>Appears when viewing room scenes — click to see pricing, capacity, and amenities (top-right corner)</div>
                         </li>
                         <li>
                             <span class="help-icon">🗺️</span>
-                            <div><strong>Tour Map</strong><br>Click any waypoint to jump there. Use the search bar to filter scenes by name (bottom-right)</div>
+                            <div><strong>Tour Map</strong><br>View all locations and jump instantly to any scene. Use the search bar to filter by name (bottom-right corner)</div>
                         </li>
                         <li>
                             <span class="help-icon">▶️</span>
-                            <div><strong>Auto Tour</strong><br>Advances automatically through every scene. Press Esc or click the button to stop (bottom-left)</div>
+                            <div><strong>Auto Tour</strong><br>Sit back and automatically advance through every scene. Press Esc or click the button again to stop (bottom-left corner)</div>
                         </li>
                         <li>
                             <span class="help-kbd">H</span>
-                            <div><strong>Hide/Show UI</strong><br>Toggle visibility of all controls for maximum immersion. Click the eye icon (top-right) or press H to toggle</div>
+                            <div><strong>Hide/Show UI</strong><br>Toggle all controls for maximum immersion. Click the eye icon (top-right) or press <strong>H</strong> key</div>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Hotspot Legends -->
+                <div class="help-section">
+                    <h3>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        Hotspot Legends
+                    </h3>
+                    <div class="help-markers">
+                        <div class="help-marker-row">
+                            <div class="help-marker-dot nav"></div>
+                            <div><strong>Blue Markers</strong> — Navigation hotspots to move between scenes (hallways, doorways, areas)</div>
+                        </div>
+                        <div class="help-marker-row">
+                            <div class="help-marker-dot info"></div>
+                            <div><strong>Yellow Markers</strong> — Information hotspots to learn more about facilities and amenities</div>
+                        </div>
+                        <div class="help-marker-row">
+                            <div class="help-marker-dot room"></div>
+                            <div><strong>Green/Gold Markers</strong> — Room entry points with detailed info, pricing, and reservation options</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Tips -->
+                <div class="help-section">
+                    <h3>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="9"/></svg>
+                        Quick Tips
+                    </h3>
+                    <ul class="help-list">
+                        <li>
+                            <span class="help-icon">💡</span>
+                            <div><strong>Best Experience</strong><br>Use fullscreen mode on desktop or landscape orientation on mobile for the most immersive view</div>
+                        </li>
+                        <li>
+                            <span class="help-icon">🎯</span>
+                            <div><strong>Find Rooms Fast</strong><br>Use the Tour Map's search feature to quickly locate specific room types or areas</div>
+                        </li>
+                        <li>
+                            <span class="help-icon">🔄</span>
+                            <div><strong>Reset View</strong><br>If you get disoriented, click any hotspot or use the Tour Map to reorient yourself</div>
+                        </li>
+                        <li>
+                            <span class="help-icon">📱</span>
+                            <div><strong>Mobile Users</strong><br>For the best experience, rotate your device to landscape mode and enable motion sensors if prompted</div>
                         </li>
                     </ul>
                 </div>
