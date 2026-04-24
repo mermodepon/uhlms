@@ -30,6 +30,26 @@ class Reports extends Page
 
     public ?string $monthPeriod = null;
 
+    public int $monthlyReportPage = 1;
+
+    public int $monthlyReportPerPage = 10;
+
+    public int $reservationListPage = 1;
+
+    public int $reservationListPerPage = 25;
+
+    public int $occupancyPage = 1;
+
+    public int $occupancyPerPage = 10;
+
+    public int $roomUtilizationPage = 1;
+
+    public int $roomUtilizationPerPage = 10;
+
+    public int $stayLogsPage = 1;
+
+    public int $stayLogsPerPage = 10;
+
     public function mount(): void
     {
         $this->dateFrom = Carbon::today()->subDays(30)->format('Y-m-d');
@@ -40,6 +60,8 @@ class Reports extends Page
 
     public function updatedMonthPeriod(?string $value): void
     {
+        $this->monthlyReportPage = 1;
+
         if (! $value) {
             return;
         }
@@ -50,6 +72,86 @@ class Reports extends Page
         // Keep the date range in sync so print headers and period metadata stay consistent.
         $this->dateFrom = $monthStart->format('Y-m-d');
         $this->dateTo = $monthEnd->format('Y-m-d');
+    }
+
+    public function updatedReportType(): void
+    {
+        $this->monthlyReportPage = 1;
+        $this->reservationListPage = 1;
+        $this->occupancyPage = 1;
+        $this->roomUtilizationPage = 1;
+        $this->stayLogsPage = 1;
+    }
+
+    public function updatedDateFrom(): void
+    {
+        $this->reservationListPage = 1;
+        $this->occupancyPage = 1;
+        $this->roomUtilizationPage = 1;
+        $this->stayLogsPage = 1;
+    }
+
+    public function updatedDateTo(): void
+    {
+        $this->reservationListPage = 1;
+        $this->occupancyPage = 1;
+        $this->roomUtilizationPage = 1;
+        $this->stayLogsPage = 1;
+    }
+
+    public function updatedReservationStatus(): void
+    {
+        $this->reservationListPage = 1;
+    }
+
+    public function previousMonthlyReportPage(): void
+    {
+        $this->monthlyReportPage = max(1, $this->monthlyReportPage - 1);
+    }
+
+    public function nextMonthlyReportPage(): void
+    {
+        $this->monthlyReportPage++;
+    }
+
+    public function previousReservationListPage(): void
+    {
+        $this->reservationListPage = max(1, $this->reservationListPage - 1);
+    }
+
+    public function nextReservationListPage(): void
+    {
+        $this->reservationListPage++;
+    }
+
+    public function previousOccupancyPage(): void
+    {
+        $this->occupancyPage = max(1, $this->occupancyPage - 1);
+    }
+
+    public function nextOccupancyPage(): void
+    {
+        $this->occupancyPage++;
+    }
+
+    public function previousRoomUtilizationPage(): void
+    {
+        $this->roomUtilizationPage = max(1, $this->roomUtilizationPage - 1);
+    }
+
+    public function nextRoomUtilizationPage(): void
+    {
+        $this->roomUtilizationPage++;
+    }
+
+    public function previousStayLogsPage(): void
+    {
+        $this->stayLogsPage = max(1, $this->stayLogsPage - 1);
+    }
+
+    public function nextStayLogsPage(): void
+    {
+        $this->stayLogsPage++;
     }
 
     public function getReportDataProperty(): array
@@ -80,7 +182,17 @@ class Reports extends Page
 
         // Get all reservations with check-ins in this month
         $reservations = Reservation::query()
-            ->with(['roomAssignments.room.roomType', 'payments', 'guests', 'checkInSnapshots', 'charges'])
+            ->with([
+                'roomAssignments' => function ($q) use ($from, $to) {
+                    $q->whereNotNull('checked_in_at')
+                        ->whereBetween('checked_in_at', [$from, $to])
+                        ->with('room.roomType');
+                },
+                'payments',
+                'guests',
+                'checkInSnapshots',
+                'charges',
+            ])
             ->whereIn('status', ['checked_in', 'checked_out'])
             ->whereHas('roomAssignments', function ($q) use ($from, $to) {
                 $q->whereNotNull('checked_in_at')
@@ -96,11 +208,15 @@ class Reports extends Page
         $grandTotal = 0;
 
         foreach ($reservations as $reservation) {
-            $assignments = $reservation->roomAssignments()
-                ->whereNotNull('checked_in_at')
-                ->whereBetween('checked_in_at', [$from, $to])
-                ->with('room.roomType')
-                ->get();
+            $assignments = $reservation->roomAssignments
+                ->filter(function ($assignment) use ($from, $to) {
+                    if (! $assignment->checked_in_at) {
+                        return false;
+                    }
+
+                    return Carbon::parse($assignment->checked_in_at)->betweenIncluded($from, $to);
+                })
+                ->values();
 
             if ($assignments->isEmpty()) {
                 continue;
@@ -314,29 +430,23 @@ class Reports extends Page
         $from = Carbon::parse($this->dateFrom)->startOfDay();
         $to = Carbon::parse($this->dateTo)->endOfDay();
 
-        $reservations = Reservation::where(function ($q) use ($from, $to) {
-            $q->whereBetween('check_in_date', [$from, $to])
-                ->orWhereBetween('check_out_date', [$from, $to])
-                ->orWhere(function ($q2) use ($from, $to) {
-                    $q2->where('check_in_date', '<=', $from)
-                        ->where('check_out_date', '>=', $to);
-                });
-        })->get();
+        $reservations = Reservation::with('preferredRoomType')
+            ->where(function ($q) use ($from, $to) {
+                $q->whereBetween('check_in_date', [$from, $to])
+                    ->orWhereBetween('check_out_date', [$from, $to])
+                    ->orWhere(function ($q2) use ($from, $to) {
+                        $q2->where('check_in_date', '<=', $from)
+                            ->where('check_out_date', '>=', $to);
+                    });
+            })
+            ->get();
 
         $byStatus = $reservations->groupBy('status')->map->count();
         $byPurpose = $reservations->groupBy('purpose')->map->count();
-        $byRoomType = Reservation::where(function ($q) use ($from, $to) {
-            $q->whereBetween('check_in_date', [$from, $to])
-                ->orWhereBetween('check_out_date', [$from, $to])
-                ->orWhere(function ($q2) use ($from, $to) {
-                    $q2->where('check_in_date', '<=', $from)
-                        ->where('check_out_date', '>=', $to);
-                });
-        })
-            ->join('room_types', 'reservations.preferred_room_type_id', '=', 'room_types.id')
-            ->select('room_types.name', DB::raw('count(*) as total'))
-            ->groupBy('room_types.name')
-            ->pluck('total', 'name')
+        $byRoomType = $reservations
+            ->map(fn ($reservation) => $reservation->preferredRoomType?->name)
+            ->filter()
+            ->countBy()
             ->toArray();
 
         $totalNights = $reservations->whereIn('status', ['checked_in', 'checked_out'])->sum(function ($r) {
@@ -358,22 +468,37 @@ class Reports extends Page
 
     protected function getOccupancyReport(): array
     {
-        $totalRooms = Room::where('is_active', true)->count();
-        $occupiedNow = Room::where('status', 'occupied')->count();
-        $maintenanceNow = Room::where('status', 'maintenance')->count();
+        $from = Carbon::parse($this->dateFrom);
+        $to = Carbon::parse($this->dateTo);
+        $roomsByStatus = Room::where('is_active', true)
+            ->select('status', DB::raw('count(*) as total'))
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $totalRooms = (int) $roomsByStatus->sum();
+        $occupiedNow = (int) ($roomsByStatus['occupied'] ?? 0);
+        $maintenanceNow = (int) ($roomsByStatus['maintenance'] ?? 0);
+
+        $assignments = RoomAssignment::query()
+            ->whereNotNull('checked_in_at')
+            ->where('checked_in_at', '<=', $to->copy()->endOfDay())
+            ->where(function ($q) use ($from) {
+                $q->whereNull('checked_out_at')
+                    ->orWhere('checked_out_at', '>=', $from->copy()->startOfDay());
+            })
+            ->get(['checked_in_at', 'checked_out_at']);
 
         // Daily occupancy for chart (last 30 days)
         $dailyOccupancy = [];
-        $from = Carbon::parse($this->dateFrom);
-        $to = Carbon::parse($this->dateTo);
-
         for ($date = $from->copy(); $date->lte($to); $date->addDay()) {
-            $occupied = RoomAssignment::where('checked_in_at', '<=', $date->copy()->endOfDay())
-                ->where(function ($q) use ($date) {
-                    $q->whereNull('checked_out_at')
-                        ->orWhere('checked_out_at', '>=', $date->copy()->startOfDay());
-                })
-                ->count();
+            $dateStart = $date->copy()->startOfDay();
+            $dateEnd = $date->copy()->endOfDay();
+            $occupied = $assignments->filter(function ($assignment) use ($dateStart, $dateEnd) {
+                $checkedIn = Carbon::parse($assignment->checked_in_at);
+                $checkedOut = $assignment->checked_out_at ? Carbon::parse($assignment->checked_out_at) : null;
+
+                return $checkedIn->lte($dateEnd) && ($checkedOut === null || $checkedOut->gte($dateStart));
+            })->count();
 
             $dailyOccupancy[] = [
                 'date' => $date->format('M d'),
@@ -441,12 +566,17 @@ class Reports extends Page
         })->sortByDesc('utilization_rate')->values()->toArray();
 
         // By room type
+        $stayCountsByRoomType = RoomAssignment::query()
+            ->join('rooms', 'room_assignments.room_id', '=', 'rooms.id')
+            ->whereBetween('room_assignments.checked_in_at', [$from, $to])
+            ->select('rooms.room_type_id as room_type_id', DB::raw('count(*) as total'))
+            ->groupBy('rooms.room_type_id')
+            ->pluck('total', 'room_type_id');
+
         $byType = RoomType::withCount(['rooms' => function ($q) {
             $q->where('is_active', true);
-        }])->get()->map(function ($type) use ($from, $to) {
-            $stayCount = RoomAssignment::whereHas('room', function ($q) use ($type) {
-                $q->where('room_type_id', $type->id);
-            })->whereBetween('checked_in_at', [$from, $to])->count();
+        }])->get()->map(function ($type) use ($stayCountsByRoomType) {
+            $stayCount = (int) ($stayCountsByRoomType[$type->id] ?? 0);
 
             return [
                 'name' => $type->name,
@@ -490,14 +620,14 @@ class Reports extends Page
                         : (int) Carbon::parse($assign->checked_in_at)->startOfDay()->diffInDays(Carbon::now()->startOfDay()),
                     'remarks' => $assign->remarks ?? '-',
                 ];
-            })->toArray();
+            });
 
         return [
             'type' => 'stay_logs',
-            'logs' => $logs,
+            'logs' => $logs->toArray(),
             'total_stays' => count($logs),
-            'completed' => collect($logs)->where('checked_out', '!=', 'Still checked in')->count(),
-            'ongoing' => collect($logs)->where('checked_out', 'Still checked in')->count(),
+            'completed' => $logs->where('checked_out', '!=', 'Still checked in')->count(),
+            'ongoing' => $logs->where('checked_out', 'Still checked in')->count(),
         ];
     }
 

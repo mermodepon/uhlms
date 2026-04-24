@@ -480,6 +480,28 @@
 
     /* Responsive */
     @media (max-width: 768px) {
+        body > nav,
+        body > footer {
+            display: none !important;
+        }
+
+        body {
+            background: #000;
+        }
+
+        main {
+            min-height: 100vh;
+        }
+
+        #tour-viewer {
+            height: 100vh;
+            height: 100dvh;
+            margin: 0;
+            border-radius: 0;
+            max-width: 100%;
+            box-shadow: none;
+        }
+
         #room-info-overlay {
             width: 100vw;
         }
@@ -504,6 +526,182 @@
 
         #auto-tour-countdown {
             font-size: 0.68rem;
+        }
+
+        #progress-indicator {
+            top: 0.75rem;
+            left: 0.65rem;
+            transform: none;
+            max-width: calc(100vw - 10.25rem);
+            padding: 0.4rem 0.65rem;
+            font-size: 0.72rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .top-right-controls {
+            top: 0.65rem;
+            right: 0.65rem;
+            gap: 0.4rem;
+            align-items: center;
+        }
+
+        .top-right-controls button,
+        .top-right-controls a,
+        .vr-btn {
+            min-width: 42px;
+            min-height: 42px;
+            padding: 0;
+            border-radius: 0.65rem;
+            justify-content: center;
+            place-items: center;
+            background: rgba(17, 24, 39, 0.78);
+            backdrop-filter: blur(6px);
+        }
+
+        .top-right-controls button span,
+        .top-right-controls a span {
+            display: none;
+        }
+
+        .top-right-controls svg {
+            width: 19px;
+            height: 19px;
+        }
+
+        #help-btn,
+        #fullscreen-btn {
+            display: none !important;
+        }
+
+        .top-right-controls .exit-btn {
+            width: 42px;
+            height: 42px;
+            overflow: hidden;
+            white-space: nowrap;
+            font-size: 0;
+            display: inline-grid;
+            place-items: center;
+            line-height: 1;
+        }
+
+        .mobile-glyph {
+            display: inline-grid;
+            place-items: center;
+            width: 1em;
+            height: 1em;
+            font-size: 1.15rem;
+            font-weight: 800;
+            line-height: 1;
+            transform: translateY(-0.02em);
+        }
+
+        .top-right-controls .mobile-glyph,
+        .nav-btn .mobile-glyph {
+            display: inline-grid;
+        }
+
+        .nav-label,
+        .exit-label {
+            display: none;
+        }
+
+        .top-right-controls .exit-btn .mobile-glyph {
+            font-size: 1rem;
+        }
+
+        #mobile-settings-btn {
+            display: flex !important;
+        }
+
+        .vr-controls {
+            top: 3.85rem;
+            left: auto;
+            right: 0.65rem;
+            width: min(230px, calc(100vw - 1.3rem));
+            padding: 0.5rem;
+            border-radius: 0.85rem;
+            background: rgba(17, 24, 39, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(10px);
+            opacity: 0;
+            transform: translateY(-6px);
+            pointer-events: none;
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+
+        .vr-controls.mobile-open {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .vr-controls.ui-hidden {
+            opacity: 0 !important;
+            transform: translateY(-6px) !important;
+            pointer-events: none !important;
+        }
+
+        .vr-btn {
+            width: 100%;
+            padding: 0.55rem 0.7rem;
+            min-height: 40px;
+            justify-content: flex-start;
+            gap: 0.55rem;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .vr-btn span {
+            display: inline;
+            font-size: 0.82rem;
+        }
+
+        .mobile-drawer-action {
+            display: flex !important;
+        }
+
+        #auto-tour-settings,
+        #auto-tour-hud {
+            width: 100%;
+            box-shadow: none;
+        }
+
+        .nav-controls {
+            bottom: max(0.8rem, env(safe-area-inset-bottom));
+            left: 0;
+            right: 0;
+            transform: none;
+            justify-content: space-between;
+            padding: 0 1rem;
+            pointer-events: none;
+        }
+
+        .nav-btn {
+            width: 52px;
+            height: 52px;
+            padding: 0;
+            border-radius: 999px;
+            font-size: 0;
+            display: inline-grid;
+            place-items: center;
+            background: rgba(17, 24, 39, 0.74);
+            backdrop-filter: blur(6px);
+            pointer-events: auto;
+            line-height: 1;
+        }
+
+        .nav-btn .mobile-glyph {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        #narration-tooltip {
+            bottom: 4.6rem;
+            width: calc(100vw - 2rem);
+            padding: 0.75rem 1rem;
+            font-size: 0.82rem;
         }
     }
 
@@ -757,15 +955,23 @@
     <!-- Navigation Controls -->
     <div class="nav-controls">
         <button id="nav-previous" class="nav-btn" onclick="tourEngine.navigatePrevious()">
-            ← Previous
+            <span class="mobile-glyph" aria-hidden="true">&larr;</span>
+            <span class="nav-label">Previous</span>
         </button>
         <button id="nav-next" class="nav-btn" onclick="tourEngine.navigateNext()">
-            Next →
+            <span class="nav-label">Next</span>
+            <span class="mobile-glyph" aria-hidden="true">&rarr;</span>
         </button>
     </div>
 
     <!-- Top-right controls -->
     <div class="top-right-controls">
+        <button id="mobile-settings-btn" onclick="toggleMobileTourSettings(event)" title="Tour settings" aria-label="Tour settings" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1 .6 1.65 1.65 0 00-.4 1.08V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-.6-1 1.65 1.65 0 00-1.08-.4H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-.6 1.65 1.65 0 00.4-1.08V3a2 2 0 014 0v.09A1.65 1.65 0 0015 4.6a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 00.6 1 1.65 1.65 0 001.08.4H21a2 2 0 010 4h-.09A1.65 1.65 0 0019.4 15z"/>
+            </svg>
+        </button>
         <button id="help-btn" onclick="openTourHelp()" title="How to navigate this tour">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"/>
@@ -774,7 +980,7 @@
             </svg>
             <span>Help</span>
         </button>
-        <button onclick="toggleFullscreen()" title="Toggle fullscreen">
+        <button id="fullscreen-btn" onclick="toggleFullscreen()" title="Toggle fullscreen">
             <svg id="fs-expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
             </svg>
@@ -793,8 +999,9 @@
                 <line x1="1" y1="1" x2="23" y2="23"/>
             </svg>
         </button>
-        <button class="exit-btn" onclick="window.location.href='{{ route('guest.virtual-tours') }}'">
-            ✕ Exit Tour
+        <button class="exit-btn" onclick="window.location.href='{{ route('guest.virtual-tours') }}'" aria-label="Exit tour">
+            <span class="mobile-glyph" aria-hidden="true">X</span>
+            <span class="exit-label">Exit Tour</span>
         </button>
         <button id="room-info-btn" onclick="tourEngine.toggleRoomInfoOverlay()" title="View room information">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -805,22 +1012,36 @@
         </button>
     </div>
 
-    <!-- Stereo Controls -->
+    <!-- Tour Controls -->
     <div class="vr-controls">
-        <button id="vr-mode-btn" class="vr-btn" onclick="toggleVRMode()" title="Split-screen stereo panorama mode (mobile/headset browser)">
+        <button type="button" class="vr-btn mobile-drawer-action" onclick="openTourHelp();document.querySelector('.vr-controls')?.classList.remove('mobile-open')" title="How to navigate this tour" style="display:none">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M2 8a2 2 0 012-2h16a2 2 0 012 2v8a2 2 0 01-2 2h-4.764l-1.427-2.14a2 2 0 00-3.618 0L8.764 18H4a2 2 0 01-2-2V8z"/>
-                <circle cx="8" cy="12" r="2"/>
-                <circle cx="16" cy="12" r="2"/>
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17" stroke-width="3"/>
             </svg>
-            <span id="vr-btn-text">Stereo Mode</span>
+            <span>Help</span>
         </button>
-        <button id="gyro-btn" class="vr-btn" onclick="toggleGyro()" title="Enable gyroscope control (tilt device to look around)">
+        <button type="button" class="vr-btn mobile-drawer-action" onclick="toggleFullscreen();document.querySelector('.vr-controls')?.classList.remove('mobile-open')" title="Toggle fullscreen" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+            </svg>
+            <span>Fullscreen</span>
+        </button>
+        <button id="webxr-test-btn" class="vr-btn" onclick="startWebXRTestMode()" title="Enter immersive VR mode">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 8h12a3 3 0 013 3v4a3 3 0 01-3 3h-3.5l-1.1-2.2a1.5 1.5 0 00-2.8 0L9.5 18H6a3 3 0 01-3-3v-4a3 3 0 013-3z"/>
+                <circle cx="8" cy="13" r="1.5"/>
+                <circle cx="16" cy="13" r="1.5"/>
+            </svg>
+            <span>VR Mode</span>
+        </button>
+        <button id="gyro-btn" class="vr-btn" onclick="toggleGyro()" title="Use phone motion to look around">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
                 <line x1="12" y1="18" x2="12.01" y2="18"/>
             </svg>
-            <span id="gyro-btn-text">Gyroscope</span>
+            <span id="gyro-btn-text">Motion Look</span>
         </button>
         <button id="auto-tour-btn" class="vr-btn" onclick="tourEngine.toggleAutoTour()" title="Auto-advance with gentle panning and a visible countdown">
             <svg id="auto-tour-play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1022,90 +1243,12 @@
                     </h3>
                     <ul class="help-list">
                         <li>
-                            <span class="help-icon">🖱️</span>
-                            <div><strong>Click &amp; Drag</strong><br>Hold and drag anywhere to look around the scene</div>
-                        </li>
-                        <li>
-                            <span class="help-icon">📱</span>
-                            <div><strong>Touch &amp; Swipe</strong><br>Swipe with one finger to pan the view on mobile</div>
-                        </li>
-                        <li>
-                            <span class="help-icon">🔍</span>
-                            <div><strong>Scroll / Pinch</strong><br>Scroll wheel or pinch two fingers to zoom in and out</div>
-                        </li>
-                        <li>
-                            <span class="help-kbd">A</span><span class="help-kbd" style="margin-left:2px;">D</span>
-                            <div><strong>A / D or ← / →</strong><br>Rotate the camera left or right</div>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- Moving Around -->
-                <div class="help-section">
-                    <h3>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M12 12v4m0 4h.01M8 20h8"/></svg>
-                        Moving Between Spots
-                    </h3>
-                    <ul class="help-list">
-                        <li>
-                            <span class="help-kbd">W</span>
-                            <div><strong>Move Forward</strong><br>Navigate toward the nearest marker you're facing</div>
-                        </li>
-                        <li>
-                            <span class="help-kbd">S</span>
-                            <div><strong>Move Backward</strong><br>Navigate toward the nearest marker behind you</div>
-                        </li>
-                        <li>
-                            <span class="help-kbd">↑</span><span class="help-kbd" style="margin-left:2px;">↓</span>
-                            <div><strong>Arrow Keys</strong><br>Same as W/S — step forward or backward</div>
-                        </li>
-                        <li>
-                            <span class="help-icon">🔵</span>
-                            <div><strong>Click Nav Markers</strong><br>Click the blue arrow markers to move to connected locations</div>
-                        </li>
-                        <li>
-                            <span class="help-icon">⬅️ ➡️</span>
-                            <div><strong>Previous / Next</strong><br>The bottom buttons step through the tour in sequence</div>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- Markers -->
-                <div class="help-section">
-                    <h3>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        Scene Markers
-                    </h3>
-                    <div class="help-markers">
-                        <div class="help-marker-row">
-                            <div class="help-marker-dot nav"></div>
-                            <div><strong>Blue arrow</strong> — Navigate to a linked spot</div>
-                        </div>
-                        <div class="help-marker-row">
-                            <div class="help-marker-dot info"></div>
-                            <div><strong>Yellow circle</strong> — See an information tooltip</div>
-                        </div>
-                        <div class="help-marker-row">
-                            <div class="help-marker-dot room"></div>
-                            <div><strong>Green pill</strong> — View room details &amp; pricing</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Controls Reference -->
-                <div class="help-section">
-                    <h3>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
-                        On-Screen Controls
-                    </h3>
-                    <ul class="help-list">
-                        <li>
-                            <span class="help-icon">🥽</span>
-                            <div><strong>Stereo Mode</strong><br>Split-screen stereo panorama mode for mobile/headset browser viewing (top-left)</div>
-                        </li>
-                        <li>
                             <span class="help-icon">📡</span>
-                            <div><strong>Gyroscope</strong><br>Tilt your phone to look around — available on supported mobile devices only (top-left)</div>
+                            <div><strong>Motion Look</strong><br>Tilt your phone to look around — available on supported mobile devices only (top-left)</div>
+                        </li>
+                        <li>
+                            <span class="help-icon">VR</span>
+                            <div><strong>VR Mode</strong><br>Enter an immersive WebXR session on supported VR browsers and headsets (top-left)</div>
                         </li>
                         <li>
                             <span class="help-icon">⛶</span>
@@ -1171,12 +1314,12 @@
             document.getElementById('progress-indicator').classList.remove('hidden');
         }, 2000);
 
-        // Hide gyroscope button if not supported
+        // Hide Motion Look button if not supported
         if (typeof DeviceOrientationEvent === 'undefined') {
             const gyroBtn = document.getElementById('gyro-btn');
             if (gyroBtn) {
                 gyroBtn.style.display = 'none';
-                console.log('Gyroscope not supported on this device - button hidden');
+                console.log('Motion Look not supported on this device - button hidden');
             }
         }
     });
@@ -1193,11 +1336,35 @@
         }
     }
 
+    function toggleMobileTourSettings(event) {
+        event?.preventDefault();
+        event?.stopPropagation();
+        const panel = document.querySelector('.vr-controls');
+        if (!panel) return;
+        tourEngine?._showUI?.();
+        if (tourEngine) {
+            tourEngine._uiManuallyHidden = false;
+            tourEngine._syncToggleUIBtn?.(false);
+            tourEngine._resetUIIdleTimer?.();
+        }
+        panel.classList.remove('ui-hidden');
+        panel.classList.toggle('mobile-open');
+    }
+
+    document.addEventListener('click', (event) => {
+        const panel = document.querySelector('.vr-controls');
+        const button = document.getElementById('mobile-settings-btn');
+        if (!panel || !button || !panel.classList.contains('mobile-open')) return;
+        if (panel.contains(event.target) || button.contains(event.target)) return;
+        panel.classList.remove('mobile-open');
+    });
+
     // Elements that must remain visible inside any fullscreen context
     const _fsOverlays = ['room-info-overlay', 'reservation-modal', 'reservation-success-modal'].map(id => document.getElementById(id)).filter(Boolean);
     const _fsOverlayHome = document.getElementById('tour-viewer');
 
     function _syncOverlaysToFullscreen() {
+        document.querySelector('.vr-controls')?.classList.remove('mobile-open');
         const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
         if (fsEl && fsEl !== _fsOverlayHome && !fsEl.contains(_fsOverlays[0])) {
             // Viewer (or another element) went fullscreen — move overlays inside it so they remain visible
@@ -1213,6 +1380,13 @@
     // Update fullscreen button icon on change
     document.addEventListener('fullscreenchange', () => {
         const isFs = !!document.fullscreenElement;
+        document.querySelector('.vr-controls')?.classList.remove('mobile-open');
+        if (!isFs) {
+            tourEngine?._showUI?.();
+            tourEngine && (tourEngine._uiManuallyHidden = false);
+            tourEngine?._syncToggleUIBtn?.(false);
+        }
+        
         document.getElementById('fs-expand-icon').style.display = isFs ? 'none' : '';
         document.getElementById('fs-compress-icon').style.display = isFs ? '' : 'none';
         document.getElementById('fs-btn-text').textContent = isFs ? 'Exit Fullscreen' : 'Fullscreen';
@@ -1220,24 +1394,23 @@
     });
 
     // Safari / iOS WebKit prefix
-    document.addEventListener('webkitfullscreenchange', _syncOverlaysToFullscreen);
-
-    // Stereo mode toggle (split-screen panorama)
-    async function toggleVRMode() {
+    document.addEventListener('webkitfullscreenchange', () => {
+        document.querySelector('.vr-controls')?.classList.remove('mobile-open');
+        
+        _syncOverlaysToFullscreen();
+    });
+    async function startWebXRTestMode() {
         if (!tourEngine) return;
-        await tourEngine.toggleVR();
-        const btn = document.getElementById('vr-mode-btn');
-        const text = document.getElementById('vr-btn-text');
-        if (tourEngine.vrActive) {
-            btn.classList.add('active');
-            text.textContent = 'Exit Stereo';
-        } else {
-            btn.classList.remove('active');
-            text.textContent = 'Stereo Mode';
+        document.querySelector('.vr-controls')?.classList.remove('mobile-open');
+        try {
+            await tourEngine.startWebXRTest();
+        } catch (error) {
+            console.error('WebXR test error:', error);
+            tourEngine._showToast(error?.message || 'Could not start WebXR test mode.', 'error');
         }
     }
 
-    // Gyroscope toggle
+    // Motion Look toggle
     async function toggleGyro() {
         if (!tourEngine) return;
         
@@ -1250,23 +1423,24 @@
             
             if (isActive) {
                 btn.classList.add('active');
-                text.textContent = 'Gyro ON';
-                tourEngine._showToast('Gyroscope enabled - tilt your device to look around', 'success');
+                text.textContent = 'Motion ON';
+                tourEngine._showToast('Motion Look enabled - tilt your device to look around', 'success');
             } else {
                 btn.classList.remove('active');
-                text.textContent = 'Gyroscope';
+                text.textContent = 'Motion Look';
             }
         } catch (error) {
-            console.error('Gyroscope error:', error);
+            console.error('Motion Look error:', error);
+            document.querySelector('.vr-controls')?.classList.remove('mobile-open');
             
-            let errorMessage = 'Gyroscope not available on this device';
+            let errorMessage = 'Motion Look is not available on this device';
             
             if (error.message?.includes('denied') || error.message?.includes('permission')) {
                 errorMessage = 'Permission denied. Enable in Settings → Safari → Motion & Orientation Access';
             } else if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
-                errorMessage = 'Gyroscope requires HTTPS connection on mobile devices';
+                errorMessage = 'Motion Look requires HTTPS connection on mobile devices';
             } else if (error.message?.includes('not initialized')) {
-                errorMessage = 'Gyroscope not supported on this device';
+                errorMessage = 'Motion Look is not supported on this device';
             }
             
             tourEngine._showToast(errorMessage, 'error');

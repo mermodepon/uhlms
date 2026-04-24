@@ -30,7 +30,7 @@ class TourController extends Controller
      */
     public function waypoints(): JsonResponse
     {
-        $waypoints = TourWaypoint::with('activeHotspots')
+        $waypoints = TourWaypoint::with(['activeHotspots', 'room:id,room_type_id'])
             ->active()
             ->ordered()
             ->get()
@@ -49,8 +49,8 @@ class TourController extends Controller
                     'default_zoom' => (int) $waypoint->default_zoom,
                     'description' => $waypoint->description,
                     'narration' => $waypoint->narration,
-                    'linked_room_type_id' => $waypoint->linked_room_type_id,
-                    'linked_room_id' => $waypoint->linked_room_id,
+                    'linked_room_type_id' => $waypoint->linked_room_type_id ?: $waypoint->room?->room_type_id,
+                    'linked_room_id' => null,
                     'room_info_yaw'       => $waypoint->room_info_yaw !== null ? (float) $waypoint->room_info_yaw : null,
                     'room_info_pitch'     => $waypoint->room_info_pitch !== null ? (float) $waypoint->room_info_pitch : null,
                     'is_room_related' => $waypoint->isRoomRelated(),
@@ -83,7 +83,7 @@ class TourController extends Controller
      */
     public function waypoint(string $slug): JsonResponse
     {
-        $waypoint = TourWaypoint::with(['activeHotspots', 'roomType.amenities'])
+        $waypoint = TourWaypoint::with(['activeHotspots', 'roomType.amenities', 'room:id,room_type_id'])
             ->where('slug', $slug)
             ->active()
             ->first();
@@ -106,8 +106,8 @@ class TourController extends Controller
             'position_order' => $waypoint->position_order,
             'description' => $waypoint->description,
             'narration' => $waypoint->narration,
-            'linked_room_type_id' => $waypoint->linked_room_type_id,
-            'linked_room_id' => $waypoint->linked_room_id,
+            'linked_room_type_id' => $waypoint->linked_room_type_id ?: $waypoint->room?->room_type_id,
+            'linked_room_id' => null,
             'room_info_yaw'       => $waypoint->room_info_yaw !== null ? (float) $waypoint->room_info_yaw : null,
             'room_info_pitch'     => $waypoint->room_info_pitch !== null ? (float) $waypoint->room_info_pitch : null,
             'is_room_related' => $waypoint->isRoomRelated(),
@@ -169,14 +169,9 @@ class TourController extends Controller
                 $checkInDate = Carbon::parse($checkIn);
                 $checkOutDate = Carbon::parse($checkOut);
 
-                $availableRooms = $roomType->availableRoomsForDates($checkInDate, $checkOutDate);
-                $availabilityData['available_rooms_count'] = $availableRooms->count();
-                $availabilityData['available_rooms'] = $availableRooms->map(fn ($room) => [
-                    'id' => $room->id,
-                    'room_number' => $room->room_number,
-                    'capacity' => $room->capacity,
-                    'floor' => $room->floor?->name,
-                ]);
+                $availabilityData['available_rooms_count'] = $roomType
+                    ->availableRoomsForDates($checkInDate, $checkOutDate)
+                    ->count();
             } catch (\Exception $e) {
                 $availabilityData['available_rooms_count'] = $roomType->availableRooms()->count();
             }
@@ -195,13 +190,15 @@ class TourController extends Controller
     }
 
     /**
-     * Get room availability status (aggregate data only for security)
-     * Returns availability and room type info, but hides room numbers, occupancy, and floor details
+     * Get aggregate room type availability for a room-linked waypoint.
+     *
+     * This endpoint intentionally does not disclose whether the specific room
+     * behind the waypoint is available. Guests only receive room type counts.
      */
     public function roomAvailability(int $id, Request $request): JsonResponse
     {
         try {
-            $room = \App\Models\Room::with(['roomType.amenities', 'floor'])->find($id);
+            $room = \App\Models\Room::with(['roomType.amenities'])->find($id);
 
             if (!$room || !$room->is_active) {
                 return response()->json([
@@ -210,73 +207,20 @@ class TourController extends Controller
                 ], 404);
             }
 
-            $checkIn = $request->get('check_in');
-            $checkOut = $request->get('check_out');
-
-            // Determine availability
-            $isAvailable = true;
-
-            if ($room->status === 'maintenance' || $room->status === 'inactive') {
-                $isAvailable = false;
-            } elseif ($room->status === 'occupied' && $room->roomType?->isPrivate()) {
-                $isAvailable = false;
-            } elseif ($room->isFull()) {
-                $isAvailable = false;
-            } elseif ($checkIn && $checkOut) {
-                // Check for date-specific conflicts with holds or assignments
-                try {
-                    $checkInDate = Carbon::parse($checkIn);
-                    $checkOutDate = Carbon::parse($checkOut);
-
-                    $hasConflict = app(RoomHoldService::class)->hasConflict($room, $checkInDate, $checkOutDate);
-                    
-                    if ($hasConflict) {
-                        $isAvailable = false;
-                    }
-                } catch (\Exception $e) {
-                    // If date parsing fails, do real-time check only
-                }
+            if (!$room->roomType || !$room->roomType->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Room type not found or inactive',
+                ], 404);
             }
 
-            $isPrivate = $room->roomType?->isPrivate() ?? false;
-
-            // Get aggregate count of other available rooms (no specific details)
-            $otherAvailableCount = 0;
-            
-            if ($room->roomType) {
-                $checkInDate = null;
-                $checkOutDate = null;
-                
-                if ($checkIn && $checkOut) {
-                    try {
-                        $checkInDate = Carbon::parse($checkIn);
-                        $checkOutDate = Carbon::parse($checkOut);
-                    } catch (\Exception $e) {
-                        // Invalid dates, use null
-                    }
-                }
-                
-                // Get available rooms count only (excluding this room)
-                if ($checkInDate && $checkOutDate) {
-                    $otherAvailableCount = $room->roomType->availableRoomsForDates($checkInDate, $checkOutDate)
-                        ->reject(fn($r) => $r->id === $room->id)
-                        ->count();
-                } else {
-                    $otherAvailableCount = $room->roomType->availableRooms()
-                        ->where('id', '!=', $room->id)
-                        ->count();
-                }
-            }
+            $requestForType = Request::create('', 'GET', $request->only(['check_in', 'check_out', 'guests']));
+            $response = $this->roomTypeAvailability($room->roomType->id, $requestForType);
+            $payload = $response->getData(true);
 
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'id' => $room->id,
-                    'is_available' => $isAvailable,
-                    'room_type' => $this->formatRoomTypeData($room->roomType),
-                    'is_private_room' => $isPrivate,
-                    'other_available_count' => $otherAvailableCount,
-                ],
+                'data' => $payload['data'] ?? $this->formatRoomTypeData($room->roomType),
             ]);
         } catch (\Exception $e) {
             \Log::error('Room availability error: ' . $e->getMessage(), [
@@ -323,6 +267,7 @@ class TourController extends Controller
         }
 
         $validated = $validator->validated();
+        $validated['preferred_room_id'] = null;
 
         // Combine name fields
         $validated['guest_name'] = trim(
@@ -334,34 +279,14 @@ class TourController extends Controller
         
         // Build special requests message
         $tourNotice = "\n[Booked via Virtual Tour]";
-        if (!empty($validated['preferred_room_id'])) {
-            $room = \App\Models\Room::find($validated['preferred_room_id']);
-            if ($room) {
-                $tourNotice .= "\n[Guest requested specific room: {$room->room_number}]";
-            }
-        }
         $validated['special_requests'] = ($validated['special_requests'] ?? '') . $tourNotice;
 
         // source is metadata for validation/context only and is not persisted on reservations.
         unset($validated['source']);
         
-        // Save preferred_room_id as metadata in special_requests for staff review
-        $preferredRoomId = $validated['preferred_room_id'] ?? null;
         unset($validated['preferred_room_id']);
 
         $reservation = Reservation::create($validated);
-
-        // Store preferred room as metadata (no hold created - staff will review)
-        if ($preferredRoomId) {
-            $room = \App\Models\Room::find($preferredRoomId);
-            if ($room) {
-                // Update reservation to include preferred room metadata
-                $reservation->update([
-                    'special_requests' => ($reservation->special_requests ?? '') 
-                        . "\n[Preferred Room ID: {$preferredRoomId}]",
-                ]);
-            }
-        }
 
         return response()->json([
             'success' => true,

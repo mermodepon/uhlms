@@ -264,7 +264,7 @@
                                 <option value="navigate">🔗 Navigate to Scene</option>
                                 <option value="info">ℹ️ Show Info</option>
                                 <option value="bookmark">🔖 Bookmark</option>
-                                <option value="external-link">🌐 External Link</option>                                <option value="video">▶️ Play YouTube Video</option>                                <option value="audio">🔊 Play Audio</option>
+                                <option value="external-link">🌐 External Link</option>
                             </select>
                         </div>
                         <div class="te-field" x-show="editingHotspot.action_type === 'navigate'">
@@ -276,11 +276,10 @@
                                 </template>
                             </select>
                         </div>
-                        <div class="te-field" x-show="['external-link','video','audio'].includes(editingHotspot.action_type)">
-                            <label x-text="editingHotspot.action_type === 'video' ? 'YouTube URL' : editingHotspot.action_type === 'audio' ? 'Audio URL' : 'URL'"></label>
+                        <div class="te-field" x-show="editingHotspot.action_type === 'external-link'">
+                            <label>URL</label>
                             <input type="url" x-model="editingHotspot.action_target"
-                                   :placeholder="editingHotspot.action_type === 'video' ? 'https://youtube.com/watch?v=…' : editingHotspot.action_type === 'audio' ? 'https://…/audio.mp3' : 'https://…'">
-                            <div x-show="editingHotspot.action_type === 'audio'" style="font-size:10px;color:#94a3b8;margin-top:3px">Supports MP3, OGG, WAV, M4A.</div>
+                                   placeholder="https://…">
                         </div>
                     </div>
 
@@ -291,42 +290,55 @@
                             <select x-model="editingHotspot.media_type"
                                     @change="editingHotspot.media_url = ''">
                                 <option value="">None</option>
-                                <option value="image">🖼️ Image</option>
+                                <option value="image">Images</option>
                                 <option value="video">▶️ YouTube Video</option>
-                                <option value="gallery">🖼️ Image Gallery</option>
                             </select>
                         </div>
                         <div class="te-field" x-show="editingHotspot.media_type === 'image'"
                              x-data="{ uploading: false, uploadProgress: 0, uploadError: '' }">
-                            <label>Image <span style="font-size:10px;font-weight:400;color:#94a3b8">(jpg, png, webp, gif · max 2 MB)</span></label>
+                            <label>Images <span style="font-size:10px;font-weight:400;color:#94a3b8">(jpg, png, webp, gif · max 2 MB)</span></label>
 
                             {{-- Upload picker --}}
                             <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:#f1f5f9;border:1px dashed #cbd5e1;border-radius:6px;cursor:pointer;font-size:11px;color:#475569;font-weight:600"
                                    :style="uploading ? 'opacity:.6;pointer-events:none' : ''">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                                 <span x-text="uploading ? 'Uploading...' : 'Upload image'"></span>
-                                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none"
+                                <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" style="display:none"
                                        @change="
-                                           const file = $event.target.files[0];
-                                           if (!file) return;
+                                           const files = Array.from($event.target.files || []);
+                                           if (!files.length) return;
                                            uploading = true; uploadError = ''; uploadProgress = 0;
-                                           $wire.upload(
-                                               'hotspotImageFile',
-                                               file,
-                                               async () => {
-                                                   try {
-                                                       const url = await $wire.uploadHotspotImage();
-                                                       editingHotspot.media_url = url;
-                                                   } catch (e) {
-                                                       uploadError = e?.message || 'Upload failed.';
-                                                   } finally {
-                                                       uploading = false; uploadProgress = 0;
-                                                       $event.target.value = '';
+                                           (async () => {
+                                               try {
+                                                   for (const [index, file] of files.entries()) {
+                                                       uploadProgress = Math.round((index / files.length) * 100);
+                                                       await new Promise((resolve, reject) => {
+                                                           $wire.upload(
+                                                               'hotspotImageFile',
+                                                               file,
+                                                               async () => {
+                                                                   try {
+                                                                       const url = await $wire.uploadHotspotImage();
+                                                                       appendImageUrl(url);
+                                                                       resolve();
+                                                                   } catch (e) {
+                                                                       reject(e);
+                                                                   }
+                                                               },
+                                                               reject,
+                                                               (evt) => {
+                                                                   uploadProgress = Math.round(((index + (evt.detail.progress / 100)) / files.length) * 100);
+                                                               }
+                                                           );
+                                                       });
                                                    }
-                                               },
-                                               (err) => { uploading = false; uploadError = 'Upload failed. Check file type and size.'; $event.target.value = ''; },
-                                               (evt) => { uploadProgress = evt.detail.progress; }
-                                           );
+                                               } catch (e) {
+                                                   uploadError = e?.message || 'Upload failed. Check file type and size.';
+                                               } finally {
+                                                   uploading = false; uploadProgress = 0;
+                                                   $event.target.value = '';
+                                               }
+                                           })();
                                        ">
                             </label>
 
@@ -338,21 +350,22 @@
                             {{-- Error --}}
                             <div x-show="uploadError" x-text="uploadError" style="margin-top:4px;font-size:10px;color:#ef4444"></div>
 
-                            {{-- Preview --}}
-                            <div x-show="editingHotspot.media_url" style="margin-top:6px;border-radius:6px;overflow:hidden;max-height:100px;background:#000">
-                                <img :src="editingHotspot.media_url" style="width:100%;max-height:100px;object-fit:cover;display:block" onerror="this.parentElement.style.display='none'">
+                            <div x-show="imageMediaUrls().length" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px">
+                                <template x-for="(url, index) in imageMediaUrls()" :key="url + index">
+                                    <div style="position:relative;border-radius:6px;overflow:hidden;background:#000;aspect-ratio:1/1">
+                                        <img :src="url" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentElement.style.display='none'">
+                                        <button type="button"
+                                                @click="removeImageUrl(index)"
+                                                title="Remove image"
+                                                style="position:absolute;top:4px;right:4px;width:20px;height:20px;border:0;border-radius:999px;background:rgba(15,23,42,.82);color:white;font-size:14px;line-height:20px;padding:0;cursor:pointer">×</button>
+                                    </div>
+                                </template>
                             </div>
                         </div>
                         <div class="te-field" x-show="editingHotspot.media_type === 'video'">
                             <label>YouTube URL</label>
                             <input type="url" x-model="editingHotspot.media_url" placeholder="https://youtube.com/watch?v=...">
                             <div style="font-size:10px;color:#94a3b8;margin-top:3px">Supports youtube.com, youtu.be, and /shorts/ links.</div>
-                        </div>
-                        <div class="te-field" x-show="editingHotspot.media_type === 'gallery'">
-                            <label>Image URLs <span style="font-size:10px;font-weight:400;color:#94a3b8">(one per line)</span></label>
-                            <textarea x-model="editingHotspot.media_url" rows="4"
-                                      placeholder="https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg"></textarea>
-                            <div style="font-size:10px;color:#94a3b8;margin-top:3px">Enter one image URL per line.</div>
                         </div>
                     </div>
 
@@ -605,7 +618,7 @@
                                 }
                             },
                             onHotspotSelected: (h) => {
-                                this.editingHotspot = { ...h };
+                                this.editingHotspot = { ...h, media_type: this.normalizeMediaType(h.media_type) };
                             },
                             onHotspotDeselected: () => {
                                 this.editingHotspot = null;
@@ -734,7 +747,7 @@
                 },
 
                 selectHotspot(h) {
-                    this.editingHotspot = { ...h };
+                    this.editingHotspot = { ...h, media_type: this.normalizeMediaType(h.media_type) };
                     if (this.editor) {
                         this.editor.selectedHotspotId = h.id;
                         this.editor._highlightMarker(h.id);
@@ -814,13 +827,14 @@
                 async saveCurrentHotspot() {
                     const h = this.editingHotspot;
                     if (!h || !h.title) return;
+                    const mediaType = this.normalizeMediaType(h.media_type);
 
                     if (h.id) {
                         await this.$wire.updateHotspot(
                             h.id, h.title, h.description || '', h.icon,
                             h.pitch, h.yaw, h.action_type, h.action_target || null,
                             h.sort_order, h.is_active,
-                            h.media_type || null, h.media_url || null,
+                            mediaType || null, h.media_url || null,
                             h.size || 3
                         );
                     } else {
@@ -829,7 +843,7 @@
                             h.title, h.description || '', h.icon,
                             h.pitch, h.yaw, h.action_type, h.action_target || null,
                             h.sort_order, h.is_active,
-                            h.media_type || null, h.media_url || null,
+                            mediaType || null, h.media_url || null,
                             h.size || 3
                         );
                     }
@@ -854,11 +868,33 @@
                 },
 
                 actionColor(type) {
-                    return { navigate:'#dbeafe', info:'#fef3c7', bookmark:'#ede9fe', 'external-link':'#d1fae5', audio:'#fce7f3', video:'#fce7f3' }[type] || '#f1f5f9';
+                    return { navigate:'#dbeafe', info:'#fef3c7', bookmark:'#ede9fe', 'external-link':'#d1fae5' }[type] || '#f1f5f9';
                 },
 
                 actionLabel(type) {
-                    return { navigate:'Navigate', info:'Info', bookmark:'Bookmark', 'external-link':'Link', audio:'Audio', video:'Video' }[type] || type;
+                    return { navigate:'Navigate', info:'Info', bookmark:'Bookmark', 'external-link':'Link' }[type] || type;
+                },
+
+                normalizeMediaType(type) {
+                    return type === 'gallery' ? 'image' : (type || '');
+                },
+
+                imageMediaUrls(value = this.editingHotspot?.media_url) {
+                    return (value || '').split('\n').map(url => url.trim()).filter(Boolean);
+                },
+
+                appendImageUrl(url) {
+                    if (!this.editingHotspot || !url) return;
+                    const urls = this.imageMediaUrls();
+                    urls.push(url);
+                    this.editingHotspot.media_url = urls.join('\n');
+                },
+
+                removeImageUrl(index) {
+                    if (!this.editingHotspot) return;
+                    const urls = this.imageMediaUrls();
+                    urls.splice(index, 1);
+                    this.editingHotspot.media_url = urls.join('\n');
                 },
 
                 waypointName(slug) {
@@ -871,7 +907,7 @@
                     this.$wire.updateHotspot(
                         h.id, h.title, h.description || '', h.icon,
                         h.pitch, h.yaw, h.action_type, h.action_target || null,
-                        h.sort_order, h.is_active, h.media_type || null, h.media_url || null
+                        h.sort_order, h.is_active, this.normalizeMediaType(h.media_type) || null, h.media_url || null
                     );
                 },
 
@@ -889,7 +925,7 @@
                         action_target: h.action_target,
                         sort_order: this.hotspots.length,
                         is_active: h.is_active,
-                        media_type: h.media_type,
+                        media_type: this.normalizeMediaType(h.media_type),
                         media_url: h.media_url,
                         size: h.size || 3,
                     };

@@ -7,7 +7,6 @@
 import { Viewer } from '@photo-sphere-viewer/core';
 import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
 import { GyroscopePlugin } from '@photo-sphere-viewer/gyroscope-plugin';
-import { StereoPlugin } from '@photo-sphere-viewer/stereo-plugin';
 import '@photo-sphere-viewer/core/index.css';
 import '@photo-sphere-viewer/markers-plugin/index.css';
 
@@ -24,13 +23,11 @@ class PanoramaViewer {
         if (!this.container) throw new Error('PanoramaViewer: container is required');
 
         this._eventListeners = {};
-        this._vrActive = false;
         this._markerConfigs = new Map();  // id → config passed to addMarker
 
         const plugins = [
             [MarkersPlugin, { markers: [] }],
             [GyroscopePlugin, { touchmove: false, absolutePosition: false }],
-            [StereoPlugin],
         ];
 
         const defaultYaw   = (options.defaultYaw   || 0);
@@ -58,7 +55,6 @@ class PanoramaViewer {
         this._psv = new Viewer(viewerOpts);
         this._markers = this._psv.getPlugin(MarkersPlugin);
         this._gyro    = this._psv.getPlugin(GyroscopePlugin);
-        this._stereo  = this._psv.getPlugin(StereoPlugin);
 
         // Wire PSV events → our event bus
         this._psv.addEventListener('ready', () => {
@@ -280,7 +276,7 @@ class PanoramaViewer {
             const imgs = sprite.mediaGallery.map(url =>
                 `<img src="${url}" style="height:160px;width:auto;flex-shrink:0;display:block;border-radius:6px;object-fit:cover" onerror="this.style.display='none'" loading="lazy">`
             ).join('');
-            mediaHtml = `<div style="display:flex;gap:8px;overflow-x:auto;padding:10px 14px;background:#f9fafb;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch">${imgs}</div>`;
+            mediaHtml = `<div onwheel="event.stopPropagation();event.preventDefault();this.scrollLeft += event.deltaY + event.deltaX" style="display:flex;gap:8px;overflow-x:auto;padding:10px 14px;background:#f9fafb;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">${imgs}</div>`;
         } else if (sprite.mediaUrl) {
             mediaHtml = `<div style="flex-shrink:0;overflow:hidden">`
                 + `<img src="${sprite.mediaUrl}" style="width:100%;display:block;max-height:240px;object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
@@ -294,22 +290,27 @@ class PanoramaViewer {
             `<span style="display:inline-block;background:#f3f4f6;color:#374151;font-size:11px;padding:3px 8px;border-radius:999px;margin:2px">${a}</span>`
         ).join('');
 
+        const closeStyle = 'position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);border:none;color:white;width:26px;height:26px;border-radius:50%;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:0';
         const closeBtn = closeAction
-            ? `<button onclick="${closeAction};event.stopPropagation()" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);border:none;color:white;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:14px;line-height:26px;text-align:center">✕</button>`
-            : `<div style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);color:white;width:26px;height:26px;border-radius:50%;font-size:14px;line-height:26px;text-align:center">✕</div>`;
+            ? `<button onclick="${closeAction};event.stopPropagation()" style="${closeStyle};cursor:pointer">X</button>`
+            : `<div style="${closeStyle}">X</div>`;
 
-        return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:380px;font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;max-height:90vh;pointer-events:auto">`
+        const interactionShield = `onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onpointerdown="event.stopPropagation()" onwheel="event.stopPropagation()" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()"`;
+
+        return `<div ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:min(380px,calc(100vw - 32px));font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;max-height:min(90vh,calc(100dvh - 24px));pointer-events:auto;touch-action:pan-y">`
             + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 16px;position:relative;flex-shrink:0">`
             + closeBtn
             + `<h2 style="font-size:16px;font-weight:700;margin:0 32px 0 0">${title}</h2>`
             + (subtitle ? `<span style="display:inline-block;margin-top:4px;background:rgba(255,255,255,.2);font-size:11px;padding:2px 8px;border-radius:999px">${subtitle}</span>` : '')
             + (badge ? `<div style="position:absolute;top:10px;right:42px;font-size:11px;font-weight:700;color:${badgeClr}">${badge}</div>` : '')
             + `</div>`
+            + `<div style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y">`
             + mediaHtml
             + (body ? `<div style="padding:14px;font-size:13px;color:#374151;line-height:1.6">${body}</div>` : '')
             + (price ? `<div style="padding:0 14px 10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px">Price</div><div style="font-size:19px;font-weight:700;color:#d97706">${price}</div></div>` : '')
             + (amenitiesTags ? `<div style="padding:0 14px 14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:4px">Amenities</div>${amenitiesTags}</div>` : '')
             + (buttons ? `<div style="padding:0 14px 14px">${buttons}</div>` : '')
+            + `</div>`
             + `</div>`;
     }
 
@@ -371,29 +372,6 @@ class PanoramaViewer {
         this._markers.clearMarkers();
         this._markerConfigs.clear();
     }
-
-    // ── VR / Stereo ──────────────────────────────────────────────────────────
-
-    get vrActive() { return this._vrActive; }
-
-    async toggleVR() {
-        try {
-            if (this._vrActive) {
-                this._stereo.stop();
-                this._vrActive = false;
-            } else {
-                await this._stereo.start();
-                this._vrActive = true;
-            }
-        } catch (e) {
-            console.warn('Stereo/cardboard VR not available:', e);
-            this._vrActive = false;
-        }
-        this._emit('vr-changed', { active: this._vrActive });
-    }
-
-    async toggleStereo() { return this.toggleVR(); }
-    get stereoEnabled()  { return this._vrActive; }
 
     // ── Gyroscope ────────────────────────────────────────────────────────────
 

@@ -169,8 +169,7 @@ window.printReportNoCharts = function() {
     win.document.close();
 };
 
-// Ensure charts initialize on first load and after Livewire updates
-document.addEventListener('DOMContentLoaded', function() {
+function cmuInitAllCharts() {
     try {
         document.querySelectorAll('.chart-container').forEach(function(el) {
             if (window.CMUCharts && typeof window.CMUCharts.init === 'function') {
@@ -178,21 +177,81 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     } catch (e) {
-        console.error('CMUCharts auto-init error (DOMContentLoaded)', e);
+        console.error('CMUCharts auto-init error', e);
     }
+}
+
+function cmuScheduleChartInit() {
+    window.requestAnimationFrame(function() {
+        window.setTimeout(cmuInitAllCharts, 0);
+        window.setTimeout(cmuInitAllCharts, 75);
+        window.setTimeout(cmuInitAllCharts, 200);
+    });
+}
+
+function cmuRegisterLivewireChartHooks() {
+    if (!window.Livewire || !window.Livewire.hook || window.__cmuChartsLivewireHooksRegistered) {
+        return;
+    }
+
+    window.__cmuChartsLivewireHooksRegistered = true;
+
+    try {
+        // Livewire v2
+        window.Livewire.hook('message.processed', cmuScheduleChartInit);
+    } catch(e) {}
+
+    try {
+        // Livewire v3 / Filament v3
+        window.Livewire.hook('morph.updated', cmuScheduleChartInit);
+        window.Livewire.hook('commit', function(payload) {
+            if (payload && typeof payload.succeed === 'function') {
+                payload.succeed(cmuScheduleChartInit);
+            }
+        });
+    } catch(e) {}
+}
+
+// Ensure charts initialize on first load and after Livewire updates.
+document.addEventListener('DOMContentLoaded', function() {
+    cmuScheduleChartInit();
+    cmuRegisterLivewireChartHooks();
 });
 
-// Livewire hook: re-init charts after Livewire updates
-if (window.Livewire && window.Livewire.hook) {
-    try {
-        window.Livewire.hook('message.processed', function() {
-            document.querySelectorAll('.chart-container').forEach(function(el) {
-                try { window.CMUCharts.init(el); } catch(e) { console.error('CMUCharts init error (Livewire hook)', e); }
+document.addEventListener('livewire:init', function() {
+    cmuRegisterLivewireChartHooks();
+    cmuScheduleChartInit();
+});
+
+document.addEventListener('livewire:navigated', cmuScheduleChartInit);
+
+try {
+    var cmuChartObserver = new MutationObserver(function(mutations) {
+        var shouldInit = mutations.some(function(mutation) {
+            if (mutation.target && mutation.target.closest && mutation.target.closest('.chart-container')) {
+                return true;
+            }
+
+            return Array.prototype.some.call(mutation.addedNodes || [], function(node) {
+                return node.nodeType === 1 && (
+                    node.matches && node.matches('.chart-container') ||
+                    node.querySelector && node.querySelector('.chart-container')
+                );
             });
         });
-    } catch(e) {
-        console.error('CMUCharts Livewire hook setup failed', e);
-    }
+
+        if (shouldInit) {
+            cmuScheduleChartInit();
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        if (document.body) {
+            cmuChartObserver.observe(document.body, { childList: true, subtree: true });
+        }
+    });
+} catch(e) {
+    console.error('CMUCharts MutationObserver setup failed', e);
 }
 
 // Refresh / re-render all charts on the page (useful after changing date ranges)

@@ -190,11 +190,11 @@
         </div>
 
         {{-- Filters & Actions --}}
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 no-print">
-            <div class="grid grid-cols-1 md:grid-cols-{{ $reportType === 'reservation_list' ? '4' : ($reportType === 'monthly_or_report' ? '2' : '3') }} gap-4 items-end">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Report Type</label>
-                    <select wire:model.live="reportType" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 no-print">
+            <div class="flex flex-wrap items-end gap-3">
+                <div class="min-w-[220px] flex-1">
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Report Type</label>
+                    <select wire:model.live="reportType" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500 text-sm">
                         <option value="monthly_or_report">Monthly Report</option>
                         <option value="reservation_summary">Reservation Summary</option>
                         <option value="reservation_list">Reservation List</option>
@@ -204,25 +204,25 @@
                     </select>
                 </div>
                 @if($reportType === 'monthly_or_report')
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Month</label>
-                        <input type="month" wire:model.live="monthPeriod" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500">
+                    <div class="min-w-[180px] flex-1">
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Month</label>
+                        <input type="month" wire:model.live="monthPeriod" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500 text-sm">
                     </div>
                 @endif
                 @if($reportType !== 'monthly_or_report')
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From Date</label>
-                    <input type="date" wire:model.live="dateFrom" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500">
+                <div class="min-w-[170px] flex-1">
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">From Date</label>
+                    <input type="date" wire:model.live="dateFrom" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500 text-sm">
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To Date</label>
-                    <input type="date" wire:model.live="dateTo" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500">
+                <div class="min-w-[170px] flex-1">
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">To Date</label>
+                    <input type="date" wire:model.live="dateTo" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500 text-sm">
                 </div>
                 @endif
                 @if($reportType === 'reservation_list')
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status Filter</label>
-                        <select wire:model.live="reservationStatus" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500">
+                    <div class="min-w-[190px] flex-1">
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Status Filter</label>
+                        <select wire:model.live="reservationStatus" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500 text-sm">
                             <option value="">All Statuses</option>
                             <option value="pending">Pending</option>
                             <option value="approved">Approved</option>
@@ -232,16 +232,14 @@
                         </select>
                     </div>
                 @endif
-            </div>
-            <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div class="flex items-center justify-between">
-                    <button onclick="if(window.printReportNoCharts){window.printReportNoCharts()}else if(window.printReport){window.printReport()}else{window.print()}" style="background-color: #00491E; color: #FFC600; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 10px; border: 2px solid #FFC600; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">
-                    <svg style="width: 22px; height: 22px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="if(window.printReportNoCharts){window.printReportNoCharts()}else if(window.printReport){window.printReport()}else{window.print()}" style="background-color: #00491E; color: #FFC600; padding: 10px 18px; border-radius: 8px; font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; border: 2px solid #FFC600; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); white-space: nowrap;">
+                    <svg style="width: 18px; height: 18px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
                     </svg>
                     Print Report
                     </button>
-                    <button onclick="(function(){ if(window.CMUCharts && window.CMUCharts.refreshAll){ window.CMUCharts.refreshAll(); } else if(window.location){ window.location.reload(); } })()" title="Refresh charts for the selected date range" style="background:#ffffff;color:#00491E;border:1px solid #00491E;border-radius:8px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+                    <button onclick="(function(){ if(window.CMUCharts && window.CMUCharts.refreshAll){ window.CMUCharts.refreshAll(); } else if(window.location){ window.location.reload(); } })()" title="Refresh charts for the selected date range" style="background:#ffffff;color:#00491E;border:1px solid #00491E;border-radius:8px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.06);white-space:nowrap;">
                         Refresh Charts
                     </button>
                 </div>
@@ -393,22 +391,40 @@
 
         {{-- Occupancy Report --}}
         @if(($data['type'] ?? '') === 'occupancy')
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
-                    <div class="text-3xl font-bold text-primary-600">{{ $data['total_rooms'] }}</div>
-                    <div class="text-sm text-gray-500 mt-1">Total Active Rooms</div>
-                </div>
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
-                    <div class="text-3xl font-bold text-green-600">{{ $data['available_now'] }}</div>
-                    <div class="text-sm text-gray-500 mt-1">Available Now</div>
-                </div>
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
-                    <div class="text-3xl font-bold text-red-600">{{ $data['occupied_now'] }}</div>
-                    <div class="text-sm text-gray-500 mt-1">Occupied Now</div>
-                </div>
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
-                    <div class="text-3xl font-bold text-amber-600">{{ $data['current_rate'] }}%</div>
-                    <div class="text-sm text-gray-500 mt-1">Current Occupancy Rate</div>
+            @php
+                $occupancyTotal = count($data['daily'] ?? []);
+                $occupancyPerPage = max(1, $this->occupancyPerPage);
+                $occupancyLastPage = max(1, (int) ceil($occupancyTotal / $occupancyPerPage));
+                $occupancyPage = max(1, min($this->occupancyPage, $occupancyLastPage));
+                $occupancyOffset = ($occupancyPage - 1) * $occupancyPerPage;
+                $occupancyRows = array_slice($data['daily'] ?? [], $occupancyOffset, $occupancyPerPage);
+                $occupancyPagination = [
+                    'page' => $occupancyPage,
+                    'last_page' => $occupancyLastPage,
+                    'total' => $occupancyTotal,
+                    'from' => $occupancyTotal === 0 ? 0 : $occupancyOffset + 1,
+                    'to' => min($occupancyOffset + $occupancyPerPage, $occupancyTotal),
+                ];
+            @endphp
+
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center gap-2 rounded-lg bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                        <span class="text-lg leading-none">{{ $data['total_rooms'] }}</span>
+                        Total Active Rooms
+                    </span>
+                    <span class="inline-flex items-center gap-2 rounded-lg bg-green-100 px-3 py-2 text-sm font-medium text-green-800">
+                        <span class="font-bold">{{ $data['available_now'] }}</span>
+                        Available Now
+                    </span>
+                    <span class="inline-flex items-center gap-2 rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-800">
+                        <span class="font-bold">{{ $data['occupied_now'] }}</span>
+                        Occupied Now
+                    </span>
+                    <span class="inline-flex items-center gap-2 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800">
+                        <span class="font-bold">{{ $data['current_rate'] }}%</span>
+                        Current Occupancy Rate
+                    </span>
                 </div>
             </div>
 
@@ -422,25 +438,48 @@
                                 <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Date</th>
                                 <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Rooms Occupied</th>
                                 <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Rate</th>
-                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Visual</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach($data['daily'] as $day)
+                            @foreach($occupancyRows as $day)
                                 <tr class="border-b border-gray-100 dark:border-gray-700/50">
                                     <td class="py-2 px-3 text-gray-700 dark:text-gray-300">{{ $day['date'] }}</td>
                                     <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $day['occupied'] }}</td>
                                     <td class="py-2 px-3 text-center font-medium text-gray-700 dark:text-gray-300">{{ $day['rate'] }}%</td>
-                                    <td class="py-2 px-3">
-                                        <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-3">
-                                            <div class="h-3 rounded-full {{ $day['rate'] > 80 ? 'bg-red-500' : ($day['rate'] > 50 ? 'bg-amber-500' : 'bg-green-500') }}" style="width: {{ min($day['rate'], 100) }}%"></div>
-                                        </div>
-                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>
                     </table>
                 </div>
+
+                @if(!empty($data['daily']))
+                    <div class="no-print mt-4 flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">
+                            Showing {{ $occupancyPagination['from'] }}-{{ $occupancyPagination['to'] }} of {{ $occupancyPagination['total'] }} days
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button
+                                type="button"
+                                wire:click="previousOccupancyPage"
+                                @disabled($occupancyPagination['page'] <= 1)
+                                class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                                Previous
+                            </button>
+                            <span class="px-2 text-sm text-gray-600 dark:text-gray-400">
+                                Page {{ $occupancyPagination['page'] }} of {{ $occupancyPagination['last_page'] }}
+                            </span>
+                            <button
+                                type="button"
+                                wire:click="nextOccupancyPage"
+                                @disabled($occupancyPagination['page'] >= $occupancyPagination['last_page'])
+                                class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                @endif
             </div>
 
             {{-- Occupancy Charts --}}
@@ -510,15 +549,37 @@
 
         {{-- Room Utilization Report --}}
         @if(($data['type'] ?? '') === 'room_utilization')
+            @php
+                $roomUtilizationTotal = count($data['rooms'] ?? []);
+                $roomUtilizationPerPage = max(1, $this->roomUtilizationPerPage);
+                $roomUtilizationLastPage = max(1, (int) ceil($roomUtilizationTotal / $roomUtilizationPerPage));
+                $roomUtilizationPage = max(1, min($this->roomUtilizationPage, $roomUtilizationLastPage));
+                $roomUtilizationOffset = ($roomUtilizationPage - 1) * $roomUtilizationPerPage;
+                $roomUtilizationRows = array_slice($data['rooms'] ?? [], $roomUtilizationOffset, $roomUtilizationPerPage);
+                $roomUtilizationPagination = [
+                    'page' => $roomUtilizationPage,
+                    'last_page' => $roomUtilizationLastPage,
+                    'total' => $roomUtilizationTotal,
+                    'from' => $roomUtilizationTotal === 0 ? 0 : $roomUtilizationOffset + 1,
+                    'to' => min($roomUtilizationOffset + $roomUtilizationPerPage, $roomUtilizationTotal),
+                ];
+            @endphp
+
             {{-- By Room Type Summary --}}
-            <div class="grid grid-cols-1 md:grid-cols-{{ count($data['by_type']) }} gap-4">
-                @foreach($data['by_type'] as $type)
-                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
-                        <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ $type['name'] }}</div>
-                        <div class="text-2xl font-bold text-primary-600 mt-2">{{ $type['total_stays'] }}</div>
-                        <div class="text-sm text-gray-500">stays ({{ $type['room_count'] }} rooms)</div>
-                    </div>
-                @endforeach
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
+                    @foreach($data['by_type'] as $type)
+                        <div class="rounded-lg bg-primary-50 px-4 py-3 dark:bg-primary-900/30">
+                            <div class="font-semibold text-gray-900 dark:text-gray-100">{{ $type['name'] }}</div>
+                            <div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                                <span class="font-bold text-primary-700 dark:text-primary-300">{{ $type['total_stays'] }}</span>
+                                stays &bull;
+                                <span class="font-bold text-primary-700 dark:text-primary-300">{{ $type['room_count'] }}</span>
+                                {{ \Illuminate\Support\Str::plural('room', $type['room_count']) }}
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
             </div>
 
             {{-- Room Details --}}
@@ -536,7 +597,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach($data['rooms'] as $room)
+                            @foreach($roomUtilizationRows as $room)
                                 <tr class="border-b border-gray-100 dark:border-gray-700/50">
                                     <td class="py-2 px-3 font-medium text-gray-700 dark:text-gray-300">{{ $room['room'] }}</td>
                                     <td class="py-2 px-3 text-gray-600 dark:text-gray-400">{{ $room['type'] }}</td>
@@ -565,6 +626,35 @@
                         </tbody>
                     </table>
                 </div>
+
+                @if(!empty($data['rooms']))
+                    <div class="no-print mt-4 flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">
+                            Showing {{ $roomUtilizationPagination['from'] }}-{{ $roomUtilizationPagination['to'] }} of {{ $roomUtilizationPagination['total'] }} rooms
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button
+                                type="button"
+                                wire:click="previousRoomUtilizationPage"
+                                @disabled($roomUtilizationPagination['page'] <= 1)
+                                class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                                Previous
+                            </button>
+                            <span class="px-2 text-sm text-gray-600 dark:text-gray-400">
+                                Page {{ $roomUtilizationPagination['page'] }} of {{ $roomUtilizationPagination['last_page'] }}
+                            </span>
+                            <button
+                                type="button"
+                                wire:click="nextRoomUtilizationPage"
+                                @disabled($roomUtilizationPagination['page'] >= $roomUtilizationPagination['last_page'])
+                                class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                @endif
             </div>
 
             {{-- Utilization Charts --}}
@@ -646,18 +736,36 @@
 
         {{-- Stay Logs Report --}}
         @if(($data['type'] ?? '') === 'stay_logs')
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
-                    <div class="text-3xl font-bold text-primary-600">{{ $data['total_stays'] }}</div>
-                    <div class="text-sm text-gray-500 mt-1">Total Stays</div>
-                </div>
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
-                    <div class="text-3xl font-bold text-green-600">{{ $data['completed'] }}</div>
-                    <div class="text-sm text-gray-500 mt-1">Completed</div>
-                </div>
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
-                    <div class="text-3xl font-bold text-blue-600">{{ $data['ongoing'] }}</div>
-                    <div class="text-sm text-gray-500 mt-1">Still Checked In</div>
+            @php
+                $stayLogsTotal = count($data['logs'] ?? []);
+                $stayLogsPerPage = max(1, $this->stayLogsPerPage);
+                $stayLogsLastPage = max(1, (int) ceil($stayLogsTotal / $stayLogsPerPage));
+                $stayLogsPage = max(1, min($this->stayLogsPage, $stayLogsLastPage));
+                $stayLogsOffset = ($stayLogsPage - 1) * $stayLogsPerPage;
+                $stayLogRows = array_slice($data['logs'] ?? [], $stayLogsOffset, $stayLogsPerPage);
+                $stayLogsPagination = [
+                    'page' => $stayLogsPage,
+                    'last_page' => $stayLogsLastPage,
+                    'total' => $stayLogsTotal,
+                    'from' => $stayLogsTotal === 0 ? 0 : $stayLogsOffset + 1,
+                    'to' => min($stayLogsOffset + $stayLogsPerPage, $stayLogsTotal),
+                ];
+            @endphp
+
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center gap-2 rounded-lg bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                        <span class="text-lg leading-none">{{ $data['total_stays'] }}</span>
+                        Total Stays
+                    </span>
+                    <span class="inline-flex items-center gap-2 rounded-lg bg-green-100 px-3 py-2 text-sm font-medium text-green-800">
+                        <span class="font-bold">{{ $data['completed'] }}</span>
+                        Completed
+                    </span>
+                    <span class="inline-flex items-center gap-2 rounded-lg bg-blue-100 px-3 py-2 text-sm font-medium text-blue-800">
+                        <span class="font-bold">{{ $data['ongoing'] }}</span>
+                        Still Checked In
+                    </span>
                 </div>
             </div>
 
@@ -677,7 +785,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse($data['logs'] as $log)
+                            @forelse($stayLogRows as $log)
                                 <tr class="border-b border-gray-100 dark:border-gray-700/50">
                                     <td class="py-2 px-3 font-mono text-xs text-gray-600 dark:text-gray-400">{{ $log['reference'] }}</td>
                                     <td class="py-2 px-3 font-medium text-gray-700 dark:text-gray-300">{{ $log['guest'] }}</td>
@@ -705,31 +813,78 @@
                         </tbody>
                     </table>
                 </div>
+
+                @if(!empty($data['logs']))
+                    <div class="no-print mt-4 flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">
+                            Showing {{ $stayLogsPagination['from'] }}-{{ $stayLogsPagination['to'] }} of {{ $stayLogsPagination['total'] }} stays
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button
+                                type="button"
+                                wire:click="previousStayLogsPage"
+                                @disabled($stayLogsPagination['page'] <= 1)
+                                class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                                Previous
+                            </button>
+                            <span class="px-2 text-sm text-gray-600 dark:text-gray-400">
+                                Page {{ $stayLogsPagination['page'] }} of {{ $stayLogsPagination['last_page'] }}
+                            </span>
+                            <button
+                                type="button"
+                                wire:click="nextStayLogsPage"
+                                @disabled($stayLogsPagination['page'] >= $stayLogsPagination['last_page'])
+                                class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                @endif
             </div>
         @endif
 
         {{-- Reservation List Report --}}
         @if(($data['type'] ?? '') === 'reservation_list')
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
-                    <div class="text-3xl font-bold text-primary-600">{{ $data['total'] }}</div>
-                    <div class="text-sm text-gray-500 mt-1">Total Reservations</div>
-                </div>
+            @php
+                $reservationTotal = count($data['reservations'] ?? []);
+                $reservationPerPage = max(1, $this->reservationListPerPage);
+                $reservationLastPage = max(1, (int) ceil($reservationTotal / $reservationPerPage));
+                $reservationPage = max(1, min($this->reservationListPage, $reservationLastPage));
+                $reservationOffset = ($reservationPage - 1) * $reservationPerPage;
+                $reservationRows = array_slice($data['reservations'] ?? [], $reservationOffset, $reservationPerPage);
+                $reservationPagination = [
+                    'page' => $reservationPage,
+                    'last_page' => $reservationLastPage,
+                    'total' => $reservationTotal,
+                    'from' => $reservationTotal === 0 ? 0 : $reservationOffset + 1,
+                    'to' => min($reservationOffset + $reservationPerPage, $reservationTotal),
+                ];
+            @endphp
+
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-4">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold text-primary-700 dark:text-primary-300">
+                        <span class="text-lg leading-none">{{ $data['total'] }}</span>
+                        Total Reservations
+                    </span>
                 @foreach($data['by_status'] ?? [] as $status => $count)
-                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 text-center">
-                        <div class="text-2xl font-bold
-                            @switch($status)
-                                @case('pending') text-yellow-600 @break
-                                @case('approved') text-blue-600 @break
-                                @case('checked_in') text-green-600 @break
-                                @case('checked_out') text-gray-600 @break
-                                @case('cancelled') text-red-600 @break
-                                @default text-gray-600
-                            @endswitch
-                        ">{{ $count }}</div>
-                        <div class="text-sm text-gray-500 mt-1">{{ ucfirst(str_replace('_', ' ', $status)) }}</div>
-                    </div>
+                    <span class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium
+                        @switch($status)
+                            @case('pending') text-yellow-800 @break
+                            @case('approved') text-blue-800 @break
+                            @case('checked_in') text-green-800 @break
+                            @case('checked_out') text-gray-800 @break
+                            @case('cancelled') text-red-800 @break
+                            @default text-gray-800
+                        @endswitch
+                    ">
+                        <span class="font-bold">{{ $count }}</span>
+                        {{ ucfirst(str_replace('_', ' ', $status)) }}
+                    </span>
                 @endforeach
+                </div>
             </div>
 
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
@@ -753,7 +908,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse($data['reservations'] as $reservation)
+                            @forelse($reservationRows as $reservation)
                                 <tr class="border-b border-gray-100 dark:border-gray-700/50">
                                     <td class="py-2 px-3 font-mono text-xs text-gray-600 dark:text-gray-400">{{ $reservation['reference'] }}</td>
                                     <td class="py-2 px-3 font-medium text-gray-700 dark:text-gray-300">{{ $reservation['guest_name'] }}</td>
@@ -776,6 +931,7 @@
                                                 @case('checked_in') bg-green-100 text-green-800 @break
                                                 @case('checked_out') bg-gray-100 text-gray-800 @break
                                                 @case('cancelled') bg-red-100 text-red-800 @break
+                                                @case('pending_payment') text-gray-900 dark:text-gray-100 @break
                                                 @default bg-gray-100 text-gray-800
                                             @endswitch
                                         ">{{ ucfirst(str_replace('_', ' ', $reservation['status'])) }}</span>
@@ -790,11 +946,55 @@
                         </tbody>
                     </table>
                 </div>
+
+                @if(!empty($data['reservations']))
+                    <div class="no-print mt-4 flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">
+                            Showing {{ $reservationPagination['from'] }}-{{ $reservationPagination['to'] }} of {{ $reservationPagination['total'] }} reservations
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button
+                                type="button"
+                                wire:click="previousReservationListPage"
+                                @disabled($reservationPagination['page'] <= 1)
+                                class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                                Previous
+                            </button>
+                            <span class="px-2 text-sm text-gray-600 dark:text-gray-400">
+                                Page {{ $reservationPagination['page'] }} of {{ $reservationPagination['last_page'] }}
+                            </span>
+                            <button
+                                type="button"
+                                wire:click="nextReservationListPage"
+                                @disabled($reservationPagination['page'] >= $reservationPagination['last_page'])
+                                class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                @endif
             </div>
         @endif
 
         {{-- Monthly OR Report --}}
         @if(($data['type'] ?? '') === 'monthly_or_report')
+            @php
+                $monthlyTotal = count($data['rows_by_date'] ?? []);
+                $monthlyPerPage = max(1, $this->monthlyReportPerPage);
+                $monthlyLastPage = max(1, (int) ceil($monthlyTotal / $monthlyPerPage));
+                $monthlyPage = max(1, min($this->monthlyReportPage, $monthlyLastPage));
+                $monthlyOffset = ($monthlyPage - 1) * $monthlyPerPage;
+                $monthlyRows = array_slice($data['rows_by_date'] ?? [], $monthlyOffset, $monthlyPerPage);
+                $monthlyPagination = [
+                    'page' => $monthlyPage,
+                    'last_page' => $monthlyLastPage,
+                    'total' => $monthlyTotal,
+                    'from' => $monthlyTotal === 0 ? 0 : $monthlyOffset + 1,
+                    'to' => min($monthlyOffset + $monthlyPerPage, $monthlyTotal),
+                ];
+            @endphp
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                 {{-- Secondary header visible on screen --}}
                 <div class="no-print text-center mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
@@ -827,7 +1027,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse($data['rows_by_date'] as $dateGroup)
+                            @forelse($monthlyRows as $dateGroup)
                                 @foreach($dateGroup['rows'] as $index => $row)
                                     <tr class="border-b border-gray-200 dark:border-gray-700/50">
                                         @if($index === 0)
@@ -916,6 +1116,35 @@
                         @endif
                     </table>
                 </div>
+
+                @if(!empty($data['rows_by_date']))
+                    <div class="no-print mt-4 flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">
+                            Showing {{ $monthlyPagination['from'] }}-{{ $monthlyPagination['to'] }} of {{ $monthlyPagination['total'] }} dates
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button
+                                type="button"
+                                wire:click="previousMonthlyReportPage"
+                                @disabled($monthlyPagination['page'] <= 1)
+                                class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                                Previous
+                            </button>
+                            <span class="px-2 text-sm text-gray-600 dark:text-gray-400">
+                                Page {{ $monthlyPagination['page'] }} of {{ $monthlyPagination['last_page'] }}
+                            </span>
+                            <button
+                                type="button"
+                                wire:click="nextMonthlyReportPage"
+                                @disabled($monthlyPagination['page'] >= $monthlyPagination['last_page'])
+                                class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                @endif
 
                 {{-- Signatories footer (print only) --}}
                 <div class="print-header" style="margin-top: 32px;">

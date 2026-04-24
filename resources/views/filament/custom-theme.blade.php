@@ -343,7 +343,7 @@ body,
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 {{-- Chart Helpers (moved to external file) --}}
-<script src="{{ asset('js/cmu-charts.js') }}"></script>
+<script src="{{ asset('js/cmu-charts.js') }}?v={{ filemtime(public_path('js/cmu-charts.js')) }}"></script>
 
 @auth
 <script>

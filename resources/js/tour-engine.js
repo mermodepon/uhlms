@@ -1,8 +1,9 @@
 /**
  * Virtual Tour Engine — Guest-facing 360° viewer.
- * Uses PanoramaViewer (Photo Sphere Viewer) for rendering, with HTML markers, gyroscope, and stereo.
+ * Uses PanoramaViewer (Photo Sphere Viewer) for rendering, with HTML markers and gyroscope.
  */
 import { PanoramaViewer } from './panorama-viewer.js';
+import * as THREE from 'three';
 
 const HOTSPOT_COLORS = {
     navigate:        '#3b82f6',
@@ -26,7 +27,6 @@ class VirtualTourEngine {
         this.currentWaypoint     = null;
         this.startWaypoint       = options.startWaypoint || '';
         this.apiBase             = options.apiBase || '/api/tour';
-        this.vrActive            = false;
         this.currentRoomType     = null;
         this.currentRoom         = null;
         this.bookmarks           = this._loadBookmarks();
@@ -38,6 +38,7 @@ class VirtualTourEngine {
         this._autoTourTimer      = null;
         this._autoTourTickTimer  = null;
         this._autoTourPanRaf     = null;
+        this._webXRTest          = null;
         let savedAutoTourProfile = null;
         try {
             savedAutoTourProfile = localStorage.getItem('tour_auto_tour_profile');
@@ -94,12 +95,6 @@ class VirtualTourEngine {
 
         this._bindAutoTourSettings();
 
-        // Listen for VR state changes (WebXR session start/end)
-        this.viewer.addEventListener('vr-changed', (e) => {
-            this.vrActive = e.active;
-            this._syncVRBtn(e.active);
-        });
-
         // Hotspot click → handle action
         this.viewer.addEventListener('select-marker', (e) => {
             if (this._autoTourActive) {
@@ -115,7 +110,7 @@ class VirtualTourEngine {
                 }
                 return;
             }
-            if (e.marker.config.id === 'info-card') { this._closeInfoCard(); return; }
+            if (e.marker.config.id === 'info-card') return;
             // room-info-card: do NOT close on any click — the card contains interactive
             // form inputs which would bubble up to select-marker; closing is handled by
             // the X button (closeAction) inside the card.
@@ -126,12 +121,6 @@ class VirtualTourEngine {
         });
 
         this._initAsync();
-    }
-
-    _syncVRBtn(isVR) {
-        document.getElementById('vr-mode-btn')?.classList.toggle('active', isVR);
-        const t = document.getElementById('vr-btn-text');
-        if (t) t.textContent = isVR ? 'Exit Stereo' : 'Stereo Mode';
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -182,6 +171,7 @@ class VirtualTourEngine {
             document.getElementById('minimap'),
             document.getElementById('help-btn'),
             document.getElementById('room-info-btn'),
+            document.getElementById('mobile-settings-btn'),
         ].filter(Boolean);
 
         // Show UI on any user interaction
@@ -220,6 +210,7 @@ class VirtualTourEngine {
     _hideUI() {
         this._uiHidden = true;
         this._hidableElements.forEach(el => el?.classList.add('ui-hidden'));
+        document.querySelector('.vr-controls')?.classList.remove('mobile-open');
     }
 
     toggleUIVisibility() {
@@ -449,19 +440,20 @@ class VirtualTourEngine {
         this._infoCardHotspotId = hs.id;
         try { this.viewer.removeMarker('info-card'); } catch (e) {}
 
+        const imageUrls = this._mediaImageUrls(hs);
         const spriteOpts = {
             style: 'card',
             title: hs.title || '',
             body:  hs.description || '',
+            closeAction: 'tourEngine._closeInfoCard()',
         };
         if (hs.media_type === 'video' && hs.media_url) {
             const vid = this._extractYouTubeId(hs.media_url);
             if (vid) spriteOpts.mediaYouTubeId = vid;
-        } else if (hs.media_type === 'image' && hs.media_url) {
-            spriteOpts.mediaUrl = hs.media_url;
-        } else if (hs.media_type === 'gallery' && hs.media_url) {
-            const urls = hs.media_url.split('\n').map(u => u.trim()).filter(Boolean);
-            if (urls.length) spriteOpts.mediaGallery = urls;
+        } else if (imageUrls.length === 1) {
+            spriteOpts.mediaUrl = imageUrls[0];
+        } else if (imageUrls.length > 1) {
+            spriteOpts.mediaGallery = imageUrls;
         }
 
         this.viewer.addMarker({
@@ -477,9 +469,18 @@ class VirtualTourEngine {
         try { this.viewer.removeMarker('info-card'); } catch (e) {}
     }
 
+    _mediaImageUrls(hs) {
+        if (!['image', 'gallery'].includes(hs?.media_type) || !hs?.media_url) {
+            return [];
+        }
+
+        return String(hs.media_url).split('\n').map(u => u.trim()).filter(Boolean);
+    }
+
     _infoCardHtml(hs) {
         const hasText  = !!(hs.description && hs.description.trim());
         const hasMedia = !!(hs.media_type && hs.media_url);
+        const imageUrls = this._mediaImageUrls(hs);
 
         let mediaHtml = '';
         if (hasMedia) {
@@ -491,10 +492,15 @@ class VirtualTourEngine {
                         + `<iframe src="${src}" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media;fullscreen" allowfullscreen loading="lazy"></iframe>`
                         + `</div>`;
                 }
-            } else if (hs.media_type === 'image') {
+            } else if (imageUrls.length === 1) {
                 mediaHtml = `<div style="flex-shrink:0;overflow:hidden">`
-                    + `<img src="${hs.media_url}" style="width:100%;display:block;max-height:240px;object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                    + `<img src="${imageUrls[0]}" style="width:100%;display:block;max-height:240px;object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
                     + `</div>`;
+            } else if (imageUrls.length > 1) {
+                const imgs = imageUrls.map(url =>
+                    `<img src="${url}" style="height:160px;width:auto;flex-shrink:0;display:block;border-radius:6px;object-fit:cover" onerror="this.style.display='none'" loading="lazy">`
+                ).join('');
+                mediaHtml = `<div style="display:flex;gap:8px;overflow-x:auto;padding:10px 14px;background:#f9fafb;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch">${imgs}</div>`;
             }
         }
 
@@ -597,29 +603,8 @@ class VirtualTourEngine {
     }
 
     async _checkSpecificRoomAvailability() {
-        if (!this.currentRoom) return;
-        if (!this._checkIn || !this._checkOut) {
-            this._showToast('Please select check-in and check-out dates.', 'error');
-            return;
-        }
-        try {
-            const url = new URL(`${this.apiBase}/room/${this.currentRoom.id}/availability`, window.location.href);
-            url.searchParams.set('check_in',  this._checkIn);
-            url.searchParams.set('check_out', this._checkOut);
-            const res  = await fetch(url);
-            const data = await res.json();
-            if (data.success) {
-                this.currentRoom = data.data;
-                this.currentRoomType = data.data.room_type;
-                // Update both in-scene card and overlay
-                this._populateRoomInfoOverlay(data.data, true);
-                this._closeInSceneCard();
-                this._openInSceneCard();
-            } else {
-                this._showToast(data.message || 'Could not check availability.', 'error');
-            }
-        } catch (e) {
-            this._showToast('Network error. Please try again.', 'error');
+        if (this.currentRoomType?.id) {
+            return this._checkDateAvailability(this.currentRoomType.id);
         }
     }
 
@@ -627,7 +612,7 @@ class VirtualTourEngine {
 
     _openInSceneCard() {
         // Check for room or room type data
-        const hasSpecificRoom = Boolean(this.currentRoom);
+        const hasSpecificRoom = false;
         const hasRoomType = Boolean(this.currentRoomType);
         
         if (!hasSpecificRoom && !hasRoomType) return;
@@ -887,15 +872,661 @@ class VirtualTourEngine {
         </div>`;
     }
 
-    // ── VR / Stereo ───────────────────────────────────────────────────────────
+    // ── Gyroscope ─────────────────────────────────────────────────────────────
 
-    async toggleVR() {
-        if (!this.viewer) return;
-        await this.viewer.toggleVR();
-        this.vrActive = this.viewer.vrActive;
+    async startWebXRTest() {
+        if (!('xr' in navigator)) {
+            this._showToast('WebXR is not available in this browser.', 'error');
+            return;
+        }
+
+        const panoramaUrl = this.currentWaypoint?.panorama_image;
+        if (!panoramaUrl) {
+            this._showToast('No panorama is loaded for WebXR testing.', 'error');
+            return;
+        }
+
+        if (this._webXRTest) await this.stopWebXRTest();
+
+        let session;
+        try {
+            session = await navigator.xr.requestSession('immersive-vr', {
+                optionalFeatures: ['local-floor', 'bounded-floor'],
+            });
+        } catch (error) {
+            console.error('WebXR session request failed:', error);
+            this._showToast(error?.message || 'Could not start immersive VR session.', 'error');
+            return;
+        }
+
+        const layer = document.createElement('div');
+        layer.style.cssText = 'position:fixed;inset:0;background:#000;z-index:10000;overflow:hidden';
+        document.body.appendChild(layer);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.xr.enabled = true;
+        renderer.xr.setReferenceSpaceType('local');
+        renderer.setClearColor(0x202020, 1);
+        renderer.setPixelRatio(window.devicePixelRatio || 1);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        layer.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x202020);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / Math.max(1, window.innerHeight), 0.1, 1000);
+        const loader = new THREE.TextureLoader();
+        loader.setCrossOrigin('anonymous');
+        const contentGroup = new THREE.Group();
+        scene.add(contentGroup);
+
+        let texture = null;
+        // Match Photo Sphere Viewer's equirectangular mesh orientation so stored yaw/pitch
+        // coordinates land on the same panorama pixels in the WebXR test path.
+        const geometry = new THREE.SphereGeometry(100, 64, 32, -Math.PI / 2, Math.PI * 2, 0, Math.PI).scale(-1, 1, 1);
+        const material = new THREE.MeshBasicMaterial({ color: 0x111111, depthTest: false, depthWrite: false });
+        const sphere = new THREE.Mesh(geometry, material);
+        contentGroup.add(sphere);
+
+        const hotspotGroup = new THREE.Group();
+        const panelGroup = new THREE.Group();
+        const statusGroup = new THREE.Group();
+        const cameraFollower = new THREE.Group();
+        contentGroup.add(hotspotGroup);
+        scene.add(panelGroup, cameraFollower);
+        cameraFollower.add(statusGroup);
+
+        const interactive = [];
+        const raycaster = new THREE.Raycaster();
+        const tempMatrix = new THREE.Matrix4();
+        const textTextures = new Set();
+        const XR_RADIUS = 9;
+        const XR_ROOM_SCALE = { x: 2.8, y: 0.82 };
+        let hoveredObject = null;
+        let infoPanelAnchor = null;
+        const roundRect = (ctx, x, y, width, height, radius) => {
+            const r = Math.min(radius, width / 2, height / 2);
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + width, y, x + width, y + height, r);
+            ctx.arcTo(x + width, y + height, x, y + height, r);
+            ctx.arcTo(x, y + height, x, y, r);
+            ctx.arcTo(x, y, x + width, y, r);
+            ctx.closePath();
+        };
+
+        const makeTextTexture = (lines, options = {}) => {
+            const canvas = document.createElement('canvas');
+            const width = options.width || 512;
+            const height = options.height || 160;
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = options.background || 'rgba(0,73,30,0.92)';
+            roundRect(ctx, 0, 0, width, height, options.radius || 28);
+            ctx.fill();
+            if (options.border) {
+                ctx.strokeStyle = options.border;
+                ctx.lineWidth = 6;
+                ctx.stroke();
+            }
+            ctx.fillStyle = options.color || '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = options.font || 'bold 42px sans-serif';
+            const rows = Array.isArray(lines) ? lines : [lines];
+            const lineHeight = options.lineHeight || 46;
+            const startY = height / 2 - ((rows.length - 1) * lineHeight) / 2;
+            rows.forEach((line, index) => ctx.fillText(String(line), width / 2, startY + index * lineHeight));
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            textTextures.add(tex);
+            return tex;
+        };
+
+        const drawXRIcon = (ctx, icon, x, y, size, color = '#ffffff') => {
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = Math.max(8, size * 0.1);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            const line = (...points) => {
+                ctx.beginPath();
+                ctx.moveTo(x + points[0][0] * size, y + points[0][1] * size);
+                points.slice(1).forEach(([px, py]) => ctx.lineTo(x + px * size, y + py * size));
+                ctx.stroke();
+            };
+
+            const chevrons = {
+                'chevron-up': [[-0.28, 0.14], [0, -0.18], [0.28, 0.14]],
+                'chevron-down': [[-0.28, -0.14], [0, 0.18], [0.28, -0.14]],
+                'chevron-left': [[0.14, -0.28], [-0.18, 0], [0.14, 0.28]],
+                'chevron-right': [[-0.14, -0.28], [0.18, 0], [-0.14, 0.28]],
+                'chevron-up-right': [[-0.18, 0.22], [0.22, -0.18], [0.22, 0.18], [0.22, -0.18], [-0.14, -0.18]],
+                'chevron-down-right': [[-0.18, -0.22], [0.22, 0.18], [0.22, -0.18], [0.22, 0.18], [-0.14, 0.18]],
+                'chevron-down-left': [[0.18, -0.22], [-0.22, 0.18], [-0.22, -0.18], [-0.22, 0.18], [0.14, 0.18]],
+                'chevron-up-left': [[0.18, 0.22], [-0.22, -0.18], [-0.22, 0.18], [-0.22, -0.18], [0.14, -0.18]],
+            };
+
+            if (chevrons[icon]) {
+                line(...chevrons[icon]);
+            } else if (icon === 'info') {
+                ctx.beginPath();
+                ctx.arc(x, y, size * 0.34, 0, Math.PI * 2);
+                ctx.stroke();
+                line([0, -0.02], [0, 0.2]);
+                ctx.beginPath();
+                ctx.arc(x, y - size * 0.22, size * 0.035, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (icon === 'link') {
+                ctx.beginPath();
+                ctx.ellipse(x - size * 0.14, y + size * 0.06, size * 0.2, size * 0.12, -0.7, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.ellipse(x + size * 0.14, y - size * 0.06, size * 0.2, size * 0.12, -0.7, 0, Math.PI * 2);
+                ctx.stroke();
+            } else if (icon === 'pin') {
+                ctx.beginPath();
+                ctx.arc(x, y - size * 0.08, size * 0.22, 0, Math.PI * 2);
+                ctx.stroke();
+                line([0, 0.14], [0, 0.34]);
+            } else if (icon === 'warning') {
+                line([0, -0.3], [0.34, 0.28], [-0.34, 0.28], [0, -0.3]);
+                line([0, -0.08], [0, 0.08]);
+                ctx.beginPath();
+                ctx.arc(x, y + size * 0.2, size * 0.035, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                line([-0.28, 0.14], [0, -0.18], [0.28, 0.14]);
+            }
+
+            ctx.restore();
+        };
+
+        const makeIconTexture = (icon, options = {}) => {
+            const canvas = document.createElement('canvas');
+            const size = options.size || 256;
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, size, size);
+            ctx.beginPath();
+            ctx.arc(size / 2, size / 2, size * 0.43, 0, Math.PI * 2);
+            ctx.fillStyle = options.background || '#6b7280';
+            ctx.fill();
+            ctx.lineWidth = size * 0.045;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+            drawXRIcon(ctx, icon || 'chevron-up', size / 2, size / 2, size * 0.82, options.color || '#ffffff');
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            textTextures.add(tex);
+            return tex;
+        };
+
+        const showXRStatus = (lines, type = 'info') => {
+            clearGroup(statusGroup);
+            const background = type === 'error' ? 'rgba(153,27,27,0.95)' : 'rgba(17,24,39,0.92)';
+            const tex = makeTextTexture(lines, {
+                width: 900,
+                height: 260,
+                background,
+                color: '#ffffff',
+                font: 'bold 44px sans-serif',
+                lineHeight: 64,
+                border: type === 'error' ? '#fecaca' : '#FFC600',
+            });
+            const panel = makePlane(tex, new THREE.Vector3(0, 0, -3), { x: 3.2, y: 0.95 }, { action: 'noop' }, {
+                depthTest: false,
+                renderOrder: 100,
+            });
+            statusGroup.add(panel);
+        };
+
+        const yawPitchToVector = (yawDeg, pitchDeg, radius = XR_RADIUS) => {
+            const yaw = THREE.MathUtils.degToRad(parseFloat(yawDeg) || 0);
+            const pitch = THREE.MathUtils.degToRad(parseFloat(pitchDeg) || 0);
+            return new THREE.Vector3(
+                -Math.sin(yaw) * Math.cos(pitch) * radius,
+                Math.sin(pitch) * radius,
+                Math.cos(yaw) * Math.cos(pitch) * radius,
+            );
+        };
+
+        const makePlane = (textureMap, position, scale, data, options = {}) => {
+            const plane = new THREE.Mesh(
+                new THREE.PlaneGeometry(scale.x, scale.y),
+                new THREE.MeshBasicMaterial({
+                    map: textureMap,
+                    transparent: true,
+                    side: THREE.DoubleSide,
+                    depthTest: options.depthTest ?? true,
+                    depthWrite: false,
+                }),
+            );
+            plane.position.copy(position);
+            plane.renderOrder = options.renderOrder ?? 20;
+            plane.userData = {
+                ...data,
+                baseScale: new THREE.Vector3(1, 1, 1),
+                billboard: options.billboard ?? true,
+            };
+            interactive.push(plane);
+            return plane;
+        };
+
+        const clearGroup = (group) => {
+            [...group.children].forEach((child) => {
+                group.remove(child);
+                const index = interactive.indexOf(child);
+                if (index !== -1) interactive.splice(index, 1);
+                const materialToDispose = child.material;
+                if (materialToDispose?.map) {
+                    textTextures.delete(materialToDispose.map);
+                    materialToDispose.map.dispose();
+                }
+                if (materialToDispose) materialToDispose.dispose();
+                child.geometry?.dispose?.();
+            });
+            hoveredObject = null;
+        };
+
+        const closePanel = (resetInfoAnchor = true) => {
+            clearGroup(panelGroup);
+            for (let i = interactive.length - 1; i >= 0; i--) {
+                if (interactive[i].userData?.panel) interactive.splice(i, 1);
+            }
+            if (resetInfoAnchor) infoPanelAnchor = null;
+        };
+
+        const truncateXRText = (value, max = 64) => {
+            const text = String(value || '').replace(/\s+/g, ' ').trim();
+            if (text.length <= max) return text;
+            return `${text.slice(0, max - 3).trim()}...`;
+        };
+
+        const showInfoPanel = async (hs, imageIndex = 0, keepPosition = false) => {
+            closePanel(!keepPosition);
+            if (!hs) return;
+
+            const hasVideo = hs.media_type === 'video' && hs.media_url;
+            const imageUrls = this._mediaImageUrls(hs);
+            const hasImage = imageUrls.length > 0;
+            const currentImageIndex = hasImage
+                ? Math.max(0, Math.min(imageUrls.length - 1, imageIndex))
+                : 0;
+            const lines = [
+                truncateXRText(hs.title || 'Information', 42),
+                truncateXRText(hs.description || '', 70),
+                hasVideo ? 'Video content available' : '',
+                hasImage ? `Image ${currentImageIndex + 1} of ${imageUrls.length}` : '',
+            ].filter(Boolean);
+
+            const up = new THREE.Vector3(0, 1, 0);
+            if (!infoPanelAnchor || infoPanelAnchor.hotspotId !== hs.id) {
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                forward.y = 0;
+                if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
+                forward.normalize();
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                right.y = 0;
+                if (right.lengthSq() < 0.001) right.crossVectors(forward, up);
+                right.normalize();
+                infoPanelAnchor = {
+                    hotspotId: hs.id,
+                    center: camera.position.clone().add(forward.clone().multiplyScalar(3.15)),
+                    right,
+                };
+            }
+            const { center, right } = infoPanelAnchor;
+            const panelPosition = (x = 0, y = 0) => center.clone().add(right.clone().multiplyScalar(x)).add(up.clone().multiplyScalar(y));
+            const panel = makePlane(makeTextTexture(lines, {
+                width: 820,
+                height: hasImage ? 230 : 340,
+                background: 'rgba(255,255,255,0.96)',
+                color: '#111827',
+                font: 'bold 38px sans-serif',
+                lineHeight: 56,
+                border: '#00491E',
+            }), panelPosition(0, hasImage ? 0.62 : 0), { x: 2.65, y: hasImage ? 0.62 : 1.1 }, { panel: true, action: 'noop' });
+            panelGroup.add(panel);
+
+            const buttons = [];
+            if (hasImage) {
+                const imageUrl = new URL(imageUrls[currentImageIndex], window.location.href).href;
+                try {
+                    const imageTexture = await loader.loadAsync(imageUrl);
+                    imageTexture.colorSpace = THREE.SRGBColorSpace;
+                    const image = imageTexture.image;
+                    const aspect = image?.width && image?.height ? image.width / image.height : 16 / 9;
+                    const maxWidth = 2.35;
+                    const maxHeight = 0.82;
+                    let imageWidth = maxWidth;
+                    let imageHeight = imageWidth / aspect;
+                    if (imageHeight > maxHeight) {
+                        imageHeight = maxHeight;
+                        imageWidth = imageHeight * aspect;
+                    }
+                    const imagePlane = makePlane(imageTexture, panelPosition(0, -0.12), { x: imageWidth, y: imageHeight }, { panel: true, action: 'noop' });
+                    panelGroup.add(imagePlane);
+                    clearGroup(statusGroup);
+                } catch (error) {
+                    console.error('WebXR info image load failed:', error);
+                }
+
+                if (imageUrls.length > 1) {
+                    buttons.push(makePlane(makeTextTexture('Prev', {
+                        width: 360,
+                        height: 100,
+                        background: '#FFC600',
+                        color: '#00491E',
+                        font: 'bold 34px sans-serif',
+                    }), panelPosition(-0.95, -0.82), { x: 0.9, y: 0.25 }, {
+                        panel: true,
+                        action: 'info-image',
+                        hotspot: hs,
+                        imageIndex: (currentImageIndex - 1 + imageUrls.length) % imageUrls.length,
+                    }));
+
+                    buttons.push(makePlane(makeTextTexture('Next', {
+                        width: 360,
+                        height: 100,
+                        background: '#FFC600',
+                        color: '#00491E',
+                        font: 'bold 34px sans-serif',
+                    }), panelPosition(0.95, -0.82), { x: 0.9, y: 0.25 }, {
+                        panel: true,
+                        action: 'info-image',
+                        hotspot: hs,
+                        imageIndex: (currentImageIndex + 1) % imageUrls.length,
+                    }));
+                }
+
+            }
+
+            if (hasVideo) {
+                const videoId = this._extractYouTubeId(hs.media_url);
+                const videoUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : hs.media_url;
+                buttons.push(makePlane(makeTextTexture('Open Video', {
+                    width: 512,
+                    height: 120,
+                    background: '#FFC600',
+                    color: '#00491E',
+                    font: 'bold 40px sans-serif',
+                }), panelPosition(0, -1.05), { x: 1.6, y: 0.38 }, { panel: true, action: 'open-url', url: videoUrl }));
+            }
+
+            const closeY = hasImage ? (buttons.length > 1 ? -1.14 : -0.95) : (hasVideo ? -1.5 : -1.05);
+            buttons.push(makePlane(makeTextTexture('Close', {
+                width: 360,
+                height: 100,
+                background: '#374151',
+                color: '#ffffff',
+                font: 'bold 34px sans-serif',
+            }), panelPosition(0, closeY), { x: 0.9, y: 0.25 }, { panel: true, action: 'close-panel' }));
+
+            panelGroup.add(...buttons);
+        };
+
+        const showRoomInfoPanel = () => {
+            closePanel();
+            if (!this.currentRoomType) return;
+            const rt = this.currentRoomType;
+            const count = rt.available_rooms_count;
+            const lines = [
+                rt.name || 'Room Type',
+                rt.pricing_display || rt.formatted_price || '',
+                count != null ? `${count} room(s) available` : 'Availability available in form',
+            ].filter(Boolean);
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            const center = camera.position.clone().add(forward.multiplyScalar(3.2));
+            const panel = makePlane(makeTextTexture(lines, {
+                width: 768,
+                height: 300,
+                background: 'rgba(255,255,255,0.96)',
+                color: '#00491E',
+                font: 'bold 44px sans-serif',
+                lineHeight: 70,
+                border: '#FFC600',
+            }), center, { x: 2.4, y: 0.95 }, { panel: true, action: 'noop' });
+            panelGroup.add(panel);
+
+            const request = makePlane(makeTextTexture('Request Reservation', {
+                width: 512,
+                height: 120,
+                background: '#FFC600',
+                color: '#00491E',
+                font: 'bold 40px sans-serif',
+            }), center.clone().add(new THREE.Vector3(0, -0.85, 0)), { x: 1.6, y: 0.38 }, { panel: true, action: 'reservation' });
+            const full = makePlane(makeTextTexture('Full Form', {
+                width: 512,
+                height: 120,
+                background: '#00491E',
+                color: '#ffffff',
+                font: 'bold 40px sans-serif',
+            }), center.clone().add(new THREE.Vector3(0, -1.3, 0)), { x: 1.6, y: 0.38 }, { panel: true, action: 'reserve-page' });
+            const close = makePlane(makeTextTexture('Close', {
+                width: 360,
+                height: 100,
+                background: '#374151',
+                color: '#ffffff',
+                font: 'bold 34px sans-serif',
+            }), center.clone().add(new THREE.Vector3(0, 0.85, 0)), { x: 0.9, y: 0.25 }, { panel: true, action: 'close-panel' });
+            panelGroup.add(request, full, close);
+        };
+
+        const rebuildHotspots = () => {
+            clearGroup(hotspotGroup);
+            interactive.length = 0;
+            closePanel();
+            const spots = (this.currentWaypoint?.hotspots || []).filter(h => h.is_active !== false);
+            spots.forEach((hs) => {
+                const color = HOTSPOT_COLORS[hs.action_type] || '#6b7280';
+                const hotspot = makePlane(makeIconTexture(hs.icon || 'chevron-up', {
+                    background: color,
+                }), yawPitchToVector(hs.yaw, hs.pitch), { x: 0.9, y: 0.9 }, { action: 'hotspot', hotspot: hs });
+                hotspotGroup.add(hotspot);
+            });
+            if (this.currentWaypoint?.is_room_related && this.currentWaypoint?.linked_room_type_id) {
+                const yaw = this.currentWaypoint.room_info_yaw ?? this.currentWaypoint.default_yaw ?? 0;
+                const pitch = this.currentWaypoint.room_info_pitch ?? ((this.currentWaypoint.default_pitch ?? 0) + 15);
+                const roomInfo = makePlane(makeTextTexture('Room Info', {
+                    width: 420,
+                    height: 120,
+                    background: '#00491E',
+                    color: '#FFC600',
+                    border: '#FFC600',
+                    font: 'bold 36px sans-serif',
+                }), yawPitchToVector(yaw, pitch), XR_ROOM_SCALE, { action: 'room-info' });
+                hotspotGroup.add(roomInfo);
+            }
+        };
+
+        const loadXRWaypoint = async (slug) => {
+            const wp = this.waypoints.find(w => w.slug === slug);
+            if (!wp?.panorama_image) return;
+            this.currentWaypoint = wp;
+            contentGroup.rotation.y = THREE.MathUtils.degToRad(parseFloat(wp.default_yaw) || 0) + Math.PI;
+            if (wp.is_room_related && wp.linked_room_type_id) {
+                await this._fetchRoomInfo(wp);
+            } else {
+                this.currentRoomType = null;
+                this.currentRoom = null;
+            }
+            showXRStatus(['Loading panorama...', wp.name || '']);
+            try {
+                const nextTexture = await loader.loadAsync(new URL(wp.panorama_image, window.location.href).href);
+                nextTexture.colorSpace = THREE.SRGBColorSpace;
+                material.map?.dispose();
+                material.map = nextTexture;
+                material.color.set(0xffffff);
+                material.needsUpdate = true;
+                texture = nextTexture;
+                clearGroup(statusGroup);
+                rebuildHotspots();
+            } catch (error) {
+                console.error('WebXR panorama load failed:', error);
+                showXRStatus(['Could not load panorama', 'Exit VR and try again'], 'error');
+            }
+        };
+
+        const handleXRAction = async (target) => {
+            const data = target?.userData || {};
+            if (data.action === 'room-info') {
+                showRoomInfoPanel();
+            } else if (data.action === 'close-panel') {
+                closePanel();
+            } else if (data.action === 'reservation') {
+                await this.stopWebXRTest();
+                this.openReservationModal();
+            } else if (data.action === 'reserve-page') {
+                await this.stopWebXRTest();
+                window.location.href = '/reserve';
+            } else if (data.action === 'open-url' && data.url) {
+                await this.stopWebXRTest();
+                window.open(data.url, '_blank', 'noopener,noreferrer');
+            } else if (data.action === 'info-image' && data.hotspot) {
+                await showInfoPanel(data.hotspot, data.imageIndex || 0, true);
+            } else if (data.action === 'hotspot') {
+                const hs = data.hotspot;
+                if (hs?.action_type === 'navigate' && hs.action_target) {
+                    await loadXRWaypoint(hs.action_target);
+                } else if (hs?.action_type === 'info') {
+                    await showInfoPanel(hs);
+                } else if (hs?.action_type === 'external-link' && hs.action_target) {
+                    await this.stopWebXRTest();
+                    window.open(hs.action_target, '_blank', 'noopener,noreferrer');
+                } else if (hs?.action_type === 'bookmark') {
+                    this._toggleBookmark(hs);
+                }
+            }
+        };
+
+        const selectFromController = (controller) => {
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+            const hit = raycaster.intersectObjects(interactive, false)[0];
+            if (hit) handleXRAction(hit.object);
+        };
+
+        const getControllerHit = (controller) => {
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+            return raycaster.intersectObjects(interactive, false)[0] || null;
+        };
+
+        const setHoveredObject = (next) => {
+            if (hoveredObject === next) return;
+            if (hoveredObject?.userData?.baseScale) {
+                hoveredObject.scale.copy(hoveredObject.userData.baseScale);
+                if (hoveredObject.material) hoveredObject.material.opacity = 1;
+            }
+            hoveredObject = next;
+            if (hoveredObject?.userData?.baseScale) {
+                hoveredObject.scale.copy(hoveredObject.userData.baseScale).multiplyScalar(1.16);
+                if (hoveredObject.material) hoveredObject.material.opacity = 0.92;
+            }
+        };
+
+        const updateBillboards = () => {
+            interactive.forEach((object) => {
+                if (object.userData?.billboard && !statusGroup.children.includes(object)) {
+                    object.lookAt(camera.position);
+                }
+            });
+        };
+
+        const updateControllerHover = () => {
+            let bestHit = null;
+            controllers.forEach((controller) => {
+                const hit = getControllerHit(controller);
+                const active = !!hit;
+                if (controller.userData.lineMaterial) {
+                    controller.userData.lineMaterial.color.set(active ? '#FFC600' : '#ffffff');
+                    controller.userData.lineMaterial.opacity = active ? 0.95 : 0.55;
+                }
+                if (!bestHit && hit) bestHit = hit;
+            });
+            setHoveredObject(bestHit?.object || null);
+        };
+
+        const makeController = (index) => {
+            const controller = renderer.xr.getController(index);
+            controller.addEventListener('selectstart', () => selectFromController(controller));
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 });
+            const line = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -10)]),
+                lineMaterial,
+            );
+            line.name = 'xr-test-controller-ray';
+            controller.userData.lineMaterial = lineMaterial;
+            controller.add(line);
+            scene.add(controller);
+            return controller;
+        };
+        const controllers = [makeController(0), makeController(1)];
+
+        const onResize = () => {
+            camera.aspect = window.innerWidth / Math.max(1, window.innerHeight);
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+        window.addEventListener('resize', onResize);
+
+        const cleanup = () => {
+            renderer.setAnimationLoop(null);
+            window.removeEventListener('resize', onResize);
+            closePanel();
+            clearGroup(hotspotGroup);
+            clearGroup(statusGroup);
+            controllers.forEach((controller) => {
+                controller.children.forEach((child) => {
+                    child.geometry?.dispose?.();
+                    child.material?.dispose?.();
+                });
+                scene.remove(controller);
+            });
+            textTextures.forEach(tex => tex.dispose());
+            texture?.dispose();
+            material.dispose();
+            geometry.dispose();
+            renderer.dispose();
+            layer.remove();
+            this._webXRTest = null;
+            if (this.currentWaypoint?.slug) {
+                this.navigateToWaypoint(this.currentWaypoint.slug).catch(() => {});
+            }
+        };
+
+        session.addEventListener('end', cleanup, { once: true });
+        await renderer.xr.setSession(session);
+
+        this._webXRTest = { session, cleanup };
+        renderer.setAnimationLoop(() => {
+            cameraFollower.position.copy(camera.position);
+            cameraFollower.quaternion.copy(camera.quaternion);
+            updateBillboards();
+            updateControllerHover();
+            renderer.render(scene, camera);
+        });
+        showXRStatus(['Loading WebXR tour...', 'Please wait']);
+        await loadXRWaypoint(this.currentWaypoint.slug);
+        this._showToast('WebXR test session started.', 'success');
     }
 
-    // ── Gyroscope ─────────────────────────────────────────────────────────────
+    async stopWebXRTest() {
+        if (!this._webXRTest) return;
+        const { session, cleanup } = this._webXRTest;
+        if (session?.end) {
+            await session.end().catch(() => {});
+        } else {
+            cleanup?.();
+        }
+    }
 
     async toggleGyroscope() {
         if (!this.viewer) return;
@@ -915,21 +1546,7 @@ class VirtualTourEngine {
 
     async _fetchRoomInfo(wp) {
         try {
-            // Priority: Fetch specific room if linked, otherwise room type
-            if (wp.linked_room_id) {
-                // Fetch specific room data
-                const url = new URL(`${this.apiBase}/room/${wp.linked_room_id}/availability`, window.location.href);
-                if (this._checkIn)    url.searchParams.set('check_in',  this._checkIn);
-                if (this._checkOut)   url.searchParams.set('check_out', this._checkOut);
-                const res  = await fetch(url);
-                const data = await res.json();
-                if (data.success) {
-                    this.currentRoom = data.data;
-                    this.currentRoomType = data.data.room_type; // Room includes room type data
-                    this._populateRoomInfoOverlay(data.data, true); // true = is specific room
-                }
-            } else if (wp.linked_room_type_id) {
-                // Fetch room type data (existing behavior)
+            if (wp.linked_room_type_id) {
                 const url = new URL(`${this.apiBase}/room-type/${wp.linked_room_type_id}/availability`, window.location.href);
                 if (this._checkIn)    url.searchParams.set('check_in',  this._checkIn);
                 if (this._checkOut)   url.searchParams.set('check_out', this._checkOut);
@@ -939,7 +1556,7 @@ class VirtualTourEngine {
                 if (data.success) {
                     this.currentRoomType = data.data;
                     this.currentRoom = null;
-                    this._populateRoomInfoOverlay(data.data, false); // false = is room type
+                    this._populateRoomInfoOverlay(data.data, false);
                 }
             }
         } catch (e) { console.error('_fetchRoomInfo:', e); }
@@ -1154,20 +1771,11 @@ class VirtualTourEngine {
             this.reservationModal.style.pointerEvents = 'auto';
         }
         
-        // Pre-fill room information (room takes priority over room type)
-        if (this.currentRoom) {
-            const roomIdEl = document.getElementById('preferred_room_id');
-            const roomTypeIdEl = document.getElementById('preferred_room_type_id');
-            if (roomIdEl) roomIdEl.value = this.currentRoom.id || '';
-            if (roomTypeIdEl) roomTypeIdEl.value = this.currentRoom.room_type?.id || '';
-            if (this.currentRoomType) {
-                this.onReservationOpened(this.currentRoomType);
-            }
-        } else if (this.currentRoomType) {
+        if (this.currentRoomType) {
             const roomTypeIdEl = document.getElementById('preferred_room_type_id');
             const roomIdEl = document.getElementById('preferred_room_id');
             if (roomTypeIdEl) roomTypeIdEl.value = this.currentRoomType.id || '';
-            if (roomIdEl) roomIdEl.value = ''; // Clear room ID when only room type
+            if (roomIdEl) roomIdEl.value = '';
             this.onReservationOpened(this.currentRoomType);
         }
         

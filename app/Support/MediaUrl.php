@@ -17,6 +17,10 @@ class MediaUrl
             return null;
         }
 
+        if (static::disk() === 'public') {
+            return '/storage/'.ltrim($path, '/');
+        }
+
         return Storage::disk(static::disk())->url($path);
     }
 }
