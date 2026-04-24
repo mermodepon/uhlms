@@ -2315,9 +2315,9 @@ class VirtualTourEngine {
         const base = this.viewer.getPosition();
         const baseYaw = base?.yaw || 0;
         const basePitch = base?.pitch || 0;
-        const yawAmplitude = 24 * Math.PI / 180;
-        const pitchAmplitude = 2.4 * Math.PI / 180;
-        const yawSway = 3.2 * Math.PI / 180;
+        const yawAmplitude = 40 * Math.PI / 180;  // Wider horizontal sweep (was 24°)
+        const pitchAmplitude = 4 * Math.PI / 180;  // More vertical motion (was 2.4°)
+        const yawSway = 5 * Math.PI / 180;  // More horizontal sway (was 3.2°)
 
         const tick = (now) => {
             if (!this._autoTourActive || !this.viewer) return;
