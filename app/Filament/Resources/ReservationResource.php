@@ -1271,7 +1271,7 @@ class ReservationResource extends Resource
                                             }
 
                                             $statusIcon = $isAvailable ? '✅' : '⚠️';
-                                            $statusText = $isAvailable ? 'Currently Available' : 'No Longer Available';
+                                            $statusText = $isAvailable ? 'Currently Available' : 'Not Yet Available';
                                             $statusColor = $isAvailable ? 'success' : 'warning';
 
                                             return new \Illuminate\Support\HtmlString(
@@ -1442,20 +1442,20 @@ class ReservationResource extends Resource
                                         ->default(fn (Reservation $record) => $record->guest_last_name)
                                         ->required()
                                         ->maxLength(255)
-                                        ->live()
+                                        ->live(onBlur: true)
                                         ->dehydrated(),
                                     Forms\Components\TextInput::make('guest_first_name')
                                         ->label('First Name')
                                         ->default(fn (Reservation $record) => $record->guest_first_name)
                                         ->required()
                                         ->maxLength(255)
-                                        ->live()
+                                        ->live(onBlur: true)
                                         ->dehydrated(),
                                     Forms\Components\TextInput::make('guest_middle_initial')
                                         ->label('Middle Initial')
                                         ->default(fn (Reservation $record) => $record->guest_middle_initial)
                                         ->maxLength(10)
-                                        ->live()
+                                        ->live(onBlur: true)
                                         ->dehydrated(),
                                     Forms\Components\Select::make('guest_gender')
                                         ->label('Gender')

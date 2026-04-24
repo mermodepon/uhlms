@@ -9,6 +9,7 @@ use App\Models\RoomType;
 use App\Models\Service;
 use App\Models\TourWaypoint;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class GuestController extends Controller
 {
@@ -164,7 +165,8 @@ class GuestController extends Controller
 
         return redirect()->route('guest.track')
             ->with('success', 'Your reservation has been submitted successfully!')
-            ->with('reference_number', $reservation->reference_number);
+            ->with('reference_number', $reservation->reference_number)
+            ->with('guest_email', $reservation->guest_email);
     }
 
     /**
@@ -175,6 +177,46 @@ class GuestController extends Controller
         $reservation = null;
         $expired = false;
         $reference = $request->get('reference') ?? session('reference_number');
+        $guestEmail = $request->get('guest_email') ?? session('guest_email');
+
+        if ($request->filled('reference') || $request->filled('guest_email')) {
+            $request->validate([
+                'reference' => ['required', 'string', 'max:255'],
+                'guest_email' => ['required', 'email', 'max:255'],
+            ]);
+        }
+
+        if ($reference && $guestEmail) {
+            $reservation = Reservation::where('reference_number', $reference)
+                ->whereRaw('LOWER(guest_email) = ?', [Str::lower($guestEmail)])
+                ->first();
+
+            [$reservation, $expired] = $this->resolveTrackedReservation($reservation);
+        }
+
+        return view('guest.track', compact('reservation', 'reference', 'guestEmail', 'expired'));
+    }
+
+    public function trackSecure(Request $request, Reservation $reservation)
+    {
+        $reference = $reservation->reference_number;
+        $guestEmail = $reservation->guest_email;
+
+        [$reservation, $expired] = $this->resolveTrackedReservation($reservation);
+
+        return view('guest.track', [
+            'reservation' => $reservation,
+            'reference' => $reference,
+            'guestEmail' => $guestEmail,
+            'expired' => $expired,
+        ]);
+    }
+
+    private function resolveTrackedReservation(?Reservation $reservation): array
+    {
+        if (! $reservation) {
+            return [null, false];
+        }
 
         // Expiry windows (in days) for terminal statuses.
         $expiryDays = [
@@ -183,45 +225,30 @@ class GuestController extends Controller
             'cancelled' => 14,
         ];
 
-        if ($reference) {
-            $reservation = Reservation::where('reference_number', $reference)
-                ->with([
-                    'preferredRoomType',
-                    'roomAssignments.room',
-                    'roomAssignments.room.roomType',
-                    'payments' => fn($q) => $q->where('gateway', 'paymongo')->latest(),
-                ])
-                ->first();
-
-            if ($reservation) {
-                // Check whether the tracking window has expired for terminal statuses.
-                if (isset($expiryDays[$reservation->status])) {
-                    $daysSince = $reservation->updated_at->diffInDays(now());
-                    if ($daysSince >= $expiryDays[$reservation->status]) {
-                        $expired = true;
-                        $reservation = null;
-                    }
-                }
-
-                // Safety net: if reservation is checked out, close any lingering open assignments.
-                if ($reservation && $reservation->status === 'checked_out') {
-                    RoomAssignment::where('reservation_id', $reservation->id)
-                        ->whereNull('checked_out_at')
-                        ->update([
-                            'status' => 'checked_out',
-                            'checked_out_at' => now(),
-                        ]);
-
-                    $reservation->load([
-                        'preferredRoomType',
-                        'roomAssignments.room',
-                        'roomAssignments.room.roomType',
-                        'payments' => fn($q) => $q->where('gateway', 'paymongo')->latest(),
-                    ]);
-                }
+        if (isset($expiryDays[$reservation->status])) {
+            $daysSince = $reservation->updated_at->diffInDays(now());
+            if ($daysSince >= $expiryDays[$reservation->status]) {
+                return [null, true];
             }
         }
 
-        return view('guest.track', compact('reservation', 'reference', 'expired'));
+        // Safety net: if reservation is checked out, close any lingering open assignments.
+        if ($reservation->status === 'checked_out') {
+            RoomAssignment::where('reservation_id', $reservation->id)
+                ->whereNull('checked_out_at')
+                ->update([
+                    'status' => 'checked_out',
+                    'checked_out_at' => now(),
+                ]);
+        }
+
+        $reservation->load([
+            'preferredRoomType',
+            'roomAssignments.room',
+            'roomAssignments.room.roomType',
+            'payments' => fn ($q) => $q->where('gateway', 'paymongo')->latest(),
+        ]);
+
+        return [$reservation, false];
     }
 }

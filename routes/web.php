@@ -16,7 +16,12 @@ Route::get('/reserve', [GuestController::class, 'reserveForm'])->name('guest.res
 Route::post('/reserve', [GuestController::class, 'reserveSubmit'])
     ->middleware(['throttle:5,1', \Spatie\Honeypot\ProtectAgainstSpam::class])
     ->name('guest.reserve.submit');
-Route::get('/track', [GuestController::class, 'track'])->name('guest.track');
+Route::get('/track', [GuestController::class, 'track'])
+    ->middleware('throttle:10,1')
+    ->name('guest.track');
+Route::get('/track/secure/{reservation}', [GuestController::class, 'trackSecure'])
+    ->middleware(['signed', 'throttle:20,1'])
+    ->name('guest.track.secure');
 
 // Virtual Tour API endpoints
 Route::prefix('api/tour')->group(function () {

@@ -6,6 +6,7 @@ use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\RoomAssignment;
 use App\Notifications\NotificationHelper;
+use App\Services\ReservationStatusMailer;
 use Illuminate\Support\Str;
 
 class ReservationObserver
@@ -41,6 +42,8 @@ class ReservationObserver
             auth()->id(),
             'reservations_view'
         );
+
+        app(ReservationStatusMailer::class)->sendSubmitted($reservation);
     }
 
     public function updated(Reservation $reservation): void
@@ -122,6 +125,8 @@ class ReservationObserver
                 auth()->id(),
                 'reservations_view'
             );
+
+            app(ReservationStatusMailer::class)->sendStatusUpdate($reservation, $oldStatus);
         }
     }
 

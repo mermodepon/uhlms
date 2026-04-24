@@ -152,7 +152,7 @@ class RoomHoldService
         // Check each room for conflicts
         foreach ($rooms as $room) {
             if ($this->hasConflict($room, $checkIn, $checkOut)) {
-                throw new \RuntimeException("Room {$room->room_number} is already held for overlapping dates.");
+                throw new \RuntimeException("Room {$room->room_number} is not yet available for the selected dates.");
             }
         }
 

@@ -11,6 +11,7 @@ use App\Models\RoomType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class ReservationObserverTest extends TestCase
@@ -93,6 +94,17 @@ class ReservationObserverTest extends TestCase
         $this->assertStringContainsString($reservation->reference_number, $data['body']);
     }
 
+    public function test_created_sends_guest_tracking_email(): void
+    {
+        Mail::fake();
+
+        $reservation = $this->createReservation();
+
+        Mail::assertSent(\App\Mail\ReservationStatusMail::class, function ($mail) use ($reservation) {
+            return $mail->reservation->is($reservation) && $mail->context === 'submitted';
+        });
+    }
+
     public function test_updated_status_to_approved_logs_event(): void
     {
         $reservation = $this->createReservation(['status' => 'pending']);
@@ -164,6 +176,23 @@ class ReservationObserverTest extends TestCase
 
         $notification = $this->findNotificationByTitle('Reservation Status Updated');
         $this->assertNotNull($notification);
+    }
+
+    public function test_updated_status_change_sends_guest_status_email(): void
+    {
+        Mail::fake();
+
+        $reservation = $this->createReservation(['status' => 'pending']);
+
+        Mail::assertSentCount(1);
+
+        $reservation->update(['status' => 'approved']);
+
+        Mail::assertSent(\App\Mail\ReservationStatusMail::class, function ($mail) use ($reservation) {
+            return $mail->reservation->id === $reservation->id
+                && $mail->context === 'status_changed'
+                && $mail->previousStatus === 'pending';
+        });
     }
 
     public function test_deleted_notifies_staff(): void

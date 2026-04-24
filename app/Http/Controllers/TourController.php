@@ -293,7 +293,7 @@ class TourController extends Controller
             'message' => 'Reservation submitted successfully!',
             'data' => [
                 'reference_number' => $reservation->reference_number,
-                'track_url' => route('guest.track', ['reference' => $reservation->reference_number]),
+                'track_url' => $reservation->generateGuestTrackingUrl(),
             ],
         ]);
     }

@@ -12,6 +12,7 @@ use App\Models\TourWaypoint;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 
 class GuestControllerTest extends TestCase
@@ -267,7 +268,7 @@ class GuestControllerTest extends TestCase
         $response->assertStatus(200);
     }
 
-    public function test_track_finds_reservation_by_reference(): void
+    public function test_track_finds_reservation_by_reference_and_guest_email(): void
     {
         $roomType = $this->createRoomType();
         $reservation = Reservation::create([
@@ -282,7 +283,10 @@ class GuestControllerTest extends TestCase
             'status' => 'pending',
         ]);
 
-        $response = $this->get(route('guest.track', ['reference' => $reservation->reference_number]));
+        $response = $this->get(route('guest.track', [
+            'reference' => $reservation->reference_number,
+            'guest_email' => $reservation->guest_email,
+        ]));
 
         $response->assertStatus(200);
         $response->assertSee($reservation->reference_number);
@@ -290,9 +294,48 @@ class GuestControllerTest extends TestCase
 
     public function test_track_shows_nothing_for_invalid_reference(): void
     {
-        $response = $this->get(route('guest.track', ['reference' => 'INVALID-REF']));
+        $response = $this->get(route('guest.track', [
+            'reference' => 'INVALID-REF',
+            'guest_email' => 'guest@example.com',
+        ]));
 
         $response->assertStatus(200);
+    }
+
+    public function test_track_requires_guest_email_for_manual_lookup(): void
+    {
+        $response = $this->get(route('guest.track', [
+            'reference' => '2026-0001',
+        ]));
+
+        $response->assertSessionHasErrors('guest_email');
+    }
+
+    public function test_secure_track_link_allows_guest_lookup_without_manual_email_entry(): void
+    {
+        $roomType = $this->createRoomType();
+        $reservation = Reservation::create([
+            'guest_first_name' => 'Jane',
+            'guest_last_name' => 'Doe',
+            'guest_email' => 'jane@example.com',
+            'guest_phone' => '09171234567',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->addDay(),
+            'check_out_date' => now()->addDays(3),
+            'number_of_occupants' => 1,
+            'status' => 'pending',
+        ]);
+
+        $signedUrl = URL::temporarySignedRoute(
+            'guest.track.secure',
+            now()->addMinutes(30),
+            ['reservation' => $reservation->id]
+        );
+
+        $response = $this->get($signedUrl);
+
+        $response->assertStatus(200);
+        $response->assertSee($reservation->reference_number);
     }
 
     public function test_track_expires_old_checked_out_reservations(): void
@@ -313,7 +356,10 @@ class GuestControllerTest extends TestCase
         // Backdate the updated_at to 31 days ago
         Reservation::where('id', $reservation->id)->update(['updated_at' => now()->subDays(31)]);
 
-        $response = $this->get(route('guest.track', ['reference' => $reservation->reference_number]));
+        $response = $this->get(route('guest.track', [
+            'reference' => $reservation->reference_number,
+            'guest_email' => $reservation->guest_email,
+        ]));
 
         $response->assertStatus(200);
         // The reservation should be treated as expired and not shown

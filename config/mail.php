@@ -39,12 +39,31 @@ return [
 
         'smtp' => [
             'transport' => 'smtp',
-            'scheme' => env('MAIL_SCHEME'),
+            'scheme' => match (env('MAIL_SCHEME', env('MAIL_ENCRYPTION'))) {
+                'ssl' => 'smtps',
+                'tls', '', null => null,
+                default => env('MAIL_SCHEME', env('MAIL_ENCRYPTION')),
+            },
             'url' => env('MAIL_URL'),
             'host' => env('MAIL_HOST', '127.0.0.1'),
             'port' => env('MAIL_PORT', 2525),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
+            'timeout' => null,
+            'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url(env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
+        ],
+
+        'brevo' => [
+            'transport' => 'smtp',
+            'scheme' => match (env('BREVO_MAIL_SCHEME', env('MAIL_SCHEME', env('MAIL_ENCRYPTION', 'tls')))) {
+                'ssl' => 'smtps',
+                'tls', '', null => null,
+                default => env('BREVO_MAIL_SCHEME', env('MAIL_SCHEME', env('MAIL_ENCRYPTION', 'tls'))),
+            },
+            'host' => env('BREVO_MAIL_HOST', 'smtp-relay.brevo.com'),
+            'port' => env('BREVO_MAIL_PORT', 587),
+            'username' => env('BREVO_MAIL_USERNAME', env('MAIL_USERNAME')),
+            'password' => env('BREVO_MAIL_PASSWORD', env('MAIL_PASSWORD')),
             'timeout' => null,
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url(env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],

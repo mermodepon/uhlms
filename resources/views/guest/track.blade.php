@@ -6,21 +6,27 @@
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-bold mb-2">Track Your Reservation</h1>
-            <p class="text-gray-200">Enter your reservation reference number to check the current status.</p>
+            <p class="text-gray-200">Use your reservation reference number and guest email address, or open the secure tracking link sent to your email.</p>
         </div>
     </section>
 
     <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {{-- Search Form --}}
         <div class="bg-white rounded-xl shadow-md p-6 mb-8">
-            <form action="{{ route('guest.track') }}" method="GET" class="flex gap-4">
+            <form action="{{ route('guest.track') }}" method="GET" class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4">
                 <input type="text" name="reference" value="{{ $reference }}"
-                       placeholder="Enter reference number (e.g., 2026-0001)"
+                       placeholder="Reference number (e.g., 2026-0001)"
+                       class="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                <input type="email" name="guest_email" value="{{ $guestEmail ?? '' }}"
+                       placeholder="Guest email used on the reservation"
                        class="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                 <button type="submit" class="bg-[#00491E] text-white px-6 py-2 rounded-lg hover:bg-[#02681E] transition font-medium">
                     Track
                 </button>
             </form>
+            @if ($errors->any())
+                <p class="text-sm text-red-600 mt-3">Please enter both your reservation reference number and guest email address.</p>
+            @endif
         </div>
 
         @if($reference && !$reservation && $expired)
@@ -31,16 +37,18 @@
         @elseif($reference && !$reservation)
             <div class="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl mb-8">
                 <p class="font-medium">Reservation not found</p>
-                <p class="text-sm mt-1">No reservation matches the reference number "{{ $reference }}". Please check and try again.</p>
+                <p class="text-sm mt-1">No reservation matches reference <strong>{{ $reference }}</strong> with the guest email you entered. Please check both and try again.</p>
             </div>
         @endif
 
         @if($reservation)
             @php
-                // --- Privacy masking ---
+                // Room number: show first char, mask the rest
+                $maskRoom = fn($num) => mb_substr($num, 0, 1) . str_repeat('*', min(max(mb_strlen($num) - 1, 2), 3));
 
-                // Name: show first name, mask remaining parts (first letter + ***)
-                $maskName = function($name) {
+                // Assignment name masking
+                $maskAssignmentName = function ($a) use ($reservation) {
+                    $name = trim($a->guest_first_name . ' ' . $a->guest_last_name) ?: $reservation->guest_name;
                     $parts = explode(' ', trim($name));
                     if (count($parts) <= 1) return $parts[0];
                     $first = array_shift($parts);
@@ -51,32 +59,40 @@
                     return $first . ' ' . implode(' ', $masked);
                 };
 
-                $maskedName = $maskName($reservation->guest_name);
+                $statusGuidance = [
+                    'pending' => 'Your request is waiting for staff review. Please watch your email for approval or follow-up instructions.',
+                    'approved' => 'Your reservation has been approved. Watch your email for payment instructions or additional confirmation details.',
+                    'confirmed' => 'Your reservation is confirmed. Please keep monitoring your email for any payment reminders or arrival instructions.',
+                    'pending_payment' => 'Your reservation is waiting for payment. Complete the payment step shown below to avoid delays.',
+                    'declined' => 'This reservation request was declined. Please contact the homestay staff if you need clarification or would like to submit a new request.',
+                    'cancelled' => 'This reservation has been cancelled. Contact staff if you believe this was made in error.',
+                    'checked_in' => 'You are currently checked in. If you need help during your stay, please contact the homestay staff.',
+                    'checked_out' => 'This reservation has been completed. Thank you for staying with us.',
+                ];
 
-                // Email: first char of local part + *** @ domain
-                $emailParts = explode('@', $reservation->guest_email, 2);
-                $maskedEmail = mb_substr($emailParts[0], 0, 1)
-                    . str_repeat('*', min(max(mb_strlen($emailParts[0]) - 1, 3), 5))
-                    . '@' . ($emailParts[1] ?? '');
+                $summaryFields = [
+                    'room_type' => $reservation->preferredRoomType?->name,
+                    'check_in' => $reservation->check_in_date->format('M d, Y'),
+                    'check_out' => $reservation->check_out_date->format('M d, Y'),
+                ];
 
-                // Phone: mask all digits except the last 4
-                $maskedPhone = null;
-                if ($reservation->guest_phone) {
-                    $digitCount = preg_match_all('/\d/', $reservation->guest_phone);
-                    $digitIndex = 0;
-                    $maskedPhone = preg_replace_callback('/\d/', function($m) use (&$digitIndex, $digitCount) {
-                        $digitIndex++;
-                        return ($digitIndex <= $digitCount - 4) ? '*' : $m[0];
-                    }, $reservation->guest_phone);
-                }
+                $showAssignments = $reservation->roomAssignments->isNotEmpty()
+                    && in_array($reservation->status, ['checked_in', 'checked_out'], true);
 
-                // Room number: show first char, mask the rest
-                $maskRoom = fn($num) => mb_substr($num, 0, 1) . str_repeat('*', min(max(mb_strlen($num) - 1, 2), 3));
+                $remarksGrouped = $reservation->roomAssignments
+                    ->where('remarks')
+                    ->groupBy('room_id')
+                    ->map(fn($group) => [
+                        'room' => $group->first()->room,
+                        'remarks' => $group->first()->remarks,
+                        'guests' => $group->map(fn($a) => $maskAssignmentName($a))->filter()->all()
+                    ]);
 
-                // Assignment name masking
-                $maskAssignmentName = fn($a) => $maskName(
-                    trim($a->guest_first_name . ' ' . $a->guest_last_name) ?: $reservation->guest_name
-                );
+                $showAssignmentNotes = $showAssignments && $remarksGrouped->isNotEmpty();
+                $showSubmittedAt = in_array($reservation->status, ['pending', 'approved', 'confirmed', 'pending_payment'], true);
+                $guidanceTone = in_array($reservation->status, ['declined', 'cancelled'], true)
+                    ? 'bg-red-50 border-red-200 text-red-800'
+                    : 'bg-blue-50 border-blue-200 text-blue-800';
             @endphp
 
             {{-- Status Timeline --}}
@@ -143,72 +159,37 @@
                     </div>
                 @endif
 
-                @if(in_array($reservation->status, ['declined', 'cancelled']) && $reservation->admin_notes)
-                    <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                        <p class="font-medium text-red-800">Staff Notes:</p>
-                        <p class="text-red-700 text-sm mt-1">{{ $reservation->admin_notes }}</p>
-                    </div>
-                @endif
             </div>
 
-            {{-- Reservation Details --}}
+            {{-- Reservation Summary --}}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div class="bg-white rounded-xl shadow-md p-6">
-                    <h3 class="font-bold text-[#00491E] mb-4">Guest Information</h3>
-                    <p class="text-xs text-gray-400 mb-3">Some details are partially masked for privacy.</p>
-                    <dl class="space-y-2 text-sm">
-                        <div class="flex justify-between">
-                            <dt class="text-gray-500">Name</dt>
-                            <dd class="font-medium">{{ $maskedName }}</dd>
-                        </div>
-                        <div class="flex justify-between">
-                            <dt class="text-gray-500">Email</dt>
-                            <dd>{{ $maskedEmail }}</dd>
-                        </div>
-                        @if($reservation->guest_phone)
-                            <div class="flex justify-between">
-                                <dt class="text-gray-500">Phone</dt>
-                                <dd>{{ $maskedPhone }}</dd>
-                            </div>
-                        @endif
-                        @if($reservation->guest_gender)
-                            <div class="flex justify-between">
-                                <dt class="text-gray-500">Gender</dt>
-                                <dd class="font-medium">{{ $reservation->guest_gender }}</dd>
-                            </div>
-                        @endif
-                    </dl>
+                    <h3 class="font-bold text-[#00491E] mb-4">What Happens Next</h3>
+                    <div class="rounded-lg border p-4 text-sm {{ $guidanceTone }}">
+                        {{ $statusGuidance[$reservation->status] ?? 'Please monitor this page and your email for updates to your reservation.' }}
+                    </div>
+                    <p class="text-xs text-gray-500 mt-3">For privacy, this page now focuses on reservation status and essential next steps only.</p>
                 </div>
 
                 <div class="bg-white rounded-xl shadow-md p-6">
-                    <h3 class="font-bold text-[#00491E] mb-4">Stay Details</h3>
+                    <h3 class="font-bold text-[#00491E] mb-4">Reservation Summary</h3>
                     <dl class="space-y-2 text-sm">
                         <div class="flex justify-between">
                             <dt class="text-gray-500">Room Type</dt>
-                            <dd class="font-medium">{{ $reservation->preferredRoomType->name }}</dd>
+                            <dd class="font-medium">{{ $summaryFields['room_type'] ?? 'To be assigned' }}</dd>
                         </div>
                         <div class="flex justify-between">
                             <dt class="text-gray-500">Check-in</dt>
-                            <dd>{{ $reservation->check_in_date->format('M d, Y') }}</dd>
+                            <dd>{{ $summaryFields['check_in'] }}</dd>
                         </div>
                         <div class="flex justify-between">
                             <dt class="text-gray-500">Check-out</dt>
-                            <dd>{{ $reservation->check_out_date->format('M d, Y') }}</dd>
+                            <dd>{{ $summaryFields['check_out'] }}</dd>
                         </div>
                         <div class="flex justify-between">
-                            <dt class="text-gray-500">Duration</dt>
-                            <dd>{{ $reservation->nights }} {{ Str::plural('night', $reservation->nights) }}</dd>
+                            <dt class="text-gray-500">Reference</dt>
+                            <dd class="font-medium">{{ $reservation->reference_number }}</dd>
                         </div>
-                        <div class="flex justify-between">
-                            <dt class="text-gray-500">Occupants</dt>
-                            <dd>{{ $reservation->number_of_occupants }}</dd>
-                        </div>
-                        @if($reservation->purpose)
-                            <div class="flex justify-between">
-                                <dt class="text-gray-500">Purpose</dt>
-                                <dd>{{ ucfirst($reservation->purpose) }}</dd>
-                            </div>
-                        @endif
                     </dl>
                 </div>
             </div>
@@ -378,9 +359,9 @@
             @endif
 
             {{-- Room Assignment - Improved Table View --}}
-            @if($reservation->roomAssignments->isNotEmpty())
+            @if($showAssignments)
                 <div class="bg-white rounded-xl shadow-md p-6 mt-8">
-                    <h3 class="font-bold text-[#00491E] mb-4">Guest Room Assignments</h3>
+                    <h3 class="font-bold text-[#00491E] mb-4">Room Assignments</h3>
                     
                     {{-- Summary Card --}}
                     <div class="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -451,17 +432,7 @@
             @endif
 
             {{-- Additional Notes --}}
-            @php
-                $remarksGrouped = $reservation->roomAssignments
-                    ->where('remarks')
-                    ->groupBy('room_id')
-                    ->map(fn($group) => [
-                        'room' => $group->first()->room,
-                        'remarks' => $group->first()->remarks,
-                        'guests' => $group->map(fn($a) => $maskName(trim($a->guest_first_name . ' ' . $a->guest_last_name)))->filter()->all()
-                    ]);
-            @endphp
-            @if($remarksGrouped->isNotEmpty())
+            @if($showAssignmentNotes)
                 <div class="bg-white rounded-xl shadow-md p-6 mt-8">
                     <h3 class="font-bold text-[#00491E] mb-4">Assignment Notes</h3>
                     <div class="space-y-3">
@@ -480,9 +451,11 @@
                 </div>
             @endif
 
-            <div class="text-center mt-8">
+            @if($showSubmittedAt)
+                <div class="text-center mt-8">
                 <p class="text-gray-500 text-sm">Submitted on {{ $reservation->created_at->format('F d, Y \\a\\t g:i A') }}</p>
-            </div>
+                </div>
+            @endif
         @endif
     </section>
 @endsection

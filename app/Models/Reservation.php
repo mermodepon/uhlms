@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 
 class Reservation extends Model
 {
@@ -247,6 +248,18 @@ class Reservation extends Model
     }
 
     /**
+     * Generate a signed guest tracking link that expires automatically.
+     */
+    public function generateGuestTrackingUrl(): string
+    {
+        return URL::temporarySignedRoute(
+            'guest.track.secure',
+            $this->resolveTrackingLinkExpiry(),
+            ['reservation' => $this->id]
+        );
+    }
+
+    /**
      * Check if the payment link token is still valid (exists and not expired).
      */
     public function isPaymentLinkValid(): bool
@@ -318,6 +331,26 @@ class Reservation extends Model
             ->where('status', 'posted')
             ->exists();
     }
-}
 
+    private function resolveTrackingLinkExpiry()
+    {
+        $terminalExpiryDays = [
+            'checked_out' => 30,
+            'declined' => 14,
+            'cancelled' => 14,
+        ];
+
+        if (isset($terminalExpiryDays[$this->status])) {
+            return ($this->updated_at ?? now())->copy()->addDays($terminalExpiryDays[$this->status]);
+        }
+
+        $baseDate = $this->check_out_date?->copy()->endOfDay() ?? now();
+
+        if ($baseDate->lessThan(now())) {
+            $baseDate = now();
+        }
+
+        return $baseDate->addDays(30);
+    }
+}
 

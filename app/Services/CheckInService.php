@@ -308,12 +308,12 @@ class CheckInService
                 if ($mode === 'dorm') {
                     // Dorm rooms can accept guests while occupied, as long as they're not full or in maintenance/inactive
                     if (in_array($room->status, ['maintenance', 'inactive', 'reserved'], true) || $room->isFull()) {
-                        throw new \RuntimeException("Room {$room->room_number} is no longer available.");
+                        throw new \RuntimeException("Room {$room->room_number} is not yet available for check-in.");
                     }
                 } else {
                     // Private rooms must be fully available
                     if ($room->status !== 'available') {
-                        throw new \RuntimeException("Room {$room->room_number} is no longer available.");
+                        throw new \RuntimeException("Room {$room->room_number} is not yet available because it is still assigned to an active stay.");
                     }
                 }
 
