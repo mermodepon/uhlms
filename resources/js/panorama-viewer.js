@@ -264,22 +264,37 @@ class PanoramaViewer {
         const tags     = Array.isArray(sprite.tags) ? sprite.tags : [];
         const badge    = sprite.headerBadge || '';
         const badgeClr = sprite.headerBadgeColor || '#86efac';
+        const hasYouTubeVideo = !!sprite.mediaYouTubeId;
+        const hasImageMedia = !!(sprite.mediaGallery?.length || sprite.mediaUrl);
+        const hasExpandedMediaCard = hasYouTubeVideo || hasImageMedia;
+        const cardWidth = hasYouTubeVideo
+            ? 'min(560px,calc(100vw - 32px))'
+            : (hasImageMedia ? 'min(520px,calc(100vw - 32px))' : 'min(380px,calc(100vw - 32px))');
+        const videoMediaPaddingTop = hasYouTubeVideo ? '62.5%' : '56.25%';
+        const cardMaxHeight = hasYouTubeVideo
+            ? 'min(94vh,860px)'
+            : (hasImageMedia ? 'min(92vh,820px)' : 'min(90vh,calc(100dvh - 24px))');
 
         // Media
         let mediaHtml = '';
         if (sprite.mediaYouTubeId) {
             const src = this._buildYouTubeEmbedUrl(sprite.mediaYouTubeId);
-            mediaHtml = `<div style="position:relative;padding-top:56.25%;background:#000;overflow:hidden;flex-shrink:0">`
+            mediaHtml = `<div style="position:relative;padding-top:${videoMediaPaddingTop};background:#000;overflow:hidden;flex-shrink:0">`
                 + `<iframe src="${src}" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media;fullscreen" allowfullscreen loading="lazy"></iframe>`
                 + `</div>`;
         } else if (sprite.mediaGallery?.length > 0) {
             const imgs = sprite.mediaGallery.map(url =>
-                `<img src="${url}" style="height:160px;width:auto;flex-shrink:0;display:block;border-radius:6px;object-fit:cover" onerror="this.style.display='none'" loading="lazy">`
+                `<div style="min-width:${hasExpandedMediaCard ? 'calc(100% - 8px)' : '220px'};scroll-snap-align:center;scroll-snap-stop:always;flex:0 0 auto">`
+                + `<img src="${url}" style="width:100%;height:${hasExpandedMediaCard ? '240px' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                + `</div>`
             ).join('');
-            mediaHtml = `<div onwheel="event.stopPropagation();event.preventDefault();this.scrollLeft += event.deltaY + event.deltaX" style="display:flex;gap:8px;overflow-x:auto;padding:10px 14px;background:#f9fafb;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">${imgs}</div>`;
+            mediaHtml = `<div style="background:#f9fafb;padding:12px 14px 10px">`
+                + `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase"><span>Image Gallery</span><span>Wheel or swipe</span></div>`
+                + `<div data-gallery-track onwheel="event.stopPropagation();event.preventDefault();const delta=((event.deltaX||0)+(event.deltaY||0))*(event.deltaMode===1?16:1);this.scrollBy({left:delta,behavior:'auto'});return false;" style="display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:2px 0 6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin">${imgs}</div>`
+                + `</div>`;
         } else if (sprite.mediaUrl) {
             mediaHtml = `<div style="flex-shrink:0;overflow:hidden">`
-                + `<img src="${sprite.mediaUrl}" style="width:100%;display:block;max-height:240px;object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                + `<img src="${sprite.mediaUrl}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? '360px' : '240px'};object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
                 + `</div>`;
         }
 
@@ -297,7 +312,7 @@ class PanoramaViewer {
 
         const interactionShield = `onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onpointerdown="event.stopPropagation()" onwheel="event.stopPropagation()" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()"`;
 
-        return `<div ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:min(380px,calc(100vw - 32px));font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;max-height:min(90vh,calc(100dvh - 24px));pointer-events:auto;touch-action:pan-y">`
+        return `<div ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight};pointer-events:auto;touch-action:pan-y">`
             + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 16px;position:relative;flex-shrink:0">`
             + closeBtn
             + `<h2 style="font-size:16px;font-weight:700;margin:0 32px 0 0">${title}</h2>`
@@ -306,7 +321,7 @@ class PanoramaViewer {
             + `</div>`
             + `<div style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y">`
             + mediaHtml
-            + (body ? `<div style="padding:14px;font-size:13px;color:#374151;line-height:1.6">${body}</div>` : '')
+            + (body ? `<div style="padding:${hasExpandedMediaCard ? '12px 14px 10px' : '14px'};font-size:13px;color:#374151;line-height:${hasExpandedMediaCard ? '1.55' : '1.6'}">${body}</div>` : '')
             + (price ? `<div style="padding:0 14px 10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px">Price</div><div style="font-size:19px;font-weight:700;color:#d97706">${price}</div></div>` : '')
             + (amenitiesTags ? `<div style="padding:0 14px 14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:4px">Amenities</div>${amenitiesTags}</div>` : '')
             + (buttons ? `<div style="padding:0 14px 14px">${buttons}</div>` : '')
@@ -314,14 +329,19 @@ class PanoramaViewer {
             + `</div>`;
     }
 
-    _buildYouTubeEmbedUrl(videoId) {
+    _buildYouTubeEmbedUrl(videoId, options = {}) {
         if (!videoId) return '';
 
         const params = new URLSearchParams({
             rel: '0',
             playsinline: '1',
             modestbranding: '1',
+            fs: '1',
         });
+
+        if (options.autoplay) {
+            params.set('autoplay', '1');
+        }
 
         if (window.location?.origin) {
             params.set('origin', window.location.origin);

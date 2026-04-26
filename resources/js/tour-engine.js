@@ -481,6 +481,16 @@ class VirtualTourEngine {
         const hasText  = !!(hs.description && hs.description.trim());
         const hasMedia = !!(hs.media_type && hs.media_url);
         const imageUrls = this._mediaImageUrls(hs);
+        const hasYouTubeVideo = hs.media_type === 'video' && !!this._extractYouTubeId(hs.media_url);
+        const hasImageMedia = imageUrls.length > 0;
+        const hasExpandedMediaCard = hasYouTubeVideo || hasImageMedia;
+        const cardWidth = hasYouTubeVideo
+            ? 'min(560px,calc(100vw - 32px))'
+            : (hasImageMedia ? 'min(520px,calc(100vw - 32px))' : '340px');
+        const videoMediaPaddingTop = hasYouTubeVideo ? '62.5%' : '56.25%';
+        const cardMaxHeight = hasYouTubeVideo
+            ? 'min(94vh,860px)'
+            : (hasImageMedia ? 'min(92vh,820px)' : '90vh');
 
         let mediaHtml = '';
         if (hasMedia) {
@@ -488,29 +498,34 @@ class VirtualTourEngine {
                 const vid = this._extractYouTubeId(hs.media_url);
                 if (vid) {
                     const src = this._buildYouTubeEmbedUrl(vid);
-                    mediaHtml = `<div style="position:relative;padding-top:56.25%;background:#000;overflow:hidden;flex-shrink:0">`
+                    mediaHtml = `<div style="position:relative;padding-top:${videoMediaPaddingTop};background:#000;overflow:hidden;flex-shrink:0">`
                         + `<iframe src="${src}" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media;fullscreen" allowfullscreen loading="lazy"></iframe>`
                         + `</div>`;
                 }
             } else if (imageUrls.length === 1) {
                 mediaHtml = `<div style="flex-shrink:0;overflow:hidden">`
-                    + `<img src="${imageUrls[0]}" style="width:100%;display:block;max-height:240px;object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                    + `<img src="${imageUrls[0]}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? '360px' : '240px'};object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
                     + `</div>`;
             } else if (imageUrls.length > 1) {
                 const imgs = imageUrls.map(url =>
-                    `<img src="${url}" style="height:160px;width:auto;flex-shrink:0;display:block;border-radius:6px;object-fit:cover" onerror="this.style.display='none'" loading="lazy">`
+                    `<div style="min-width:${hasExpandedMediaCard ? 'calc(100% - 8px)' : '220px'};scroll-snap-align:center;scroll-snap-stop:always;flex:0 0 auto">`
+                    + `<img src="${url}" style="width:100%;height:${hasExpandedMediaCard ? '240px' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                    + `</div>`
                 ).join('');
-                mediaHtml = `<div style="display:flex;gap:8px;overflow-x:auto;padding:10px 14px;background:#f9fafb;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch">${imgs}</div>`;
+                mediaHtml = `<div style="background:#f9fafb;padding:12px 14px 10px">`
+                    + `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase"><span>Image Gallery</span><span>Wheel or swipe</span></div>`
+                    + `<div data-gallery-track onwheel="event.stopPropagation();event.preventDefault();const delta=((event.deltaX||0)+(event.deltaY||0))*(event.deltaMode===1?16:1);this.scrollBy({left:delta,behavior:'auto'});return false;" style="display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:2px 0 6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin">${imgs}</div>`
+                    + `</div>`;
             }
         }
 
         const bodyParts = [];
-        if (hasText)  bodyParts.push(`<div style="padding:14px 14px ${hasMedia ? '8px' : '14px'};font-size:13px;color:#374151;line-height:1.6">${hs.description}</div>`);
         if (mediaHtml) bodyParts.push(mediaHtml);
+        if (hasText)  bodyParts.push(`<div style="padding:${hasExpandedMediaCard ? '12px 14px 10px' : `14px 14px ${hasMedia ? '8px' : '14px'}`};font-size:13px;color:#374151;line-height:${hasExpandedMediaCard ? '1.55' : '1.6'}">${hs.description}</div>`);
 
         const hasBody = bodyParts.length > 0;
 
-        return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:340px;font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;max-height:90vh">`
+        return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight}">`
             + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 16px;position:relative;flex-shrink:0">`
             + `<button onclick="tourEngine._closeInfoCard();event.stopPropagation()" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);border:none;color:white;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:14px;line-height:26px;text-align:center">✕</button>`
             + `<h2 style="font-size:16px;font-weight:700;margin:0 32px 0 0">${hs.title || ''}</h2>`
@@ -534,20 +549,30 @@ class VirtualTourEngine {
         return null;
     }
 
-    _buildYouTubeEmbedUrl(videoId) {
+    _buildYouTubeEmbedUrl(videoId, options = {}) {
         if (!videoId) return '';
 
         const params = new URLSearchParams({
             rel: '0',
             playsinline: '1',
             modestbranding: '1',
+            fs: '1',
         });
+
+        if (options.autoplay) {
+            params.set('autoplay', '1');
+        }
 
         if (window.location?.origin) {
             params.set('origin', window.location.origin);
         }
 
         return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+    }
+
+    _buildYouTubeThumbnailUrl(videoId) {
+        if (!videoId) return '';
+        return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
     }
 
     // ── Date-aware availability helpers ──────────────────────────────────────
@@ -1159,15 +1184,17 @@ class VirtualTourEngine {
             if (!hs) return;
 
             const hasVideo = hs.media_type === 'video' && hs.media_url;
+            const videoId = hasVideo ? this._extractYouTubeId(hs.media_url) : null;
             const imageUrls = this._mediaImageUrls(hs);
             const hasImage = imageUrls.length > 0;
+            const hasPreviewMedia = hasImage || !!videoId;
             const currentImageIndex = hasImage
                 ? Math.max(0, Math.min(imageUrls.length - 1, imageIndex))
                 : 0;
             const lines = [
                 truncateXRText(hs.title || 'Information', 42),
                 truncateXRText(hs.description || '', 70),
-                hasVideo ? 'Video content available' : '',
+                videoId ? 'Watch on YouTube after exiting VR' : (hasVideo ? 'Video content available' : ''),
                 hasImage ? `Image ${currentImageIndex + 1} of ${imageUrls.length}` : '',
             ].filter(Boolean);
 
@@ -1191,13 +1218,13 @@ class VirtualTourEngine {
             const panelPosition = (x = 0, y = 0) => center.clone().add(right.clone().multiplyScalar(x)).add(up.clone().multiplyScalar(y));
             const panel = makePlane(makeTextTexture(lines, {
                 width: 820,
-                height: hasImage ? 230 : 340,
+                height: hasPreviewMedia ? 230 : 340,
                 background: 'rgba(255,255,255,0.96)',
                 color: '#111827',
                 font: 'bold 38px sans-serif',
                 lineHeight: 56,
                 border: '#00491E',
-            }), panelPosition(0, hasImage ? 0.62 : 0), { x: 2.65, y: hasImage ? 0.62 : 1.1 }, { panel: true, action: 'noop' });
+            }), panelPosition(0, hasPreviewMedia ? 0.62 : 0), { x: 2.65, y: hasPreviewMedia ? 0.62 : 1.1 }, { panel: true, action: 'noop' });
             panelGroup.add(panel);
 
             const buttons = [];
@@ -1251,18 +1278,41 @@ class VirtualTourEngine {
                     }));
                 }
 
+            } else if (videoId) {
+                const thumbnailUrl = this._buildYouTubeThumbnailUrl(videoId);
+                try {
+                    const thumbnailTexture = await loader.loadAsync(thumbnailUrl);
+                    thumbnailTexture.colorSpace = THREE.SRGBColorSpace;
+                    const previewPlane = makePlane(thumbnailTexture, panelPosition(0, -0.12), { x: 2.35, y: 1.32 }, { panel: true, action: 'noop' });
+                    panelGroup.add(previewPlane);
+
+                    const playBadge = makePlane(makeTextTexture('YouTube Preview', {
+                        width: 520,
+                        height: 110,
+                        background: 'rgba(17,24,39,0.88)',
+                        color: '#ffffff',
+                        font: 'bold 38px sans-serif',
+                        border: '#ef4444',
+                    }), panelPosition(0, -0.58), { x: 1.5, y: 0.3 }, { panel: true, action: 'noop' }, {
+                        transparent: true,
+                        opacity: 0.98,
+                    });
+                    panelGroup.add(playBadge);
+                    clearGroup(statusGroup);
+                } catch (error) {
+                    console.error('WebXR YouTube thumbnail load failed:', error);
+                }
             }
 
             if (hasVideo) {
-                const videoId = this._extractYouTubeId(hs.media_url);
-                const videoUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : hs.media_url;
-                buttons.push(makePlane(makeTextTexture('Open Video', {
-                    width: 512,
+                const videoUrl = videoId ? this._buildYouTubeEmbedUrl(videoId, { autoplay: true }) : hs.media_url;
+                buttons.push(makePlane(makeTextTexture(videoId ? 'Play on YouTube' : 'Open Video', {
+                    width: 560,
                     height: 120,
                     background: '#FFC600',
                     color: '#00491E',
                     font: 'bold 40px sans-serif',
-                }), panelPosition(0, -1.05), { x: 1.6, y: 0.38 }, { panel: true, action: 'open-url', url: videoUrl }));
+                }), panelPosition(0, -1.05), { x: 1.72, y: 0.38 }, { panel: true, action: 'open-url', url: videoUrl }));
             }
 
             const closeY = hasImage ? (buttons.length > 1 ? -1.14 : -0.95) : (hasVideo ? -1.5 : -1.05);
@@ -1391,6 +1441,27 @@ class VirtualTourEngine {
 
         const handleXRAction = async (target) => {
             const data = target?.userData || {};
+            const launchExternalFromXR = async (url) => {
+                if (!url) return;
+
+                // Reserve the browsing context while the XR click is still a trusted gesture.
+                const popup = window.open('about:blank', '_blank');
+                await this.stopWebXRTest();
+
+                if (popup && !popup.closed) {
+                    try {
+                        popup.opener = null;
+                        popup.location.replace(url);
+                        popup.focus?.();
+                        return;
+                    } catch (error) {
+                        console.warn('Popup navigation failed, falling back to same-tab navigation.', error);
+                    }
+                }
+
+                window.location.href = url;
+            };
+
             if (data.action === 'room-info') {
                 showRoomInfoPanel();
             } else if (data.action === 'close-panel') {
@@ -1402,8 +1473,7 @@ class VirtualTourEngine {
                 await this.stopWebXRTest();
                 window.location.href = '/reserve';
             } else if (data.action === 'open-url' && data.url) {
-                await this.stopWebXRTest();
-                window.open(data.url, '_blank', 'noopener,noreferrer');
+                await launchExternalFromXR(data.url);
             } else if (data.action === 'info-image' && data.hotspot) {
                 await showInfoPanel(data.hotspot, data.imageIndex || 0, true);
             } else if (data.action === 'hotspot') {
@@ -1413,8 +1483,7 @@ class VirtualTourEngine {
                 } else if (hs?.action_type === 'info') {
                     await showInfoPanel(hs);
                 } else if (hs?.action_type === 'external-link' && hs.action_target) {
-                    await this.stopWebXRTest();
-                    window.open(hs.action_target, '_blank', 'noopener,noreferrer');
+                    await launchExternalFromXR(hs.action_target);
                 } else if (hs?.action_type === 'bookmark') {
                     this._toggleBookmark(hs);
                 }
