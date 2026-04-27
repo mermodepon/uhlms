@@ -238,24 +238,25 @@ class Reservation extends Model
     /**
      * Generate the guest payment link URL.
      */
-    public function generatePaymentLink(): ?string
+    public function generatePaymentLink(bool $absolute = true): ?string
     {
         if (empty($this->payment_link_token)) {
             return null;
         }
 
-        return url("/reserve/pay/{$this->payment_link_token}");
+        return route('guest.payment.show', ['token' => $this->payment_link_token], $absolute);
     }
 
     /**
      * Generate a signed guest tracking link that expires automatically.
      */
-    public function generateGuestTrackingUrl(): string
+    public function generateGuestTrackingUrl(bool $absolute = true): string
     {
         return URL::temporarySignedRoute(
             'guest.track.secure',
             $this->resolveTrackingLinkExpiry(),
-            ['reservation' => $this->id]
+            ['reservation' => $this->id],
+            $absolute
         );
     }
 
@@ -353,4 +354,3 @@ class Reservation extends Model
         return $baseDate->addDays(30);
     }
 }
-

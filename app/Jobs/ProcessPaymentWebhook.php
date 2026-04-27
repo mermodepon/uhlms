@@ -294,7 +294,7 @@ class ProcessPaymentWebhook implements ShouldQueue
                     "Reservation #{$reservation->reference_number} received online payment of ₱".number_format($paymentAmount, 2).'.',
                     'success',
                     'payment',
-                    url('/admin/reservations?tableSearch='.urlencode($reservation->reference_number)),
+                    route('filament.admin.resources.reservations.index', [], false).'?tableSearch='.urlencode($reservation->reference_number),
                     null, // No actor (system notification)
                     'reservations_view'
                 );

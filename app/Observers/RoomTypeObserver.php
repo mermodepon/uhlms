@@ -15,7 +15,7 @@ class RoomTypeObserver
             "Room Type \"{$roomType->name}\" ({$sharing}) has been added to the system.",
             'success',
             'room_type',
-            url('/admin/room-types?tableSearch='.urlencode($roomType->name)),
+            route('filament.admin.resources.room-types.index', [], false).'?tableSearch='.urlencode($roomType->name),
             auth()->id(),
             'room_types_view'
         );
@@ -33,7 +33,7 @@ class RoomTypeObserver
                 "Room Type \"{$roomType->name}\" has been {$status}.",
                 $changes['is_active'] ? 'success' : 'warning',
                 'room_type',
-                url('/admin/room-types?tableSearch='.urlencode($roomType->name)),
+                route('filament.admin.resources.room-types.index', [], false).'?tableSearch='.urlencode($roomType->name),
                 auth()->id(),
                 'room_types_view'
             );
@@ -45,7 +45,7 @@ class RoomTypeObserver
                 "Room Type \"{$roomType->name}\" sharing changed from {$old} to {$new}.",
                 'info',
                 'room_type',
-                url('/admin/room-types?tableSearch='.urlencode($roomType->name)),
+                route('filament.admin.resources.room-types.index', [], false).'?tableSearch='.urlencode($roomType->name),
                 auth()->id(),
                 'room_types_view'
             );
@@ -55,7 +55,7 @@ class RoomTypeObserver
                 "Room Type \"{$roomType->name}\" details have been updated.",
                 'info',
                 'room_type',
-                url('/admin/room-types?tableSearch='.urlencode($roomType->name)),
+                route('filament.admin.resources.room-types.index', [], false).'?tableSearch='.urlencode($roomType->name),
                 auth()->id(),
                 'room_types_view'
             );

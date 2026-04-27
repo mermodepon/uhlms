@@ -13,7 +13,7 @@
     <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {{-- Search Form --}}
         <div class="bg-white rounded-xl shadow-md p-6 mb-8">
-            <form action="{{ route('guest.track') }}" method="GET" class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4">
+            <form action="{{ route('guest.track', [], false) }}" method="GET" class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4">
                 <input type="text" name="reference" value="{{ $reference }}"
                        placeholder="Reference number (e.g., 2026-0001)"
                        class="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
@@ -231,7 +231,7 @@
                             </div>
                             <h3 class="text-xl font-bold text-green-700 mb-2">
                                 @if($gatewayPayment->is_deposit)
-                                    ✓ Deposit Payment Received
+                                    Deposit Payment Received
                                 @else
                                     ✓ Full Payment Received
                                 @endif
@@ -305,7 +305,7 @@
                                 <div class="inline-block">
                                     <div class="bg-gradient-to-br from-[#00491E] to-[#02681E] p-6 rounded-2xl shadow-lg">
                                         <div class="bg-white p-4 rounded-xl">
-                                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={{ urlencode($reservation->generatePaymentLink()) }}"
+                                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={{ urlencode($reservation->generatePaymentLink(false)) }}"
                                                  alt="Payment QR Code"
                                                  class="w-64 h-64 mx-auto">
                                         </div>
@@ -316,7 +316,7 @@
 
                             {{-- Payment Link Button --}}
                             <div class="space-y-4">
-                                <a href="{{ $reservation->generatePaymentLink() }}"
+                                <a href="{{ $reservation->generatePaymentLink(false) }}"
                                    class="inline-block bg-gradient-to-r from-[#00491E] to-[#02681E] text-white px-8 py-4 rounded-xl font-bold text-lg hover:shadow-lg transition-all transform hover:scale-105">
                                     🔒 Pay Deposit Now
                                 </a>

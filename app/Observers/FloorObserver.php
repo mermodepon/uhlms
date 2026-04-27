@@ -14,7 +14,7 @@ class FloorObserver
             "Floor \"{$floor->name}\" (Level {$floor->level}) has been added to the system.",
             'success',
             'floor',
-            url('/admin/floors?tableSearch='.urlencode($floor->name)),
+            route('filament.admin.resources.floors.index', [], false).'?tableSearch='.urlencode($floor->name),
             auth()->id(),
             'floors_view'
         );
@@ -32,7 +32,7 @@ class FloorObserver
                 "Floor \"{$floor->name}\" has been {$status}.",
                 $changes['is_active'] ? 'success' : 'warning',
                 'floor',
-                url('/admin/floors?tableSearch='.urlencode($floor->name)),
+                route('filament.admin.resources.floors.index', [], false).'?tableSearch='.urlencode($floor->name),
                 auth()->id(),
                 'floors_view'
             );
@@ -42,7 +42,7 @@ class FloorObserver
                 "Floor \"{$floor->name}\" details have been updated.",
                 'info',
                 'floor',
-                url('/admin/floors?tableSearch='.urlencode($floor->name)),
+                route('filament.admin.resources.floors.index', [], false).'?tableSearch='.urlencode($floor->name),
                 auth()->id(),
                 'floors_view'
             );

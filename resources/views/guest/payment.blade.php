@@ -123,7 +123,7 @@
         </div>
 
         {{-- Payment Form --}}
-        <form action="{{ route('guest.payment.initialize', $reservation->payment_link_token) }}" method="POST" class="space-y-6" x-data="{ paymentType: 'deposit' }">
+        <form action="{{ route('guest.payment.initialize', ['token' => $reservation->payment_link_token], false) }}" method="POST" class="space-y-6" x-data="{ paymentType: 'deposit' }">
             @csrf
 
             {{-- Discount Declaration Notice --}}

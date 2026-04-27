@@ -152,6 +152,40 @@
         display: block;
     }
 
+    /* Gaze Tooltip - appears when looking at hotspots in Motion/VR mode */
+    #gaze-tooltip {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, calc(-50% - 80px));
+        background: rgba(0, 73, 30, 0.95);
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        border: 2px solid #FFC600;
+        font-size: 0.9rem;
+        font-weight: 600;
+        text-align: center;
+        z-index: 45;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        max-width: 300px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    #gaze-tooltip.visible {
+        opacity: 1;
+    }
+    #gaze-tooltip .gaze-subtitle {
+        font-size: 0.75rem;
+        opacity: 0.8;
+        margin-top: 0.25rem;
+        font-weight: 400;
+    }
+
     /* Navigation Controls */
     .nav-controls {
         position: absolute;
@@ -253,7 +287,7 @@
         left: 1rem;
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 0.625rem;
         z-index: 50;
         opacity: 1;
         transition: opacity 0.4s ease-in-out;
@@ -265,30 +299,40 @@
     }
 
     .vr-btn {
-        background: rgba(0, 0, 0, 0.7);
+        background: linear-gradient(180deg, rgba(20, 28, 25, 0.88) 0%, rgba(9, 13, 12, 0.84) 100%);
         color: white;
-        border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 0.7rem 1rem;
+        border-radius: 0.9rem;
         cursor: pointer;
-        font-size: 0.875rem;
+        font-size: 0.92rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        transition: all 0.2s;
+        gap: 0.65rem;
+        box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+        backdrop-filter: blur(10px);
+        transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
         white-space: nowrap;
     }
 
     .vr-btn:hover {
-        background: rgba(0, 0, 0, 0.9);
+        background: linear-gradient(180deg, rgba(24, 35, 30, 0.94) 0%, rgba(12, 16, 14, 0.9) 100%);
+        border-color: rgba(255, 198, 0, 0.32);
+        box-shadow: 0 14px 26px rgba(0, 0, 0, 0.24);
+        transform: translateY(-1px);
     }
 
     .vr-btn.active {
-        background: rgba(139, 92, 246, 0.9);
+        background: linear-gradient(135deg, rgba(255, 198, 0, 0.24) 0%, rgba(255, 198, 0, 0.12) 100%);
+        border-color: rgba(255, 198, 0, 0.7);
+        color: #fff7d1;
+        box-shadow: 0 12px 28px rgba(82, 56, 0, 0.22);
     }
 
     .vr-btn.active:hover {
-        background: rgba(124, 58, 237, 1);
+        background: linear-gradient(135deg, rgba(255, 198, 0, 0.3) 0%, rgba(255, 198, 0, 0.16) 100%);
     }
 
     #auto-tour-hud {
@@ -326,50 +370,60 @@
     }
 
     #auto-tour-settings {
-        width: 170px;
-        background: rgba(0, 0, 0, 0.62);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 0.5rem;
-        padding: 0.45rem 0.55rem;
+        width: 228px;
+        background: linear-gradient(180deg, rgba(20, 28, 25, 0.88) 0%, rgba(9, 13, 12, 0.84) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 0.95rem;
+        padding: 0.7rem;
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+        backdrop-filter: blur(10px);
     }
 
     #auto-tour-settings label {
         display: block;
-        font-size: 0.68rem;
-        color: rgba(255, 255, 255, 0.9);
-        margin-bottom: 0.3rem;
-        letter-spacing: 0.02em;
+        font-size: 0.74rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: rgba(255, 248, 214, 0.92);
+        margin-bottom: 0.55rem;
+        letter-spacing: 0.08em;
     }
 
     .auto-tour-speed-options {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.3rem;
+        gap: 0.5rem;
     }
 
     .auto-tour-speed-btn {
-        border: 1px solid rgba(255, 255, 255, 0.24);
-        background: rgba(17, 24, 39, 0.86);
+        min-width: 0;
+        width: 100%;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(15, 23, 42, 0.88);
         color: #f3f4f6;
-        border-radius: 0.35rem;
-        font-size: 0.72rem;
-        font-weight: 600;
-        padding: 0.33rem 0.2rem;
-        line-height: 1;
+        border-radius: 0.65rem;
+        font-size: 0.74rem;
+        font-weight: 700;
+        padding: 0.52rem 0.4rem;
+        line-height: 1.05;
+        text-align: center;
+        white-space: nowrap;
         cursor: pointer;
-        transition: all 0.18s ease;
+        transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
     }
 
     .auto-tour-speed-btn:hover {
-        background: rgba(31, 41, 55, 0.95);
+        background: rgba(30, 41, 59, 0.96);
+        border-color: rgba(255, 198, 0, 0.28);
+        transform: translateY(-1px);
     }
 
     .auto-tour-speed-btn.active,
     .auto-tour-speed-btn[aria-pressed="true"] {
-        border-color: rgba(251, 191, 36, 0.9);
-        background: rgba(251, 191, 36, 0.2);
-        color: #fef3c7;
-        box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.22) inset;
+        border-color: rgba(255, 198, 0, 0.88);
+        background: linear-gradient(135deg, rgba(255, 198, 0, 0.3) 0%, rgba(255, 198, 0, 0.14) 100%);
+        color: #fff4bf;
+        box-shadow: 0 0 0 1px rgba(255, 198, 0, 0.22) inset, 0 6px 14px rgba(82, 56, 0, 0.2);
     }
 
     #auto-tour-btn.active {
@@ -387,6 +441,7 @@
         width: 18px;
         height: 18px;
         flex-shrink: 0;
+        opacity: 0.9;
     }
 
     /* Reservation Modal */
@@ -619,13 +674,13 @@
             top: 3.85rem;
             left: auto;
             right: 0.65rem;
-            width: min(230px, calc(100vw - 1.3rem));
-            padding: 0.5rem;
-            border-radius: 0.85rem;
-            background: rgba(17, 24, 39, 0.9);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
-            backdrop-filter: blur(10px);
+            width: min(238px, calc(100vw - 1.3rem));
+            padding: 0.8rem;
+            border-radius: 1.2rem;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(232, 235, 232, 0.82) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.55);
+            box-shadow: 0 18px 38px rgba(0, 0, 0, 0.24);
+            backdrop-filter: blur(14px);
             opacity: 0;
             transform: translateY(-6px);
             pointer-events: none;
@@ -646,16 +701,17 @@
 
         .vr-btn {
             width: 100%;
-            padding: 0.55rem 0.7rem;
-            min-height: 40px;
+            padding: 0.82rem 0.9rem;
+            min-height: 48px;
             justify-content: flex-start;
-            gap: 0.55rem;
-            background: rgba(255, 255, 255, 0.08);
+            gap: 0.75rem;
+            background: linear-gradient(180deg, rgba(38, 42, 40, 0.96) 0%, rgba(23, 26, 24, 0.94) 100%);
+            border-color: rgba(255, 255, 255, 0.08);
         }
 
         .vr-btn span {
             display: inline;
-            font-size: 0.82rem;
+            font-size: 0.98rem;
         }
 
         .mobile-drawer-action {
@@ -666,6 +722,20 @@
         #auto-tour-hud {
             width: 100%;
             box-shadow: none;
+        }
+
+        #auto-tour-settings {
+            padding: 0.8rem;
+        }
+
+        #auto-tour-settings label {
+            font-size: 0.76rem;
+            margin-bottom: 0.65rem;
+        }
+
+        .auto-tour-speed-btn {
+            min-height: 42px;
+            font-size: 0.74rem;
         }
 
         .nav-controls {
@@ -999,7 +1069,7 @@
                 <line x1="1" y1="1" x2="23" y2="23"/>
             </svg>
         </button>
-        <button class="exit-btn" onclick="window.location.href='{{ route('guest.virtual-tours') }}'" aria-label="Exit tour">
+        <button class="exit-btn" onclick="window.location.href='{{ route('guest.virtual-tours', [], false) }}'" aria-label="Exit tour">
             <span class="mobile-glyph" aria-hidden="true">X</span>
             <span class="exit-label">Exit Tour</span>
         </button>
@@ -1081,6 +1151,12 @@
     <!-- Narration Tooltip -->
     <div id="narration-tooltip">
         <p class="narration-text"></p>
+    </div>
+
+    <!-- Gaze Tooltip - shows hotspot info when looking at it -->
+    <div id="gaze-tooltip">
+        <div class="gaze-title"></div>
+        <div class="gaze-subtitle"></div>
     </div>
 
     <!-- Room Info Overlay -->
@@ -1394,6 +1470,8 @@
                 console.log('Motion Look not supported on this device - button hidden');
             }
         }
+
+        syncGyroButtonState();
     });
 
     // Fullscreen toggle
@@ -1482,24 +1560,28 @@
         }
     }
 
+    function syncGyroButtonState() {
+        const btn = document.getElementById('gyro-btn');
+        const text = document.getElementById('gyro-btn-text');
+        const isActive = tourEngine?.gyroscopePlugin?.isEnabled();
+
+        if (!btn || !text) return;
+
+        btn.classList.toggle('active', !!isActive);
+        text.textContent = isActive ? 'Motion ON' : 'Motion Look';
+    }
+
     // Motion Look toggle
     async function toggleGyro() {
         if (!tourEngine) return;
         
         try {
             await tourEngine.toggleGyroscope();
-            
-            const btn = document.getElementById('gyro-btn');
-            const text = document.getElementById('gyro-btn-text');
             const isActive = tourEngine.gyroscopePlugin?.isEnabled();
-            
+            syncGyroButtonState();
+
             if (isActive) {
-                btn.classList.add('active');
-                text.textContent = 'Motion ON';
                 tourEngine._showToast('Motion Look enabled - tilt your device to look around', 'success');
-            } else {
-                btn.classList.remove('active');
-                text.textContent = 'Motion Look';
             }
         } catch (error) {
             console.error('Motion Look error:', error);

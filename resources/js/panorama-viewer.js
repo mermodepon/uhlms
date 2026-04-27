@@ -7,6 +7,7 @@
 import { Viewer } from '@photo-sphere-viewer/core';
 import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
 import { GyroscopePlugin } from '@photo-sphere-viewer/gyroscope-plugin';
+import { Vector3 } from 'three';
 import '@photo-sphere-viewer/core/index.css';
 import '@photo-sphere-viewer/markers-plugin/index.css';
 
@@ -23,11 +24,22 @@ class PanoramaViewer {
         if (!this.container) throw new Error('PanoramaViewer: container is required');
 
         this._eventListeners = {};
+        this._gyroDesired = false;
+        this._gyroDirection = new Vector3();
+        this._gyroStabilizer = {
+            filteredYaw: null,
+            filteredPitch: null,
+            lastTimestamp: 0,
+            smoothing: 0.30,
+            yawDeadzone: 0.0016,
+            pitchDeadzone: 0.0012,
+            maxStepPerFrame: 0.18,
+        };
         this._markerConfigs = new Map();  // id → config passed to addMarker
 
         const plugins = [
             [MarkersPlugin, { markers: [] }],
-            [GyroscopePlugin, { touchmove: false, absolutePosition: false }],
+            [GyroscopePlugin, { touchmove: true, absolutePosition: false, roll: false, moveMode: 'smooth' }],
         ];
 
         const defaultYaw   = (options.defaultYaw   || 0);
@@ -55,6 +67,9 @@ class PanoramaViewer {
         this._psv = new Viewer(viewerOpts);
         this._markers = this._psv.getPlugin(MarkersPlugin);
         this._gyro    = this._psv.getPlugin(GyroscopePlugin);
+        
+        this._installGyroscopeStabilizer();
+        this._installGyroscopePersistence();
 
         // Wire PSV events → our event bus
         this._psv.addEventListener('ready', () => {
@@ -101,6 +116,7 @@ class PanoramaViewer {
 
     async setPanorama(url, options = {}) {
         if (!url) return;
+        const shouldRestoreGyroscope = this._gyroDesired;
         const pos = options.position || {};
         const zoomLvl = options.zoom;
 
@@ -126,6 +142,10 @@ class PanoramaViewer {
         psvOpts.showLoader = false;
 
         await this._psv.setPanorama(url, psvOpts);
+
+        if (shouldRestoreGyroscope) {
+            await this._restoreGyroscopeAfterPanoramaChange();
+        }
     }
 
     getPosition() {
@@ -151,6 +171,33 @@ class PanoramaViewer {
 
     zoomIn()  { this.zoom(this.getZoomLevel() + 5); }
     zoomOut() { this.zoom(this.getZoomLevel() - 5); }
+
+    cancelPointerInteraction() {
+        const buildEvent = (type) => {
+            if (type.startsWith('pointer') && typeof PointerEvent !== 'undefined') {
+                return new PointerEvent(type, { bubbles: true });
+            }
+            if (type.startsWith('mouse') && typeof MouseEvent !== 'undefined') {
+                return new MouseEvent(type, { bubbles: true });
+            }
+            if (type.startsWith('touch') && typeof Event !== 'undefined') {
+                return new Event(type, { bubbles: true, cancelable: true });
+            }
+            return typeof Event !== 'undefined' ? new Event(type, { bubbles: true }) : null;
+        };
+
+        const types = ['pointerup', 'pointercancel', 'mouseup', 'mouseleave', 'touchend'];
+
+        for (const target of [this.container, document, window]) {
+            for (const type of types) {
+                const event = buildEvent(type);
+                if (!event) continue;
+                try {
+                    target.dispatchEvent(event);
+                } catch (_) {}
+            }
+        }
+    }
 
     // ── Markers ──────────────────────────────────────────────────────────────
 
@@ -302,7 +349,7 @@ class PanoramaViewer {
         const closeAction = sprite.closeAction || '';
 
         const amenitiesTags = tags.map(a =>
-            `<span style="display:inline-block;background:#f3f4f6;color:#374151;font-size:11px;padding:3px 8px;border-radius:999px;margin:2px">${a}</span>`
+            `<span style="display:inline-block;background:#eef6f0;color:#00491E;border:1px solid #dce9df;font-size:11px;padding:3px 8px;border-radius:999px;margin:2px;font-weight:600">${a}</span>`
         ).join('');
 
         const closeStyle = 'position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);border:none;color:white;width:26px;height:26px;border-radius:50%;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:0';
@@ -312,18 +359,18 @@ class PanoramaViewer {
 
         const interactionShield = `onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onpointerdown="event.stopPropagation()" onwheel="event.stopPropagation()" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()"`;
 
-        return `<div ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight};pointer-events:auto;touch-action:pan-y">`
+        return `<div ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:var(--guest-font-body);display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight};pointer-events:auto;touch-action:pan-y">`
             + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 16px;position:relative;flex-shrink:0">`
             + closeBtn
             + `<h2 style="font-size:16px;font-weight:700;margin:0 32px 0 0">${title}</h2>`
-            + (subtitle ? `<span style="display:inline-block;margin-top:4px;background:rgba(255,255,255,.2);font-size:11px;padding:2px 8px;border-radius:999px">${subtitle}</span>` : '')
-            + (badge ? `<div style="position:absolute;top:10px;right:42px;font-size:11px;font-weight:700;color:${badgeClr}">${badge}</div>` : '')
+            + (subtitle ? `<span style="display:inline-block;margin-top:4px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22);font-size:11px;padding:2px 8px;border-radius:999px;color:#f6f7eb;font-weight:600">${subtitle}</span>` : '')
+            + (badge ? `<div style="position:absolute;top:10px;right:42px;font-size:11px;font-weight:700;color:${badgeClr};background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);padding:3px 8px;border-radius:999px;backdrop-filter:blur(2px)">${badge}</div>` : '')
             + `</div>`
             + `<div style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y">`
             + mediaHtml
             + (body ? `<div style="padding:${hasExpandedMediaCard ? '12px 14px 10px' : '14px'};font-size:13px;color:#374151;line-height:${hasExpandedMediaCard ? '1.55' : '1.6'}">${body}</div>` : '')
-            + (price ? `<div style="padding:0 14px 10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px">Price</div><div style="font-size:19px;font-weight:700;color:#d97706">${price}</div></div>` : '')
-            + (amenitiesTags ? `<div style="padding:0 14px 14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:4px">Amenities</div>${amenitiesTags}</div>` : '')
+            + (price ? `<div style="padding:0 14px 10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.05em;margin-bottom:2px">Price</div><div style="font-size:19px;font-weight:700;color:#d97706">${price}</div></div>` : '')
+            + (amenitiesTags ? `<div style="padding:0 14px 14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.05em;margin-bottom:4px">Amenities</div>${amenitiesTags}</div>` : '')
             + (buttons ? `<div style="padding:0 14px 14px">${buttons}</div>` : '')
             + `</div>`
             + `</div>`;
@@ -399,37 +446,225 @@ class PanoramaViewer {
             console.error('Gyroscope plugin not available');
             throw new Error('Gyroscope plugin not initialized');
         }
-        
-        console.log('Toggle gyroscope - currently enabled:', this._gyro.isEnabled());
-        
+
+        const shouldEnable = !(this._gyroDesired || this._gyro.isEnabled());
+        await this.setGyroscopeEnabled(shouldEnable);
+    }
+
+    async setGyroscopeEnabled(enabled, options = {}) {
+        if (!this._gyro) {
+            throw new Error('Gyroscope plugin not initialized');
+        }
+
+        const { requestPermission = true } = options;
+        this._gyroDesired = Boolean(enabled);
+
         try {
-            if (this._gyro.isEnabled()) {
-                console.log('Stopping gyroscope');
+            if (this._gyroDesired) {
+                await this._startGyroscope({ requestPermission });
+            } else if (this._gyro.isEnabled()) {
                 this._gyro.stop();
-            } else {
-                console.log('Starting gyroscope');
-                
-                // iOS 13+ requires explicit permission request
-                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    console.log('Requesting device orientation permission (iOS)');
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    console.log('Permission result:', permission);
-                    if (permission !== 'granted') {
-                        throw new Error('Device orientation permission denied');
-                    }
-                }
-                
-                await this._gyro.start();
-                console.log('Gyroscope started successfully');
             }
         } catch (e) {
             console.error('Gyroscope toggle failed:', e.message);
             throw e;
         }
+
+        this._emit('gyroscope-updated', {
+            enabled: this.isGyroscopeEnabled(),
+            desired: this._gyroDesired,
+        });
+    }
+
+    async _startGyroscope(options = {}) {
+        if (!this._gyro || this._gyro.isEnabled()) {
+            return;
+        }
+
+        const { requestPermission = true } = options;
+
+        if (
+            requestPermission
+            && typeof DeviceOrientationEvent !== 'undefined'
+            && typeof DeviceOrientationEvent.requestPermission === 'function'
+        ) {
+            const permission = await DeviceOrientationEvent.requestPermission();
+            if (permission !== 'granted') {
+                throw new Error('Device orientation permission denied');
+            }
+        }
+
+        this._resetGyroscopeStabilizer();
+        await this._gyro.start();
+    }
+
+    async _restoreGyroscopeAfterPanoramaChange() {
+        if (!this._gyroDesired) {
+            return;
+        }
+
+        await new Promise((resolve) => {
+            const raf = window.requestAnimationFrame || ((cb) => window.setTimeout(cb, 16));
+            raf(resolve);
+        });
+
+        try {
+            await this._startGyroscope({ requestPermission: false });
+        } catch (error) {
+            console.warn('Gyroscope restore after scene change failed:', error);
+        }
+
+        this._emit('gyroscope-updated', {
+            enabled: this.isGyroscopeEnabled(),
+            desired: this._gyroDesired,
+        });
     }
 
     isGyroscopeEnabled() {
         return this._gyro ? this._gyro.isEnabled() : false;
+    }
+
+    _installGyroscopeStabilizer() {
+        if (!this._gyro || typeof this._gyro.__onBeforeRender !== 'function') {
+            return;
+        }
+
+        this._gyro.addEventListener?.('gyroscope-updated', () => {
+            this._resetGyroscopeStabilizer();
+        });
+
+        this._gyro.__onBeforeRender = () => {
+            if (!this._gyro.isEnabled()) {
+                return;
+            }
+
+            const controls = this._gyro.controls;
+            const state = this._gyro.state;
+            if (!controls?.deviceOrientation) {
+                return;
+            }
+
+            const position = this._psv.getPosition();
+
+            if (state.alphaOffset === null) {
+                if (controls.update()) {
+                    controls.object.getWorldDirection(this._gyroDirection);
+                    const sphericalCoords = this._psv.dataHelper.vector3ToSphericalCoords(this._gyroDirection);
+                    state.alphaOffset = sphericalCoords.yaw - position.yaw;
+                    this._resetGyroscopeStabilizer();
+                }
+
+                return;
+            }
+
+            controls.alphaOffset = state.alphaOffset;
+            if (!controls.update()) {
+                return;
+            }
+
+            controls.object.getWorldDirection(this._gyroDirection);
+            const sphericalCoords = this._psv.dataHelper.vector3ToSphericalCoords(this._gyroDirection);
+            const target = this._getStabilizedGyroscopeTarget({
+                yaw: sphericalCoords.yaw,
+                pitch: -sphericalCoords.pitch,
+            });
+
+            const angle = PanoramaViewer._greatCircleAngle(position, target);
+            this._psv.dynamics.position.goto(target, angle < 0.008 ? 0.45 : 1.2);
+        };
+    }
+
+    _resetGyroscopeStabilizer() {
+        this._gyroStabilizer.filteredYaw = null;
+        this._gyroStabilizer.filteredPitch = null;
+        this._gyroStabilizer.lastTimestamp = 0;
+    }
+
+    _installGyroscopePersistence() {
+        if (!this._gyro) return;
+
+        let touchActive = false;
+        let restartTimer = null;
+
+        // Track touch state
+        const handleTouchStart = () => {
+            touchActive = true;
+            if (restartTimer) {
+                clearTimeout(restartTimer);
+                restartTimer = null;
+            }
+        };
+
+        const handleTouchEnd = () => {
+            touchActive = false;
+            
+            // Restart gyroscope after touch ends if user wants it enabled
+            if (this._gyroDesired && !this._gyro.isEnabled()) {
+                // Small delay to ensure PSV has finished its touch handling
+                restartTimer = setTimeout(async () => {
+                    if (this._gyroDesired && !this._gyro.isEnabled() && !touchActive) {
+                        try {
+                            await this._startGyroscope({ requestPermission: false });
+                        } catch (e) {
+                            console.warn('Auto-restart gyroscope failed:', e.message);
+                        }
+                    }
+                    restartTimer = null;
+                }, 300);
+            }
+        };
+
+        this.container.addEventListener('touchstart', handleTouchStart);
+        this.container.addEventListener('touchend', handleTouchEnd);
+        this.container.addEventListener('touchcancel', handleTouchEnd);
+        
+        // Also track pointer events for broader compatibility
+        this.container.addEventListener('pointerdown', handleTouchStart);
+        this.container.addEventListener('pointerup', handleTouchEnd);
+        this.container.addEventListener('pointercancel', handleTouchEnd);
+    }
+
+    _getStabilizedGyroscopeTarget(target) {
+        const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? performance.now()
+            : Date.now();
+        const state = this._gyroStabilizer;
+
+        if (state.filteredYaw == null || state.filteredPitch == null) {
+            state.filteredYaw = target.yaw;
+            state.filteredPitch = target.pitch;
+            state.lastTimestamp = now;
+
+            return { ...target };
+        }
+
+        const elapsed = Math.max(8, Math.min(48, now - state.lastTimestamp || 16));
+        const frameScale = elapsed / 16;
+        const response = 1 - Math.pow(1 - state.smoothing, frameScale);
+        const maxStep = state.maxStepPerFrame * frameScale;
+
+        let yawDelta = PanoramaViewer._normalizeAngle(target.yaw - state.filteredYaw);
+        let pitchDelta = target.pitch - state.filteredPitch;
+
+        if (Math.abs(yawDelta) < state.yawDeadzone) {
+            yawDelta = 0;
+        }
+
+        if (Math.abs(pitchDelta) < state.pitchDeadzone) {
+            pitchDelta = 0;
+        }
+
+        yawDelta = PanoramaViewer._clamp(yawDelta, -maxStep, maxStep);
+        pitchDelta = PanoramaViewer._clamp(pitchDelta, -maxStep, maxStep);
+
+        state.filteredYaw = PanoramaViewer._normalizeAngle(state.filteredYaw + (yawDelta * response));
+        state.filteredPitch = PanoramaViewer._clamp(state.filteredPitch + (pitchDelta * response), -Math.PI / 2, Math.PI / 2);
+        state.lastTimestamp = now;
+
+        return {
+            yaw: state.filteredYaw,
+            pitch: state.filteredPitch,
+        };
     }
 
     // ── Events ───────────────────────────────────────────────────────────────
@@ -491,6 +726,26 @@ class PanoramaViewer {
             'bookmark':          `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>`,
         };
         return icons[id] || icons['chevron-up'];
+    }
+
+    static _clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+    }
+
+    static _normalizeAngle(angle) {
+        let normalized = angle;
+
+        while (normalized <= -Math.PI) normalized += Math.PI * 2;
+        while (normalized > Math.PI) normalized -= Math.PI * 2;
+
+        return normalized;
+    }
+
+    static _greatCircleAngle(position1, position2) {
+        return Math.acos(
+            Math.cos(position1.pitch) * Math.cos(position2.pitch) * Math.cos(position1.yaw - position2.yaw)
+            + Math.sin(position1.pitch) * Math.sin(position2.pitch)
+        );
     }
 }
 

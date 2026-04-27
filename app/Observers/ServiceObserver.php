@@ -14,7 +14,7 @@ class ServiceObserver
             "Add-On \"{$service->name}\" has been added to the system.",
             'success',
             'service',
-            url('/admin/services?tableSearch='.urlencode($service->name)),
+            route('filament.admin.resources.add-ons.index', [], false).'?tableSearch='.urlencode($service->name),
             auth()->id(),
             'addons_view'
         );
@@ -32,7 +32,7 @@ class ServiceObserver
                 "Add-On \"{$service->name}\" has been {$status}.",
                 $changes['is_active'] ? 'success' : 'warning',
                 'service',
-                url('/admin/services?tableSearch='.urlencode($service->name)),
+                route('filament.admin.resources.add-ons.index', [], false).'?tableSearch='.urlencode($service->name),
                 auth()->id(),
                 'addons_view'
             );
@@ -42,7 +42,7 @@ class ServiceObserver
                 "Add-On \"{$service->name}\" details have been updated.",
                 'info',
                 'service',
-                url('/admin/services?tableSearch='.urlencode($service->name)),
+                route('filament.admin.resources.add-ons.index', [], false).'?tableSearch='.urlencode($service->name),
                 auth()->id(),
                 'addons_view'
             );

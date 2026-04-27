@@ -56,11 +56,11 @@
 
             <div class="space-y-3">
                 @if($reservation && $reservation->isPaymentLinkValid())
-                    <a href="{{ $reservation->generatePaymentLink() }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
+                    <a href="{{ $reservation->generatePaymentLink(false) }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
                         Try Again
                     </a>
                 @endif
-                <a href="{{ route('guest.home') }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all {{ $reservation && $reservation->isPaymentLinkValid() ? 'ml-0 sm:ml-3' : '' }}">
+                <a href="{{ route('guest.home', [], false) }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all {{ $reservation && $reservation->isPaymentLinkValid() ? 'ml-0 sm:ml-3' : '' }}">
                     Return to Homepage
                 </a>
             </div>

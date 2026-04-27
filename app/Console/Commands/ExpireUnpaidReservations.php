@@ -100,7 +100,7 @@ class ExpireUnpaidReservations extends Command
                     "Reservation #{$reservation->reference_number} was automatically cancelled due to non-payment.",
                     'warning',
                     'auto_cancel',
-                    url('/admin/reservations?tableSearch=' . urlencode($reservation->reference_number)),
+                    route('filament.admin.resources.reservations.index', [], false).'?tableSearch='.urlencode($reservation->reference_number),
                     null, // System action
                     'reservations_view'
                 );

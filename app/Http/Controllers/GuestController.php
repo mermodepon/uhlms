@@ -40,10 +40,16 @@ class GuestController extends Controller
             ->limit(4)
             ->get();
 
-        // Get first active waypoint for tour preview
-        $previewWaypoint = TourWaypoint::where('is_active', true)
+        // Match the preview to the default scene used when the tour starts.
+        $previewWaypoint = TourWaypoint::query()
+            ->where('is_active', true)
+            ->where('type', 'entrance')
             ->orderBy('position_order')
-            ->first();
+            ->first()
+            ?? TourWaypoint::query()
+                ->where('is_active', true)
+                ->orderBy('position_order')
+                ->first();
 
         return view('guest.home', compact('roomTypes', 'previewWaypoint', 'stayInclusions', 'optionalAddOns'));
     }

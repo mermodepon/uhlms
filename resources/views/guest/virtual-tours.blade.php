@@ -18,7 +18,7 @@
             <div class="p-8 text-center">
                 <h2 class="text-3xl font-bold text-white mb-4">🎮 Interactive Virtual Tour</h2>
                 <p class="text-white text-lg mb-6 max-w-2xl mx-auto">Experience our establishment in an immersive guided tour! Navigate through rooms, explore amenities, and make reservations — all from your browser.</p>
-                <a href="{{ route('guest.tour.viewer') }}"
+                <a href="{{ route('guest.tour.viewer', [], false) }}"
                    class="inline-block bg-white text-[#00491E] font-bold px-8 py-4 rounded-lg hover:bg-gray-100 transition text-lg shadow-lg">
                     🚀 Start Interactive Tour
                 </a>

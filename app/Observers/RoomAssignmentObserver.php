@@ -41,7 +41,7 @@ class RoomAssignmentObserver
             $message,
             'info',
             'room_assignment',
-            url('/admin/reservations?tableSearch='.urlencode($reservation->reference_number ?? '')),
+            route('filament.admin.resources.reservations.index', [], false).'?tableSearch='.urlencode($reservation->reference_number ?? ''),
             auth()->id(),
             'reservations_view'
         );
@@ -68,7 +68,7 @@ class RoomAssignmentObserver
                 "Assignment for reservation #{$reservation?->reference_number} has been updated (Room {$room?->room_number}).",
                 'warning',
                 'room_assignment',
-                url('/admin/reservations?tableSearch='.urlencode($reservation?->reference_number ?? '')),
+                route('filament.admin.resources.reservations.index', [], false).'?tableSearch='.urlencode($reservation?->reference_number ?? ''),
                 auth()->id(),
                 'reservations_view'
             );

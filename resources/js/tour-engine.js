@@ -72,12 +72,15 @@ class VirtualTourEngine {
         this.minimap           = document.getElementById('minimap');
         this.loadingIndicator  = document.getElementById('loading-indicator');
         this.narrationTooltip  = document.getElementById('narration-tooltip');
+        this.gazeTooltip       = document.getElementById('gaze-tooltip');
         this.progressIndicator = document.getElementById('progress-indicator');
         this.roomInfoBtn       = document.getElementById('room-info-btn');
         this.autoTourHud       = document.getElementById('auto-tour-hud');
         this.autoTourCountdown = document.getElementById('auto-tour-countdown');
         this.autoTourFill      = document.getElementById('auto-tour-progress-fill');
         this.autoTourSpeedButtons = Array.from(document.querySelectorAll('.auto-tour-speed-btn'));
+        this._gazeHotspot      = null;
+        this._gazeCheckEnabled = false;
 
         this._init();
     }
@@ -135,6 +138,7 @@ class VirtualTourEngine {
         this.hideLoading();
         this.setupKeyboardControls();
         this.setupBookmarks();
+        this._setupGazeDetection();
         // Listen for browser back/forward navigation
         window.addEventListener('popstate', () => {
             const slug = this._getUrlScene();
@@ -160,6 +164,171 @@ class VirtualTourEngine {
         const url = new URL(window.location.href);
         url.searchParams.set('scene', slug);
         window.history.pushState({ scene: slug }, '', url.toString());
+    }
+
+    // ── Gaze Detection ────────────────────────────────────────────────────────
+
+    _setupGazeDetection() {
+        if (!this.viewer || !this.gazeTooltip) return;
+
+        // Enable gaze detection by default for all interaction modes
+        this._gazeCheckEnabled = true;
+
+        // Check gaze on position updates (works for mouse, touch, gyroscope, and VR)
+        this.viewer.addEventListener('position-updated', (e) => {
+            if (!this._gazeCheckEnabled || this._webXRTest) return;
+            this._checkGazeTarget(e.position);
+        });
+    }
+
+    _checkGazeTarget(position) {
+        // Skip gaze detection during cooldown period
+        if (this._gazeCooldown) return;
+        
+        const hotspots = this.currentWaypoint?.hotspots;
+        if (!hotspots?.length) {
+            this._hideGazeTooltip();
+            return;
+        }
+
+        const activeHotspots = hotspots.filter(h => h.is_active !== false);
+
+        if (!activeHotspots.length) {
+            this._hideGazeTooltip();
+            return;
+        }
+
+        // Calculate angular distance to each hotspot
+        const currentYaw = position.yaw;
+        const currentPitch = position.pitch;
+        const GAZE_THRESHOLD = 0.15; // ~8.6 degrees in radians
+
+        const angularDistance = (yaw1, pitch1, yaw2, pitch2) => {
+            const dYaw = yaw1 - yaw2;
+            const dPitch = pitch1 - pitch2;
+            return Math.sqrt(dYaw * dYaw + dPitch * dPitch);
+        };
+
+        let closestHotspot = null;
+        let closestDistance = Infinity;
+
+        for (const hs of activeHotspots) {
+            const hsYaw = parseFloat(hs.yaw) * Math.PI / 180;
+            const hsPitch = parseFloat(hs.pitch) * Math.PI / 180;
+            const dist = angularDistance(currentYaw, currentPitch, hsYaw, hsPitch);
+
+            if (dist < closestDistance && dist < GAZE_THRESHOLD) {
+                closestDistance = dist;
+                closestHotspot = hs;
+            }
+        }
+
+        if (closestHotspot && closestHotspot.id !== this._gazeHotspot?.id) {
+            this._showGazeTooltip(closestHotspot);
+        } else if (!closestHotspot && this._gazeHotspot) {
+            this._hideGazeTooltip();
+        }
+    }
+
+    _showGazeTooltip(hotspot) {
+        if (!hotspot) return;
+        
+        this._gazeHotspot = hotspot;
+        
+        // Calculate title and subtitle
+        const title = hotspot.title || this._getDefaultHotspotLabel(hotspot.action_type);
+        let subtitle = '';
+        
+        switch (hotspot.action_type) {
+            case 'navigate':
+                if (hotspot.action_target) {
+                    const targetWaypoint = this.waypoints.find(w => w.slug === hotspot.action_target);
+                    subtitle = targetWaypoint ? `→ ${targetWaypoint.name}` : '→ Navigate';
+                }
+                break;
+                
+            case 'info':
+                subtitle = 'ℹ️ View information';
+                break;
+                
+            case 'bookmark':
+                const isBookmarked = this._bookmarkedWaypoints?.has?.(this.currentWaypoint?.id);
+                subtitle = isBookmarked ? '🔖 Remove bookmark' : '🔖 Bookmark location';
+                break;
+                
+            case 'external-link':
+                subtitle = '🔗 Open link';
+                break;
+                
+            case 'audio':
+                subtitle = '🔊 Play audio';
+                break;
+                
+            case 'video':
+                subtitle = '🎥 Play video';
+                break;
+        }
+        
+        // Handle VR mode
+        if (this._webXRTest?.showVRGazeTooltip) {
+            this._webXRTest.showVRGazeTooltip(title, subtitle);
+            return;
+        }
+        
+        // Handle normal mode (DOM tooltip)
+        if (!this.gazeTooltip) return;
+        const titleEl = this.gazeTooltip.querySelector('.gaze-title');
+        const subtitleEl = this.gazeTooltip.querySelector('.gaze-subtitle');
+
+        if (titleEl) titleEl.textContent = title;
+        if (subtitleEl) subtitleEl.textContent = subtitle;
+
+        this.gazeTooltip.classList.add('visible');
+    }
+
+    _getDefaultHotspotLabel(actionType) {
+        const labels = {
+            'navigate': 'Navigate',
+            'info': 'Information',
+            'bookmark': 'Bookmark',
+            'external-link': 'External Link',
+            'audio': 'Audio',
+            'video': 'Video',
+        };
+        return labels[actionType] || 'Hotspot';
+    }
+
+    _hideGazeTooltip() {
+        this._gazeHotspot = null;
+        
+        // Handle VR mode
+        if (this._webXRTest?.hideVRGazeTooltip) {
+            this._webXRTest.hideVRGazeTooltip();
+        }
+        
+        // Handle normal mode (DOM tooltip)
+        if (this.gazeTooltip) {
+            this.gazeTooltip.classList.remove('visible');
+        }
+    }
+
+    _pauseGazeDetection(duration = 1000) {
+        this._hideGazeTooltip();
+        this._gazeCooldown = true;
+        
+        clearTimeout(this._gazeCooldownTimer);
+        
+        // Allow indefinite pause (e.g., while info card is open)
+        if (duration !== Infinity) {
+            this._gazeCooldownTimer = setTimeout(() => {
+                this._gazeCooldown = false;
+            }, duration);
+        }
+    }
+
+    _resumeGazeDetection() {
+        clearTimeout(this._gazeCooldownTimer);
+        this._gazeCooldown = false;
     }
 
     // ── Auto-hide UI ──────────────────────────────────────────────────────────
@@ -255,6 +424,9 @@ class VirtualTourEngine {
     async navigateToWaypoint(slug) {
         const wp = this.waypoints.find(w => w.slug === slug);
         if (!wp) return;
+
+        // Pause gaze detection when navigating
+        this._pauseGazeDetection();
 
         // Stop any audio playing from the previous scene
         if (this._audioEl) {
@@ -408,6 +580,10 @@ class VirtualTourEngine {
     _handleHotspotAction(hs) {
         // User is taking manual control — stop any running auto-tour
         if (this._autoTourActive) this.stopAutoTour();
+        
+        // Pause gaze detection temporarily to prevent immediate reappearance
+        this._pauseGazeDetection();
+        
         switch (hs.action_type) {
             case 'navigate':
                 if (hs.action_target) this.navigateToWaypoint(hs.action_target);
@@ -438,6 +614,10 @@ class VirtualTourEngine {
 
     _openInfoCard(hs) {
         this._infoCardHotspotId = hs.id;
+        
+        // Pause gaze detection indefinitely while info card is open
+        this._pauseGazeDetection(Infinity);
+        
         try { this.viewer.removeMarker('info-card'); } catch (e) {}
 
         const imageUrls = this._mediaImageUrls(hs);
@@ -466,6 +646,10 @@ class VirtualTourEngine {
 
     _closeInfoCard() {
         this._infoCardHotspotId = null;
+        
+        // Resume gaze detection when info card is closed
+        this._resumeGazeDetection();
+        
         try { this.viewer.removeMarker('info-card'); } catch (e) {}
     }
 
@@ -475,6 +659,12 @@ class VirtualTourEngine {
         }
 
         return String(hs.media_url).split('\n').map(u => u.trim()).filter(Boolean);
+    }
+
+    _cancelViewerPointerState() {
+        try {
+            this.viewer?.cancelPointerInteraction?.();
+        } catch (_) {}
     }
 
     _infoCardHtml(hs) {
@@ -498,7 +688,7 @@ class VirtualTourEngine {
                 const vid = this._extractYouTubeId(hs.media_url);
                 if (vid) {
                     const src = this._buildYouTubeEmbedUrl(vid);
-                    mediaHtml = `<div style="position:relative;padding-top:${videoMediaPaddingTop};background:#000;overflow:hidden;flex-shrink:0">`
+                    mediaHtml = `<div onmouseenter="tourEngine._cancelViewerPointerState();event.stopPropagation()" onpointerenter="tourEngine._cancelViewerPointerState();event.stopPropagation()" onmousemove="event.stopPropagation()" onmousedown="tourEngine._cancelViewerPointerState();event.stopPropagation()" onpointerdown="tourEngine._cancelViewerPointerState();event.stopPropagation()" ontouchstart="tourEngine._cancelViewerPointerState();event.stopPropagation()" style="position:relative;padding-top:${videoMediaPaddingTop};background:#000;overflow:hidden;flex-shrink:0">`
                         + `<iframe src="${src}" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media;fullscreen" allowfullscreen loading="lazy"></iframe>`
                         + `</div>`;
                 }
@@ -524,8 +714,9 @@ class VirtualTourEngine {
         if (hasText)  bodyParts.push(`<div style="padding:${hasExpandedMediaCard ? '12px 14px 10px' : `14px 14px ${hasMedia ? '8px' : '14px'}`};font-size:13px;color:#374151;line-height:${hasExpandedMediaCard ? '1.55' : '1.6'}">${hs.description}</div>`);
 
         const hasBody = bodyParts.length > 0;
+        const interactionShield = `onclick="event.stopPropagation()" onmousedown="tourEngine._cancelViewerPointerState();event.stopPropagation()" onpointerdown="tourEngine._cancelViewerPointerState();event.stopPropagation()" onpointerup="event.stopPropagation()" onmouseup="event.stopPropagation()" onwheel="event.stopPropagation()" ontouchstart="tourEngine._cancelViewerPointerState();event.stopPropagation()" ontouchmove="event.stopPropagation()"`;
 
-        return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight}">`
+        return `<div ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:var(--guest-font-body);display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight};pointer-events:auto;touch-action:pan-y">`
             + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 16px;position:relative;flex-shrink:0">`
             + `<button onclick="tourEngine._closeInfoCard();event.stopPropagation()" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);border:none;color:white;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:14px;line-height:26px;text-align:center">✕</button>`
             + `<h2 style="font-size:16px;font-weight:700;margin:0 32px 0 0">${hs.title || ''}</h2>`
@@ -714,30 +905,33 @@ class VirtualTourEngine {
                 + `</div>`;
         }
 
-        const inputStyle = 'width:100%;font-size:10px;border:1px solid #d1d5db;border-radius:4px;padding:3px 5px;box-sizing:border-box;height:26px';
+        const inputStyle = 'width:100%;font-size:10px;border:1px solid #d7e5db;border-radius:4px;padding:3px 5px;box-sizing:border-box;height:26px;background:#ffffff;color:#1f2937';
+        const availabilityCardStyle = 'border:1px solid #dce9df;border-radius:8px;padding:8px;background:linear-gradient(180deg,#f8fcf9 0%,#f3f9f5 100%)';
+        const availabilityTitleStyle = 'font-size:10px;font-weight:700;text-transform:uppercase;color:#00491E;margin-bottom:6px;letter-spacing:.04em';
+        const checkButtonStyle = 'background:linear-gradient(135deg,#00491E,#02681E);color:white;border:none;padding:6px;border-radius:6px;font-weight:700;font-size:10px;cursor:pointer;height:26px;box-sizing:border-box';
 
         // Build availability widget - hide Guests field for private rooms
         let availWidget = '';
         if (!this.previewMode) {
-            availWidget = `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fafafa">`
-              + `<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;margin-bottom:6px">📅 Check Availability</div>`
+            availWidget = `<div style="${availabilityCardStyle}">`
+              + `<div style="${availabilityTitleStyle}">📅 Check Availability</div>`
               + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">`
-              +   `<div><div style="font-size:9px;color:#9ca3af;margin-bottom:1px">Check-in</div>`
+              +   `<div><div style="font-size:9px;color:#6b7280;margin-bottom:1px">Check-in</div>`
               +   `<input type="date" value="${this._checkIn || ''}" min="${today}" onclick="event.stopPropagation()" onchange="tourEngine._setCheckIn(this.value)" style="${inputStyle}"></div>`
-              +   `<div><div style="font-size:9px;color:#9ca3af;margin-bottom:1px">Check-out</div>`
+              +   `<div><div style="font-size:9px;color:#6b7280;margin-bottom:1px">Check-out</div>`
               +   `<input type="date" value="${this._checkOut || ''}" min="${tomorrow}" onclick="event.stopPropagation()" onchange="tourEngine._setCheckOut(this.value)" style="${inputStyle}"></div>`
               + `</div>`;
             
             // For private rooms: full-width Check button. For dorm rooms: show Guests input
             if (isPrivateRoom) {
                 availWidget += `<div style="margin-bottom:4px">`
-                  +   `<button onclick="tourEngine.${hasSpecificRoom ? '_checkSpecificRoomAvailability()' : `_checkDateAvailability(${roomTypeId})`};event.stopPropagation()" style="width:100%;background:#1d4ed8;color:white;border:none;padding:6px;border-radius:6px;font-weight:600;font-size:10px;cursor:pointer;height:26px;box-sizing:border-box">🔍 Check</button>`
+                  +   `<button onclick="tourEngine.${hasSpecificRoom ? '_checkSpecificRoomAvailability()' : `_checkDateAvailability(${roomTypeId})`};event.stopPropagation()" style="width:100%;${checkButtonStyle}">🔍 Check</button>`
                   + `</div>`;
             } else {
                 availWidget += `<div style="display:flex;gap:4px;align-items:flex-end;margin-bottom:4px">`
-                  +   `<div style="flex:0 0 90px"><div style="font-size:9px;color:#9ca3af;margin-bottom:1px">Guests</div>`
+                  +   `<div style="flex:0 0 90px"><div style="font-size:9px;color:#6b7280;margin-bottom:1px">Guests</div>`
                   +   `<input type="number" value="${this._guests}" min="1" max="20" onclick="event.stopPropagation()" onchange="tourEngine._setGuests(this.value)" style="${inputStyle}"></div>`
-                  +   `<button onclick="tourEngine.${hasSpecificRoom ? '_checkSpecificRoomAvailability()' : `_checkDateAvailability(${roomTypeId})`};event.stopPropagation()" style="flex:1;background:#1d4ed8;color:white;border:none;padding:6px;border-radius:6px;font-weight:600;font-size:10px;cursor:pointer;height:26px;box-sizing:border-box">🔍 Check</button>`
+                  +   `<button onclick="tourEngine.${hasSpecificRoom ? '_checkSpecificRoomAvailability()' : `_checkDateAvailability(${roomTypeId})`};event.stopPropagation()" style="flex:1;${checkButtonStyle}">🔍 Check</button>`
                   + `</div>`;
             }
             
@@ -792,7 +986,7 @@ class VirtualTourEngine {
         const buttonText = isButtonDisabled ? '🏨 No Rooms Available' : ctaLabel;
         
         const exploreButtonHtml = showExploreButton
-            ? `<button onclick="window.location.href='/rooms';event.stopPropagation()" style="width:100%;background:#2563eb;color:white;border:none;padding:8px;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer">🏠 Explore Other Room Types</button>`
+            ? `<button onclick="window.location.href='/rooms';event.stopPropagation()" style="width:100%;background:#FFC600;color:#00491E;border:none;padding:8px;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer">🏠 Explore Other Room Types</button>`
             : '';
 
         const buttons = this.previewMode ? '' :
@@ -819,12 +1013,15 @@ class VirtualTourEngine {
                 price,
                 tags,
                 headerBadge,
-                headerBadgeColor: count > 0 ? '#86efac' : '#fca5a5',
+                headerBadgeColor: count > 0 ? '#d9f99d' : '#fecaca',
                 closeAction: 'tourEngine._closeInSceneCard()',
                 buttons,
             },
         });
         this._roomInfoCardOpen = true;
+        
+        // Pause gaze detection indefinitely while room info card is open
+        this._pauseGazeDetection(Infinity);
     }
 
     _closeInSceneCard() {
@@ -839,6 +1036,9 @@ class VirtualTourEngine {
             });
         } catch (e) {}
         this._roomInfoCardOpen = false;
+        
+        // Resume gaze detection when room info card is closed
+        this._resumeGazeDetection();
     }
 
     _inSceneCardHtml(data, isSpecificRoom = false) {
@@ -881,7 +1081,7 @@ class VirtualTourEngine {
                 <button onclick="window.location.href='/reserve'" style="width:85%;background:#00491E;color:white;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83D\uDCDD Full Reservation Form</button>
             </div>`;
 
-        return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:360px;font-family:sans-serif;display:flex;flex-direction:column;max-height:90vh">
+        return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:360px;font-family:var(--guest-font-body);display:flex;flex-direction:column;max-height:90vh">
             <div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:16px;position:relative;border-radius:12px 12px 0 0;flex-shrink:0">
                 <button onclick="tourEngine._closeInSceneCard()" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);border:none;color:white;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:14px;line-height:26px;text-align:center">✕</button>
                 <h2 style="font-size:17px;font-weight:700;margin:0 32px 6px 0">${name}</h2>
@@ -954,10 +1154,11 @@ class VirtualTourEngine {
         const hotspotGroup = new THREE.Group();
         const panelGroup = new THREE.Group();
         const statusGroup = new THREE.Group();
+        const gazeTooltipGroup = new THREE.Group();
         const cameraFollower = new THREE.Group();
         contentGroup.add(hotspotGroup);
         scene.add(panelGroup, cameraFollower);
-        cameraFollower.add(statusGroup);
+        cameraFollower.add(statusGroup, gazeTooltipGroup);
 
         const interactive = [];
         const raycaster = new THREE.Raycaster();
@@ -1171,6 +1372,36 @@ class VirtualTourEngine {
                 if (interactive[i].userData?.panel) interactive.splice(i, 1);
             }
             if (resetInfoAnchor) infoPanelAnchor = null;
+            
+            // Resume gaze detection when panel is closed
+            this._resumeGazeDetection();
+        };
+
+        const showVRGazeTooltip = (title, subtitle) => {
+            clearGroup(gazeTooltipGroup);
+            if (!title) return;
+            
+            const lines = subtitle ? [title, subtitle] : [title];
+            const tex = makeTextTexture(lines, {
+                width: 700,
+                height: subtitle ? 200 : 140,
+                background: 'rgba(0,73,30,0.95)',
+                color: '#ffffff',
+                font: subtitle ? 'bold 38px sans-serif' : 'bold 42px sans-serif',
+                lineHeight: 52,
+                border: '#FFC600',
+            });
+            
+            // Position above center of view
+            const panel = makePlane(tex, new THREE.Vector3(0, 0.6, -2.5), { x: 2.2, y: subtitle ? 0.65 : 0.45 }, { action: 'noop' }, {
+                depthTest: false,
+                renderOrder: 99,
+            });
+            gazeTooltipGroup.add(panel);
+        };
+
+        const hideVRGazeTooltip = () => {
+            clearGroup(gazeTooltipGroup);
         };
 
         const truncateXRText = (value, max = 64) => {
@@ -1182,6 +1413,9 @@ class VirtualTourEngine {
         const showInfoPanel = async (hs, imageIndex = 0, keepPosition = false) => {
             closePanel(!keepPosition);
             if (!hs) return;
+            
+            // Pause gaze detection indefinitely while info panel is open
+            this._pauseGazeDetection(Infinity);
 
             const hasVideo = hs.media_type === 'video' && hs.media_url;
             const videoId = hasVideo ? this._extractYouTubeId(hs.media_url) : null;
@@ -1330,6 +1564,10 @@ class VirtualTourEngine {
         const showRoomInfoPanel = () => {
             closePanel();
             if (!this.currentRoomType) return;
+            
+            // Pause gaze detection indefinitely while room info panel is open
+            this._pauseGazeDetection(Infinity);
+            
             const rt = this.currentRoomType;
             const count = rt.available_rooms_count;
             const amenities = (rt.amenities || []).map(a => a.name).filter(Boolean);
@@ -1390,7 +1628,7 @@ class VirtualTourEngine {
             spots.forEach((hs) => {
                 const color = HOTSPOT_COLORS[hs.action_type] || '#6b7280';
                 const sizeScale = { 1: 0.6, 2: 0.8, 3: 1.0, 4: 1.25, 5: 1.5 }[hs.size || 3] ?? 1.0;
-                const planeSize = 0.62 * sizeScale;
+                const planeSize = 1.0 * sizeScale; // Increased from 0.62 for better VR visibility
                 const hotspot = makePlane(makeHotspotTexture(hs.icon || 'chevron-up', {
                     background: color,
                 }), yawPitchToVector(hs.yaw, hs.pitch), { x: planeSize, y: planeSize }, { action: 'hotspot', hotspot: hs });
@@ -1441,6 +1679,10 @@ class VirtualTourEngine {
 
         const handleXRAction = async (target) => {
             const data = target?.userData || {};
+            
+            // Pause gaze detection when action is triggered
+            this._pauseGazeDetection();
+            
             const launchExternalFromXR = async (url) => {
                 if (!url) return;
 
@@ -1479,12 +1721,16 @@ class VirtualTourEngine {
             } else if (data.action === 'hotspot') {
                 const hs = data.hotspot;
                 if (hs?.action_type === 'navigate' && hs.action_target) {
+                    // Pause gaze detection temporarily for navigation
+                    this._pauseGazeDetection(1000);
                     await loadXRWaypoint(hs.action_target);
                 } else if (hs?.action_type === 'info') {
                     await showInfoPanel(hs);
                 } else if (hs?.action_type === 'external-link' && hs.action_target) {
                     await launchExternalFromXR(hs.action_target);
                 } else if (hs?.action_type === 'bookmark') {
+                    // Pause gaze detection temporarily for bookmark
+                    this._pauseGazeDetection(1000);
                     this._toggleBookmark(hs);
                 }
             }
@@ -1573,6 +1819,7 @@ class VirtualTourEngine {
             closePanel();
             clearGroup(hotspotGroup);
             clearGroup(statusGroup);
+            clearGroup(gazeTooltipGroup);
             controllers.forEach((controller) => {
                 controller.children.forEach((child) => {
                     child.geometry?.dispose?.();
@@ -1587,6 +1834,8 @@ class VirtualTourEngine {
             renderer.dispose();
             layer.remove();
             this._webXRTest = null;
+            this._gazeCheckEnabled = false;
+            this._hideGazeTooltip();
             
             // Restore the panorama viewer
             if (this.currentWaypoint?.slug) {
@@ -1596,13 +1845,104 @@ class VirtualTourEngine {
 
         session.addEventListener('end', cleanup, { once: true });
         await renderer.xr.setSession(session);
+        
+        // Enable gaze detection for VR mode
+        this._gazeCheckEnabled = true;
 
-        this._webXRTest = { session, cleanup };
+        this._webXRTest = { 
+            session, 
+            cleanup, 
+            showVRGazeTooltip, 
+            hideVRGazeTooltip 
+        };
+        
+        // Helper to check VR gaze based on camera direction
+        const cameraDirection = new THREE.Vector3();
+        const checkVRGaze = () => {
+            if (!this._gazeCheckEnabled || this._gazeCooldown) return;
+            
+            const hotspots = this.currentWaypoint?.hotspots;
+            if (!hotspots?.length) {
+                hideVRGazeTooltip();
+                return;
+            }
+
+            const activeHotspots = hotspots.filter(h => h.is_active !== false);
+            if (!activeHotspots.length) {
+                hideVRGazeTooltip();
+                return;
+            }
+            
+            // Get camera's look direction in world space
+            camera.getWorldDirection(cameraDirection);
+            
+            // Find the hotspot closest to camera's look direction
+            const GAZE_THRESHOLD = 0.15; // ~8.6 degrees = cos(8.6°) ≈ 0.988
+            const GAZE_DOT_THRESHOLD = Math.cos(GAZE_THRESHOLD);
+            
+            let closestHotspot = null;
+            let bestDotProduct = GAZE_DOT_THRESHOLD;
+            
+            for (const hs of activeHotspots) {
+                // Get hotspot position in world space
+                const hotspotWorldPos = yawPitchToVector(hs.yaw, hs.pitch);
+                hotspotWorldPos.applyQuaternion(contentGroup.quaternion);
+                hotspotWorldPos.normalize();
+                
+                // Calculate dot product (1 = perfect alignment, 0 = perpendicular)
+                const dotProduct = cameraDirection.dot(hotspotWorldPos);
+                
+                if (dotProduct > bestDotProduct) {
+                    bestDotProduct = dotProduct;
+                    closestHotspot = hs;
+                }
+            }
+            
+            if (closestHotspot && closestHotspot.id !== this._gazeHotspot?.id) {
+                this._gazeHotspot = closestHotspot;
+                
+                // Calculate title and subtitle for VR display
+                const title = closestHotspot.title || this._getDefaultHotspotLabel(closestHotspot.action_type);
+                let subtitle = '';
+                
+                switch (closestHotspot.action_type) {
+                    case 'navigate':
+                        if (closestHotspot.action_target) {
+                            const targetWaypoint = this.waypoints.find(w => w.slug === closestHotspot.action_target);
+                            subtitle = targetWaypoint ? `→ ${targetWaypoint.name}` : '→ Navigate';
+                        }
+                        break;
+                    case 'info':
+                        subtitle = 'ℹ️ View information';
+                        break;
+                    case 'bookmark':
+                        const isBookmarked = this._bookmarkedWaypoints?.has?.(this.currentWaypoint?.id);
+                        subtitle = isBookmarked ? '🔖 Remove bookmark' : '🔖 Bookmark location';
+                        break;
+                    case 'external-link':
+                        subtitle = '🔗 Open link';
+                        break;
+                    case 'audio':
+                        subtitle = '🔊 Play audio';
+                        break;
+                    case 'video':
+                        subtitle = '🎥 Play video';
+                        break;
+                }
+                
+                showVRGazeTooltip(title, subtitle);
+            } else if (!closestHotspot && this._gazeHotspot) {
+                this._gazeHotspot = null;
+                hideVRGazeTooltip();
+            }
+        };
+        
         renderer.setAnimationLoop(() => {
             cameraFollower.position.copy(camera.position);
             cameraFollower.quaternion.copy(camera.quaternion);
             updateBillboards();
             updateControllerHover();
+            checkVRGaze();
             renderer.render(scene, camera);
         });
         showXRStatus(['Loading WebXR tour...', 'Please wait']);
@@ -2185,7 +2525,31 @@ class VirtualTourEngine {
 
         const currentYawRad = this.viewer.getPosition().yaw;
         const currentYawDeg = currentYawRad * 180 / Math.PI;
-        const refYaw = forward ? currentYawDeg : currentYawDeg + 180;
+
+        // Normalize angle to -180 to +180
+        const normalize = (angle) => {
+            let a = angle % 360;
+            if (a > 180) a -= 360;
+            if (a < -180) a += 360;
+            return a;
+        };
+
+        // Check if hotspot is in the correct hemisphere
+        const isInHemisphere = (hotspotYaw) => {
+            const relative = normalize(parseFloat(hotspotYaw) - currentYawDeg);
+            // Forward: -90° to +90° relative to current view
+            // Backward: +90° to +270° (or -90° to -270°) relative to current view
+            return forward 
+                ? (relative >= -90 && relative <= 90)
+                : (relative < -90 || relative > 90);
+        };
+
+        // Filter targets to only those in the correct hemisphere
+        const validTargets = targets.filter(h => isInHemisphere(h.yaw));
+        if (!validTargets.length) {
+            this._showToast(forward ? 'No scenes ahead' : 'No scenes behind', 'info');
+            return;
+        }
 
         // Shortest angular distance (handles -180/+180 wrap)
         const angDist = (a, b) => {
@@ -2194,8 +2558,9 @@ class VirtualTourEngine {
             return Math.abs(d);
         };
 
+        const refYaw = forward ? currentYawDeg : currentYawDeg + 180;
         let best = null, bestDist = Infinity;
-        for (const h of targets) {
+        for (const h of validTargets) {
             const dist = angDist(parseFloat(h.yaw), refYaw);
             if (dist < bestDist) { bestDist = dist; best = h; }
         }

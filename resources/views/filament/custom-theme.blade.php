@@ -1,7 +1,7 @@
-{{-- Google Fonts - Plus Jakarta Sans --}}
+{{-- Google Fonts - Montserrat --}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
 /*
@@ -13,10 +13,41 @@
  */
 
 /* ===== Typography ===== */
+:root {
+    --admin-font-body: "Montserrat", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --admin-font-display: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+}
+
 body,
 .fi-body,
-.filament-main {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important;
+.filament-main,
+.fi-ta-text,
+.fi-input,
+.fi-select-input,
+.fi-textarea,
+button,
+input,
+select,
+textarea {
+    font-family: var(--admin-font-body) !important;
+}
+
+.fi-header-heading,
+.fi-section-header-heading,
+.fi-page-subheading,
+.fi-ta-header-cell-label,
+.fi-sidebar-group-label,
+.filament-brand-text,
+.fi-logo,
+.fi-modal-heading,
+.fi-modal-description,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: var(--admin-font-display) !important;
 }
 
 /* ===== Sidebar ===== */

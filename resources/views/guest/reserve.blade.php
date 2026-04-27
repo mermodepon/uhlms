@@ -11,7 +11,7 @@
     </section>
 
     <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <form action="{{ route('guest.reserve.submit') }}" method="POST" class="space-y-8">
+        <form action="{{ route('guest.reserve.submit', [], false) }}" method="POST" class="space-y-8">
             @csrf
             @honeypot
 
@@ -189,7 +189,7 @@
 
             {{-- Submit --}}
             <div class="flex justify-between items-center">
-                <a href="{{ route('guest.rooms') }}" class="text-gray-500 hover:text-[#00491E] transition">
+                <a href="{{ route('guest.rooms', [], false) }}" class="text-gray-500 hover:text-[#00491E] transition">
                     ← Back to Rooms
                 </a>
                 <button type="submit" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg hover:bg-yellow-400 transition shadow-lg">

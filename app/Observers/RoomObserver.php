@@ -14,7 +14,7 @@ class RoomObserver
             "Room {$room->room_number} ({$room->roomType->name}) has been added to the system.",
             'success',
             'room',
-            url('/admin/rooms?tableSearch='.urlencode($room->room_number)),
+            route('filament.admin.resources.rooms.index', [], false).'?tableSearch='.urlencode($room->room_number),
             auth()->id(),
             'rooms_view'
         );
@@ -33,7 +33,7 @@ class RoomObserver
                 "Room {$room->room_number} status changed from {$oldStatus} to {$newStatus}.",
                 $this->getStatusNotificationType($newStatus),
                 'room',
-                url('/admin/rooms?tableSearch='.urlencode($room->room_number)),
+                route('filament.admin.resources.rooms.index', [], false).'?tableSearch='.urlencode($room->room_number),
                 auth()->id(),
                 'rooms_view'
             );
@@ -48,7 +48,7 @@ class RoomObserver
                 "Room {$room->room_number} has been {$status}.",
                 $isActive ? 'success' : 'warning',
                 'room',
-                url('/admin/rooms?tableSearch='.urlencode($room->room_number)),
+                route('filament.admin.resources.rooms.index', [], false).'?tableSearch='.urlencode($room->room_number),
                 auth()->id(),
                 'rooms_view'
             );

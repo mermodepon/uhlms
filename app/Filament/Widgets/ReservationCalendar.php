@@ -101,7 +101,7 @@ class ReservationCalendar extends FullCalendarWidget
                 ->backgroundColor($color)
                 ->textColor('#ffffff')
                 ->url(
-                    url('/admin/reservations?tableSearch=' . urlencode($res->reference_number)),
+                    route('filament.admin.resources.reservations.index', [], false).'?tableSearch='.urlencode($res->reference_number),
                     shouldOpenUrlInNewTab: false,
                 );
         })->toArray();

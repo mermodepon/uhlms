@@ -60,11 +60,11 @@
             </div>
 
             <div class="space-y-3">
-                <a href="{{ route('guest.home') }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
+                <a href="{{ route('guest.home', [], false) }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
                     Return to Homepage
                 </a>
                 @if($reservation)
-                    <a href="{{ route('guest.track') }}?reference={{ $reservation->reference_number }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all ml-0 sm:ml-3">
+                    <a href="{{ route('guest.track', ['reference' => $reservation->reference_number, 'guest_email' => $reservation->guest_email], false) }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all ml-0 sm:ml-3">
                         Track Reservation
                     </a>
                 @endif

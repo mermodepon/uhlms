@@ -22,14 +22,14 @@
                     <p class="text-gray-200 text-sm">Take an interactive 360° virtual tour of the establishment before choosing a room.</p>
                 </div>
             </div>
-            <a href="{{ route('guest.tour.viewer') }}" class="whitespace-nowrap bg-[#FFC600] text-[#00491E] px-5 py-2 rounded-lg font-bold text-sm hover:bg-yellow-400 transition flex-shrink-0">
+            <a href="{{ route('guest.tour.viewer', [], false) }}" class="whitespace-nowrap bg-[#FFC600] text-[#00491E] px-5 py-2 rounded-lg font-bold text-sm hover:bg-yellow-400 transition flex-shrink-0">
                 Take the Tour &rarr;
             </a>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             @forelse($roomTypes as $roomType)
-                <div role="link" tabindex="0" class="block cursor-pointer bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition group" onclick="window.location.href='{{ route('guest.room-detail', $roomType) }}'" onkeydown="if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); window.location.href='{{ route('guest.room-detail', $roomType) }}'; }">
+                <div role="link" tabindex="0" class="block cursor-pointer bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition group" onclick="window.location.href='{{ route('guest.room-detail', $roomType, false) }}'" onkeydown="if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); window.location.href='{{ route('guest.room-detail', $roomType, false) }}'; }">
                     <div class="md:flex">
                         @if($roomType->images && count($roomType->images))
                             <div class="md:w-1/3 h-48 md:h-auto bg-gray-200">

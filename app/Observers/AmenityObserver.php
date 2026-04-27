@@ -14,7 +14,7 @@ class AmenityObserver
             "Amenity \"{$amenity->name}\" has been added to the system.",
             'success',
             'amenity',
-            url('/admin/amenities?tableSearch='.urlencode($amenity->name)),
+            route('filament.admin.resources.amenities.index', [], false).'?tableSearch='.urlencode($amenity->name),
             auth()->id(),
             'amenities_view'
         );
@@ -32,7 +32,7 @@ class AmenityObserver
                 "Amenity \"{$amenity->name}\" has been {$status}.",
                 $changes['is_active'] ? 'success' : 'warning',
                 'amenity',
-                url('/admin/amenities?tableSearch='.urlencode($amenity->name)),
+                route('filament.admin.resources.amenities.index', [], false).'?tableSearch='.urlencode($amenity->name),
                 auth()->id(),
                 'amenities_view'
             );
@@ -42,7 +42,7 @@ class AmenityObserver
                 "Amenity \"{$amenity->name}\" details have been updated.",
                 'info',
                 'amenity',
-                url('/admin/amenities?tableSearch='.urlencode($amenity->name)),
+                route('filament.admin.resources.amenities.index', [], false).'?tableSearch='.urlencode($amenity->name),
                 auth()->id(),
                 'amenities_view'
             );

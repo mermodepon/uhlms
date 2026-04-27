@@ -193,7 +193,7 @@ class OnlinePaymentSettings extends Page implements HasForms
                 $message,
                 'info',
                 'setting',
-                url('/admin/online-payment-settings')
+                route('filament.admin.pages.online-payment-settings', [], false)
             );
 
             NotificationHelper::notifyUser(
@@ -202,7 +202,7 @@ class OnlinePaymentSettings extends Page implements HasForms
                 'You updated online payment settings.',
                 'success',
                 'setting',
-                url('/admin/online-payment-settings')
+                route('filament.admin.pages.online-payment-settings', [], false)
             );
         }
 

@@ -6,7 +6,7 @@
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <nav class="text-sm mb-4">
-                <a href="{{ route('guest.rooms') }}" class="text-gray-300 hover:text-[#FFC600] transition">Rooms</a>
+                <a href="{{ route('guest.rooms', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Rooms</a>
                 <span class="text-gray-400 mx-2">/</span>
                 <span class="text-[#FFC600]">{{ $roomType->name }}</span>
             </nav>
@@ -103,9 +103,9 @@
             </div>
 
             {{-- Sidebar --}}
-            <div class="space-y-6">
+            <div class="space-y-6 lg:sticky lg:top-6 self-start">
                 {{-- Booking Card --}}
-                <div class="bg-white rounded-xl shadow-md p-6 sticky top-6">
+                <div class="bg-white rounded-xl shadow-md p-6">
                     <div class="text-center mb-6">
                         <div class="text-3xl font-bold text-[#00491E]">₱{{ number_format($roomType->base_rate, 0) }}</div>
                         <div class="text-gray-500">{{ $roomType->isPerPersonPricing() ? 'per person per night' : 'per night' }}</div>
@@ -147,7 +147,7 @@
                     </div>
 
                     @if(($isPrivate && $availableRooms > 0) || (! $isPrivate && $availableBeds > 0))
-                        <a href="{{ route('guest.reserve', ['room_type' => $roomType->id]) }}"
+                        <a href="{{ route('guest.reserve', ['room_type' => $roomType->id], false) }}"
                            class="block w-full bg-[#FFC600] text-[#00491E] text-center px-6 py-3 rounded-lg font-bold hover:bg-yellow-400 transition">
                             Reserve This Room
                         </a>
@@ -157,7 +157,7 @@
                         </div>
                     @endif
                     
-                    <a href="{{ route('guest.rooms') }}" class="block text-center text-sm text-gray-500 hover:text-[#00491E] mt-3 transition">
+                    <a href="{{ route('guest.rooms', [], false) }}" class="block text-center text-sm text-gray-500 hover:text-[#00491E] mt-3 transition">
                         ← Back to All Rooms
                     </a>
                 </div>
@@ -171,7 +171,7 @@
                     <p class="text-gray-200 text-sm mb-4">
                         {{ $tourWaypointSlug ? 'Jump straight into this room in the interactive virtual tour before you book.' : 'Explore the establishment in an interactive virtual tour before you book.' }}
                     </p>
-                    <a href="{{ route('guest.tour.viewer', $tourWaypointSlug ? ['slug' => $tourWaypointSlug] : []) }}" class="inline-block w-full bg-[#FFC600] text-[#00491E] font-bold py-2.5 px-4 rounded-lg hover:bg-yellow-400 transition text-sm">
+                    <a href="{{ route('guest.tour.viewer', $tourWaypointSlug ? ['slug' => $tourWaypointSlug] : [], false) }}" class="inline-block w-full bg-[#FFC600] text-[#00491E] font-bold py-2.5 px-4 rounded-lg hover:bg-yellow-400 transition text-sm">
                         {{ $tourWaypointSlug ? 'View This Room in 360° →' : 'Start Virtual Tour →' }}
                     </a>
                 </div>

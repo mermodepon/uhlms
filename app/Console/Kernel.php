@@ -16,6 +16,8 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\SendNearDueReservationReminders::class,
         \App\Console\Commands\ReleaseExpiredRoomHolds::class,
         \App\Console\Commands\ExpireUnpaidReservations::class,
+        \App\Console\Commands\RepairNotificationLinks::class,
+        \App\Console\Commands\PurgeNotifications::class,
     ];
 
     /**

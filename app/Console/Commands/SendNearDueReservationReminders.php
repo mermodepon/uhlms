@@ -53,7 +53,7 @@ class SendNearDueReservationReminders extends Command
                 $message,
                 'warning',
                 'reservation',
-                url('/admin/reservations?tableSearch='.urlencode($reservation->reference_number)),
+                route('filament.admin.resources.reservations.index', [], false).'?tableSearch='.urlencode($reservation->reference_number),
                 null,
                 'reservations_view'
             );

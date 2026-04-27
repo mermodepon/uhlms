@@ -146,7 +146,7 @@ class ReservationDiscountSettings extends Page implements HasForms
                 "{$actorName} updated reservation discount percentages.",
                 'info',
                 'setting',
-                url('/admin/reservation-discount-settings')
+                route('filament.admin.pages.reservation-discount-settings', [], false)
             );
 
             NotificationHelper::notifyUser(
@@ -155,7 +155,7 @@ class ReservationDiscountSettings extends Page implements HasForms
                 'You updated reservation discount percentages.',
                 'success',
                 'setting',
-                url('/admin/reservation-discount-settings')
+                route('filament.admin.pages.reservation-discount-settings', [], false)
             );
         }
 
