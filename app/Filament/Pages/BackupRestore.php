@@ -2,8 +2,10 @@
 
 namespace App\Filament\Pages;
 
+use App\Jobs\RestoreDatabaseJob;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -32,8 +34,8 @@ class BackupRestore extends Page
 
     public function mount(): void
     {
-        $statusFile = $this->getRestoreStatusPath();
-        $batFile = storage_path('app/backups/_restore_task.bat');
+        $statusFile  = $this->getRestoreStatusPath();
+        $runningFile = storage_path('app/backups/_restore_running.txt');
 
         if (file_exists($statusFile)) {
             // A previous restore finished while the user was away.
@@ -41,12 +43,6 @@ class BackupRestore extends Page
             // like opening the page triggered a new restore.
             $status = trim(file_get_contents($statusFile));
             unlink($statusFile);
-
-            // Clean up log file
-            $logFile = storage_path('app/backups/restore_log.txt');
-            if (file_exists($logFile)) {
-                unlink($logFile);
-            }
 
             if ($status === 'SUCCESS') {
                 Log::info('Previous database restore completed successfully (detected on page load)');
@@ -63,8 +59,8 @@ class BackupRestore extends Page
                     ->danger()
                     ->send();
             }
-        } elseif (file_exists($batFile)) {
-            // Batch file still exists = restore is still actively running
+        } elseif (file_exists($runningFile)) {
+            // Running file exists = restore job is still active
             $this->restoreInProgress = true;
         }
     }
@@ -74,49 +70,6 @@ class BackupRestore extends Page
         return auth()->user()?->isSuperAdmin() ?? false;
     }
 
-    /**
-     * Get MySQL connection config.
-     */
-    protected function getDbConfig(): array
-    {
-        $connection = config('database.connections.mysql');
-
-        return [
-            'host' => $connection['host'],
-            'port' => $connection['port'],
-            'database' => $connection['database'],
-            'username' => $connection['username'],
-            'password' => $connection['password'] ?? '',
-        ];
-    }
-
-    /**
-     * Find the mysqldump executable path.
-     */
-    protected function getMysqlBinPath(string $binary): ?string
-    {
-        // Common XAMPP paths on Windows
-        $paths = [
-            'D:\\xampp\\mysql\\bin\\'.$binary.'.exe',
-            'C:\\xampp\\mysql\\bin\\'.$binary.'.exe',
-        ];
-
-        foreach ($paths as $path) {
-            if (file_exists($path)) {
-                return $path;
-            }
-        }
-
-        // Fallback: try PATH
-        $which = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN' ? 'where' : 'which';
-        $result = trim(shell_exec("{$which} {$binary} 2>&1") ?? '');
-
-        if ($result && ! str_contains($result, 'Could not find') && ! str_contains($result, 'not found')) {
-            return explode("\n", $result)[0];
-        }
-
-        return null;
-    }
 
     /**
      * Get backup storage directory path.
@@ -160,48 +113,32 @@ class BackupRestore extends Page
     }
 
     /**
-     * Create a new database backup.
+     * Create a new database backup using PDO (no external binaries required).
      */
     public function createBackup(): void
     {
-        $mysqldump = $this->getMysqlBinPath('mysqldump');
-
-        if (! $mysqldump) {
+        if (DB::getDriverName() !== 'mysql') {
             Notification::make()
-                ->title('mysqldump not found')
-                ->body('Could not locate the mysqldump executable. Please check your XAMPP installation.')
-                ->danger()
+                ->title('Not Available')
+                ->body('Backup requires a MySQL database connection.')
+                ->warning()
                 ->send();
 
             return;
         }
 
-        $db = $this->getDbConfig();
         $timestamp = now()->format('Y-m-d_His');
-        $filename = "backup_{$timestamp}.sql";
-        $filepath = $this->getBackupDir().DIRECTORY_SEPARATOR.$filename;
+        $filename  = "backup_{$timestamp}.sql";
+        $filepath  = $this->getBackupDir().DIRECTORY_SEPARATOR.$filename;
 
-        // Build mysqldump command
-        $cmd = sprintf(
-            '"%s" --host=%s --port=%s --user=%s %s --routines --triggers --single-transaction "%s" > "%s" 2>&1',
-            $mysqldump,
-            escapeshellarg($db['host']),
-            escapeshellarg($db['port']),
-            escapeshellarg($db['username']),
-            $db['password'] !== '' ? '--password='.escapeshellarg($db['password']) : '',
-            $db['database'],
-            $filepath
-        );
-
-        exec($cmd, $output, $returnCode);
-
-        if ($returnCode !== 0 || ! file_exists($filepath) || filesize($filepath) === 0) {
-            // Clean up empty/failed file
+        try {
+            $this->exportDatabaseToFile($filepath);
+        } catch (\Throwable $e) {
             if (file_exists($filepath)) {
                 unlink($filepath);
             }
 
-            Log::error('Backup failed', ['output' => implode("\n", $output), 'code' => $returnCode]);
+            Log::error('Backup failed', ['error' => $e->getMessage()]);
 
             Notification::make()
                 ->title('Backup Failed')
@@ -217,8 +154,8 @@ class BackupRestore extends Page
 
         Log::info('Database backup created', [
             'filename' => $filename,
-            'size' => filesize($filepath),
-            'user' => auth()->user()->name,
+            'size'     => filesize($filepath),
+            'user'     => auth()->user()->name,
         ]);
 
         Notification::make()
@@ -226,6 +163,71 @@ class BackupRestore extends Page
             ->body("Backup file: {$filename}")
             ->success()
             ->send();
+    }
+
+    /**
+     * Export the current database to a SQL file using PDO.
+     * Works on any hosting environment — no external binaries needed.
+     */
+    private function exportDatabaseToFile(string $filepath): void
+    {
+        $pdo = DB::getPdo();
+        $fp  = fopen($filepath, 'w');
+
+        if (! $fp) {
+            throw new \RuntimeException("Cannot open file for writing: {$filepath}");
+        }
+
+        try {
+            fwrite($fp, "-- UHLMS Database Backup\n");
+            fwrite($fp, '-- Generated: '.now()->toDateTimeString()."\n\n");
+            fwrite($fp, "SET FOREIGN_KEY_CHECKS=0;\n\n");
+
+            /** @var string[] $tables */
+            $tables = $pdo->query('SHOW TABLES')->fetchAll(\PDO::FETCH_COLUMN);
+
+            foreach ($tables as $table) {
+                $quoted    = '`'.str_replace('`', '``', $table).'`';
+                $createRow = $pdo->query("SHOW CREATE TABLE {$quoted}")->fetch(\PDO::FETCH_ASSOC);
+                $createSql = $createRow['Create Table'];
+
+                fwrite($fp, "DROP TABLE IF EXISTS {$quoted};\n");
+                fwrite($fp, $createSql.";\n\n");
+
+                $stmt = $pdo->query("SELECT * FROM {$quoted}");
+                $cols = null;
+                $rows = [];
+
+                while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                    if ($cols === null) {
+                        $cols = array_map(
+                            fn ($c) => '`'.str_replace('`', '``', $c).'`',
+                            array_keys($row)
+                        );
+                    }
+
+                    $rows[] = '('.implode(', ', array_map(
+                        fn ($v) => $v === null ? 'NULL' : $pdo->quote((string) $v),
+                        array_values($row)
+                    )).')';
+
+                    if (count($rows) >= 500) {
+                        fwrite($fp, 'INSERT INTO '.$quoted.' ('.implode(', ', $cols).") VALUES\n".implode(",\n", $rows).";\n");
+                        $rows = [];
+                    }
+                }
+
+                if (! empty($rows)) {
+                    fwrite($fp, 'INSERT INTO '.$quoted.' ('.implode(', ', $cols).") VALUES\n".implode(",\n", $rows).";\n");
+                }
+
+                fwrite($fp, "\n");
+            }
+
+            fwrite($fp, "SET FOREIGN_KEY_CHECKS=1;\n");
+        } finally {
+            fclose($fp);
+        }
     }
 
     /**
@@ -322,19 +324,6 @@ class BackupRestore extends Page
             return;
         }
 
-        $mysql = $this->getMysqlBinPath('mysql');
-        $mysqldump = $this->getMysqlBinPath('mysqldump');
-
-        if (! $mysql) {
-            Notification::make()
-                ->title('mysql not found')
-                ->body('Could not locate the mysql executable.')
-                ->danger()
-                ->send();
-
-            return;
-        }
-
         $filename = basename($this->restoreExistingFilename);
         $filepath = $this->getBackupDir().DIRECTORY_SEPARATOR.$filename;
 
@@ -347,81 +336,33 @@ class BackupRestore extends Page
             return;
         }
 
-        $db = $this->getDbConfig();
-        $passwordArg = $db['password'] !== '' ? '--password='.$db['password'] : '';
+        // Clean up any leftover status file from a previous run
+        $statusFile  = $this->getRestoreStatusPath();
+        $runningFile = storage_path('app/backups/_restore_running.txt');
 
-        // Create an automatic pre-restore backup for safety
-        if ($mysqldump) {
-            $preBackupFile = $this->getBackupDir().DIRECTORY_SEPARATOR.'pre_restore_'.now()->format('Y-m-d_His').'.sql';
-            $dumpCmd = sprintf(
-                '"%s" --host=%s --port=%s --user=%s %s --routines --triggers --single-transaction "%s" > "%s" 2>&1',
-                $mysqldump,
-                escapeshellarg($db['host']),
-                escapeshellarg($db['port']),
-                escapeshellarg($db['username']),
-                $db['password'] !== '' ? '--password='.escapeshellarg($db['password']) : '',
-                $db['database'],
-                $preBackupFile
-            );
-            exec($dumpCmd, $dumpOutput, $dumpReturn);
-
-            if ($dumpReturn !== 0 || ! file_exists($preBackupFile) || filesize($preBackupFile) === 0) {
-                if (file_exists($preBackupFile)) {
-                    unlink($preBackupFile);
-                }
-                Log::warning('Pre-restore backup failed, proceeding anyway', ['code' => $dumpReturn]);
-            } else {
-                Log::info('Pre-restore backup created', ['file' => basename($preBackupFile)]);
-            }
-        }
-
-        // Build the restore as a detached background process via a batch script.
-        // This ensures the mysql import runs to completion even if the PHP
-        // request times out or the browser navigates away.
-        $statusFile = $this->getRestoreStatusPath();
-        $logFile = storage_path('app/backups/restore_log.txt');
-
-        // Clean up any previous status file
         if (file_exists($statusFile)) {
             unlink($statusFile);
         }
 
-        // Write a batch script that runs the import and writes a status file
-        $batFile = storage_path('app/backups/_restore_task.bat');
-        $batContent = '@echo off'."\r\n";
-        $batContent .= sprintf(
-            '"%s" --host=%s --port=%s --user=%s %s "%s" < "%s" > "%s" 2>&1',
-            $mysql,
-            $db['host'],
-            $db['port'],
-            $db['username'],
-            $passwordArg,
-            $db['database'],
-            $filepath,
-            $logFile
-        )."\r\n";
-        $batContent .= 'if %ERRORLEVEL% EQU 0 ('."\r\n";
-        $batContent .= '  echo SUCCESS > "'.str_replace('/', '\\', $statusFile).'"'."\r\n";
-        $batContent .= ') else ('."\r\n";
-        $batContent .= '  echo FAILED > "'.str_replace('/', '\\', $statusFile).'"'."\r\n";
-        $batContent .= ')'."\r\n";
-        $batContent .= 'del "%~f0"'."\r\n"; // Self-delete the batch file
+        // Mark restore as in-progress before dispatching so mount() and
+        // pollRestoreStatus() can detect it immediately.
+        file_put_contents($runningFile, now()->toDateTimeString());
 
-        file_put_contents($batFile, $batContent);
+        RestoreDatabaseJob::dispatch(
+            filepath:    $filepath,
+            filename:    $filename,
+            initiatedBy: auth()->user()->name,
+        );
 
-        // Launch detached — survives PHP process death
-        $runCmd = 'start /B cmd /c "'.str_replace('/', '\\', $batFile).'"';
-        pclose(popen($runCmd, 'r'));
-
-        Log::info('Database restore started (detached)', [
+        Log::info('Database restore job dispatched', [
             'filename' => $filename,
-            'user' => auth()->user()->name,
+            'user'     => auth()->user()->name,
         ]);
 
-        $this->showRestoreModal = false;
-        $this->confirmPhrase = '';
+        $this->showRestoreModal       = false;
+        $this->confirmPhrase          = '';
         $this->restoreExistingFilename = '';
-        $this->restoreInProgress = true;
+        $this->restoreInProgress      = true;
 
         Notification::make()
             ->title('Restore In Progress')
@@ -443,21 +384,27 @@ class BackupRestore extends Page
      */
     public function pollRestoreStatus(): void
     {
-        $statusFile = $this->getRestoreStatusPath();
+        $statusFile  = $this->getRestoreStatusPath();
+        $runningFile = storage_path('app/backups/_restore_running.txt');
 
         if (! file_exists($statusFile)) {
-            return; // Still running
+            // If the running file is also gone the job finished without writing
+            // a status file (e.g. worker crash). Surface an error to the user.
+            if (! file_exists($runningFile)) {
+                $this->restoreInProgress = false;
+                Log::error('Restore job ended without writing a status file');
+                Notification::make()
+                    ->title('Restore Status Unknown')
+                    ->body('The restore process ended unexpectedly. Please check the database and logs.')
+                    ->danger()
+                    ->send();
+            }
+
+            return; // Still running or handled above
         }
 
         $status = trim(file_get_contents($statusFile));
         unlink($statusFile);
-
-        // Clean up log file
-        $logFile = storage_path('app/backups/restore_log.txt');
-        $logContent = file_exists($logFile) ? trim(file_get_contents($logFile)) : '';
-        if (file_exists($logFile)) {
-            unlink($logFile);
-        }
 
         $this->restoreInProgress = false;
 
@@ -470,7 +417,7 @@ class BackupRestore extends Page
                 ->success()
                 ->send();
         } else {
-            Log::error('Database restore failed', ['log' => $logContent]);
+            Log::error('Database restore failed');
 
             Notification::make()
                 ->title('Restore Failed')
