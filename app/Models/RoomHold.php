@@ -52,23 +52,6 @@ class RoomHold extends Model
     }
 
     /**
-     * Only short-term holds (from preparePendingPayment).
-     */
-    public function scopeShortTerm($query)
-    {
-        return $query->where('hold_type', 'short_term');
-    }
-
-    /**
-     * Holds that have expired (short-term only).
-     */
-    public function scopeExpired($query)
-    {
-        return $query->whereNotNull('expires_at')
-            ->where('expires_at', '<=', now());
-    }
-
-    /**
      * Holds that conflict with a given date range.
      * A conflict exists when: hold_from < requested_checkout AND hold_to > requested_checkin
      */
@@ -99,10 +82,5 @@ class RoomHold extends Model
     public function isAdvance(): bool
     {
         return $this->hold_type === 'advance';
-    }
-
-    public function isShortTerm(): bool
-    {
-        return $this->hold_type === 'short_term';
     }
 }

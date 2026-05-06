@@ -58,22 +58,6 @@ class RoomHoldResource extends Resource
                     ->label('Hold To')
                     ->date('M d, Y')
                     ->sortable(),
-                Tables\Columns\BadgeColumn::make('hold_type')
-                    ->label('Type')
-                    ->colors([
-                        'primary' => 'advance',
-                        'warning' => 'short_term',
-                    ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'advance' => 'Advance',
-                        'short_term' => 'Short-term',
-                        default => $state,
-                    }),
-                Tables\Columns\TextColumn::make('expires_at')
-                    ->label('Expires')
-                    ->dateTime('M d, Y h:i A')
-                    ->placeholder('No expiry')
-                    ->sortable(),
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean()
@@ -81,11 +65,6 @@ class RoomHoldResource extends Resource
             ])
             ->defaultSort('hold_from')
             ->filters([
-                Tables\Filters\SelectFilter::make('hold_type')
-                    ->options([
-                        'advance' => 'Advance',
-                        'short_term' => 'Short-term',
-                    ]),
                 Tables\Filters\Filter::make('is_active')
                     ->label('Active only')
                     ->toggle()
@@ -161,19 +140,4 @@ class RoomHoldResource extends Resource
         ];
     }
 
-    public static function getNavigationBadge(): ?string
-    {
-        $count = RoomHold::query()
-            ->advance()
-            ->where('hold_from', '<=', now()->toDateString())
-            ->where('hold_to', '>', now()->toDateString())
-            ->count();
-
-        return $count > 0 ? (string) $count : null;
-    }
-
-    public static function getNavigationBadgeColor(): ?string
-    {
-        return 'warning';
-    }
 }

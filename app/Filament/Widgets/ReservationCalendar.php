@@ -26,7 +26,7 @@ class ReservationCalendar extends FullCalendarWidget
     protected static array $statusColors = [
         'pending'         => '#fbbf24', // amber
         'approved'        => '#3b82f6', // blue
-        'pending_payment' => '#8b5cf6', // violet
+
         'checked_in'      => '#16a34a', // green
         'checked_out'     => '#94a3b8', // slate-gray
     ];
@@ -35,7 +35,7 @@ class ReservationCalendar extends FullCalendarWidget
      * Which statuses are currently visible on the calendar.
      * Checked Out is OFF by default to reduce clutter.
      */
-    public array $activeStatuses = ['pending', 'approved', 'confirmed', 'pending_payment', 'checked_in'];
+    public array $activeStatuses = ['pending', 'approved', 'confirmed', 'checked_in'];
 
     public function toggleStatus(string $status): void
     {

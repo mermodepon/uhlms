@@ -9,6 +9,45 @@ use Illuminate\Support\Facades\Log;
 
 class PaymentGatewayService
 {
+    private const GUEST_PAYMENT_METHODS = [
+        'gcash' => [
+            'label' => 'GCash',
+            'description' => 'Pay via GCash wallet.',
+            'badge' => 'GCash',
+            'badge_color' => 'blue',
+        ],
+        'paymaya' => [
+            'label' => 'Maya (PayMaya)',
+            'description' => 'Pay via Maya wallet.',
+            'badge' => 'Maya',
+            'badge_color' => 'green',
+        ],
+        'grab_pay' => [
+            'label' => 'GrabPay',
+            'description' => 'Pay via GrabPay wallet.',
+            'badge' => 'GrabPay',
+            'badge_color' => 'emerald',
+        ],
+        'card' => [
+            'label' => 'Credit / Debit Card',
+            'description' => 'Pay with Visa or Mastercard on PayMongo Checkout.',
+            'badge' => 'Card',
+            'badge_color' => 'slate',
+        ],
+        'billease' => [
+            'label' => 'BillEase',
+            'description' => 'Buy now, pay later through BillEase if enabled on your account.',
+            'badge' => 'BNPL',
+            'badge_color' => 'amber',
+        ],
+        'qrph' => [
+            'label' => 'QR Ph',
+            'description' => 'Scan a QR Ph code from the hosted PayMongo checkout page.',
+            'badge' => 'QR Ph',
+            'badge_color' => 'violet',
+        ],
+    ];
+
     /**
      * PayMongo API base URL.
      */
@@ -126,6 +165,104 @@ class PaymentGatewayService
             ]);
 
             throw new PaymentGatewayException("Payment service error: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Create a hosted PayMongo Checkout Session.
+     *
+     * @param  Reservation  $reservation
+     * @param  float  $amount
+     * @param  string  $paymentType
+     * @param  array<int, string>|null  $paymentMethods
+     * @param  array{success:string,cancel:string}  $returnUrls
+     * @return array{checkout_session_id:?string,checkout_url:?string,payment_intent_id:?string,payment_method_types:array<int,string>}
+     *
+     * @throws PaymentGatewayException
+     */
+    public function createCheckoutSession(
+        Reservation $reservation,
+        float $amount,
+        string $paymentType = 'deposit',
+        ?array $paymentMethods = null,
+        array $returnUrls = []
+    ): array {
+        try {
+            $amountInCentavos = (int) round($amount * 100);
+            $paymentTypeLabel = $paymentType === 'full' ? 'Full Payment' : 'Deposit';
+            $description = "{$paymentTypeLabel} for Reservation {$reservation->reference_number}";
+            $paymentMethodTypes = array_values(array_unique($paymentMethods ?: config('paymongo.checkout_payment_methods', [])));
+
+            if (empty($paymentMethodTypes)) {
+                throw new PaymentGatewayException('No checkout payment methods are configured.');
+            }
+
+            $payload = [
+                'data' => [
+                    'attributes' => [
+                        'billing' => [
+                            'name' => (string) ($reservation->guest_name ?? ''),
+                            'email' => (string) ($reservation->guest_email ?? ''),
+                            'phone' => (string) ($reservation->guest_phone ?? ''),
+                        ],
+                        'cancel_url' => $returnUrls['cancel'] ?? url('/reserve/payment-failed'),
+                        'success_url' => $returnUrls['success'] ?? url('/reserve/payment-success'),
+                        'description' => $description,
+                        'reference_number' => (string) $reservation->reference_number,
+                        'send_email_receipt' => filled($reservation->guest_email),
+                        'show_description' => true,
+                        'show_line_items' => true,
+                        'line_items' => [[
+                            'amount' => $amountInCentavos,
+                            'currency' => 'PHP',
+                            'description' => $description,
+                            'name' => $paymentType === 'full' ? 'Reservation Full Payment' : 'Reservation Deposit',
+                            'quantity' => 1,
+                        ]],
+                        'payment_method_types' => $paymentMethodTypes,
+                        'metadata' => [
+                            'reservation_id' => (string) $reservation->id,
+                            'reservation_ref' => (string) $reservation->reference_number,
+                            'guest_email' => (string) ($reservation->guest_email ?? ''),
+                            'guest_name' => (string) ($reservation->guest_name ?? ''),
+                            'payment_type' => $paymentType,
+                        ],
+                    ],
+                ],
+            ];
+
+            $response = $this->httpClient()
+                ->post("{$this->baseUrl}/checkout_sessions", $payload);
+
+            if ($response->failed()) {
+                $errorMessage = $response->json('errors.0.detail') ?? 'Unknown error creating checkout session';
+                Log::error('PayMongo API Error (Create Checkout Session)', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'reservation_id' => $reservation->id,
+                    'payment_method_types' => $paymentMethodTypes,
+                ]);
+
+                throw new PaymentGatewayException("Failed to create checkout session: {$errorMessage}");
+            }
+
+            $data = $response->json('data');
+
+            return [
+                'checkout_session_id' => $data['id'] ?? null,
+                'checkout_url' => $data['attributes']['checkout_url'] ?? null,
+                'payment_intent_id' => $data['attributes']['payment_intent']['id'] ?? null,
+                'payment_method_types' => $data['attributes']['payment_method_types'] ?? $paymentMethodTypes,
+            ];
+        } catch (PaymentGatewayException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('PayMongo Checkout Session Exception', [
+                'message' => $e->getMessage(),
+                'reservation_id' => $reservation->id,
+            ]);
+
+            throw new PaymentGatewayException("Checkout session error: {$e->getMessage()}");
         }
     }
 
@@ -316,6 +453,49 @@ class PaymentGatewayService
     public function calculateDepositAmount(Reservation $reservation): float
     {
         return $reservation->calculateDepositAmount();
+    }
+
+    /**
+     * @return array<string, array{label:string,description:string,badge:string,badge_color:string}>
+     */
+    public function getGuestPaymentMethods(): array
+    {
+        return self::GUEST_PAYMENT_METHODS;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function getMerchantPaymentMethods(): array
+    {
+        try {
+            $response = $this->httpClient()
+                ->get("{$this->baseUrl}/merchants/capabilities/payment_methods");
+
+            if ($response->failed()) {
+                return [];
+            }
+
+            $payload = $response->json();
+
+            if (is_array($payload) && array_is_list($payload)) {
+                return array_values(array_filter($payload, 'is_string'));
+            }
+
+            $data = $payload['data'] ?? [];
+
+            if (is_array($data) && array_is_list($data)) {
+                return array_values(array_filter($data, 'is_string'));
+            }
+
+            return [];
+        } catch (\Exception $e) {
+            Log::warning('Unable to retrieve PayMongo merchant payment methods', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     /**

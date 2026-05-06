@@ -57,7 +57,15 @@ class Room extends Model
      */
     public function currentOccupancy(): int
     {
-        return $this->roomAssignments()->where('status', 'checked_in')->count();
+        if ($this->relationLoaded('roomAssignments')) {
+            return $this->roomAssignments
+                ->where('status', 'checked_in')
+                ->count();
+        }
+
+        return $this->roomAssignments()
+            ->where('status', 'checked_in')
+            ->count();
     }
 
     /**
@@ -69,12 +77,13 @@ class Room extends Model
     public function isFull(): bool
     {
         $isPrivate = $this->roomType?->isPrivate() ?? false;
+        $currentOccupancy = $this->currentOccupancy();
 
         if ($isPrivate) {
-            return $this->roomAssignments()->where('status', 'checked_in')->exists();
+            return $currentOccupancy > 0;
         }
 
-        return $this->capacity > 0 && $this->currentOccupancy() >= $this->capacity;
+        return $this->capacity > 0 && $currentOccupancy >= $this->capacity;
     }
 
     /**

@@ -1,8 +1,3 @@
-{{-- Google Fonts - Montserrat --}}
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-
 <style>
 /*
  * CMU Color Theme
@@ -14,8 +9,8 @@
 
 /* ===== Typography ===== */
 :root {
-    --admin-font-body: "Montserrat", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --admin-font-display: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    --admin-font-body: "Segoe UI", Arial, sans-serif;
+    --admin-font-display: "Georgia", "Times New Roman", serif;
 }
 
 body,
@@ -37,8 +32,6 @@ textarea {
 .fi-page-subheading,
 .fi-ta-header-cell-label,
 .fi-sidebar-group-label,
-.filament-brand-text,
-.fi-logo,
 .fi-modal-heading,
 .fi-modal-description,
 h1,
@@ -47,6 +40,11 @@ h3,
 h4,
 h5,
 h6 {
+    font-family: var(--admin-font-body) !important;
+}
+
+.filament-brand-text,
+.fi-logo {
     font-family: var(--admin-font-display) !important;
 }
 
@@ -141,7 +139,6 @@ h6 {
 /* Sidebar item hover */
 .fi-sidebar-item-button:hover {
     background-color: rgba(255, 255, 255, 0.07) !important;
-    border-left-color: rgba(255, 198, 0, 0.5) !important;
 }
 
 .fi-sidebar-item-button:hover .fi-sidebar-item-label {
@@ -155,7 +152,6 @@ h6 {
 /* Sidebar active item */
 .fi-sidebar-item.fi-active .fi-sidebar-item-button {
     background-color: rgba(255, 198, 0, 0.12) !important;
-    border-left-color: #FFC600 !important;
 }
 
 .fi-sidebar-item.fi-active .fi-sidebar-item-label {
@@ -297,6 +293,23 @@ h6 {
     color: #02681E !important;
 }
 
+/* ===== Modal usability ===== */
+.fi-modal-header {
+    position: relative !important;
+    z-index: 20 !important;
+}
+
+.fi-modal-header > .absolute {
+    z-index: 30 !important;
+    pointer-events: auto !important;
+}
+
+.fi-modal-close-btn {
+    position: relative !important;
+    z-index: 40 !important;
+    pointer-events: auto !important;
+}
+
 /* ===== Dark Mode Overrides ===== */
 .dark .fi-sidebar {
     background-color: #001a0b !important;
@@ -368,6 +381,173 @@ h6 {
         display: inline-flex !important;
     }
 }
+
+/* ===== Loading Animations ===== */
+
+/* Enhanced Livewire loading overlay */
+[wire\:loading] {
+    opacity: 1 !important;
+}
+
+[wire\:loading\.delay] {
+    transition: opacity 0.3s ease-in-out !important;
+}
+
+/* Custom loading spinner for action buttons */
+.fi-btn[wire\:loading] {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.fi-btn[wire\:loading]::after {
+    content: '';
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: button-spinner 0.6s linear infinite;
+}
+
+@keyframes button-spinner {
+    0% { transform: translateY(-50%) rotate(0deg); }
+    100% { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* Loading overlay for table refreshes */
+.fi-ta[wire\:loading] {
+    position: relative;
+    pointer-events: none;
+}
+
+.fi-ta[wire\:loading]::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(2px);
+    z-index: 50;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.dark .fi-ta[wire\:loading]::before {
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.fi-ta[wire\:loading]::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3rem;
+    height: 3rem;
+    border: 4px solid rgba(0, 54, 21, 0.2);
+    border-top-color: #003615;
+    border-radius: 50%;
+    animation: table-spinner 0.8s linear infinite;
+    z-index: 51;
+}
+
+.dark .fi-ta[wire\:loading]::after {
+    border-color: rgba(255, 198, 0, 0.2);
+    border-top-color: #FFC600;
+}
+
+@keyframes table-spinner {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Loading skeleton styles for deferred tables */
+.fi-ta-skeleton {
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Action group loading state */
+.fi-dropdown-trigger[wire\:loading] {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+/* Modal loading overlay */
+.fi-modal[wire\:loading] .fi-modal-window {
+    pointer-events: none;
+}
+
+.fi-modal[wire\:loading] .fi-modal-window::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(1px);
+    z-index: 100;
+    border-radius: inherit;
+}
+
+.dark .fi-modal[wire\:loading] .fi-modal-window::before {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+.fi-modal[wire\:loading] .fi-modal-window::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 3px solid rgba(0, 54, 21, 0.2);
+    border-top-color: #003615;
+    border-radius: 50%;
+    animation: modal-spinner 0.7s linear infinite;
+    z-index: 101;
+}
+
+.dark .fi-modal[wire\:loading] .fi-modal-window::after {
+    border-color: rgba(255, 198, 0, 0.2);
+    border-top-color: #FFC600;
+}
+
+@keyframes modal-spinner {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Smooth transitions for loading states */
+.fi-btn,
+.fi-ta,
+.fi-modal-window,
+.fi-dropdown-trigger {
+    transition: opacity 0.2s ease-in-out;
+}
+
+/* Prevent multiple spinners when nested loading states */
+[wire\:loading] [wire\:loading]::after {
+    display: none;
+}
+
+/* Loading state for pagination */
+.fi-ta-pagination[wire\:loading] {
+    opacity: 0.6;
+    pointer-events: none;
+}
 </style>
 
 {{-- Chart.js CDN --}}
@@ -421,5 +601,38 @@ h6 {
         const observer = new MutationObserver(() => injectUsername());
         observer.observe(document.documentElement, { childList: true, subtree: true });
     })();
+
+    // Enhanced loading indicators for Livewire
+    document.addEventListener('livewire:init', () => {
+        // Show loading state on request start
+        Livewire.hook('request', ({ uri, options, payload, respond, succeed, fail }) => {
+            // Add a subtle loading indicator to the document
+            document.body.style.cursor = 'wait';
+            
+            succeed(({ status, json }) => {
+                // Remove loading cursor when request succeeds
+                document.body.style.cursor = '';
+            });
+            
+            fail(({ status, content, preventDefault }) => {
+                // Remove loading cursor when request fails
+                document.body.style.cursor = '';
+            });
+        });
+        
+        // Smooth scroll to top on page change (for long tables)
+        Livewire.hook('commit', ({ component, commit, respond, succeed, fail }) => {
+            succeed(({ snapshot, effect }) => {
+                // If pagination changed, scroll to table top smoothly
+                if (snapshot.data && snapshot.data.page !== undefined) {
+                    const table = document.querySelector('.fi-ta');
+                    if (table) {
+                        const tableTop = table.getBoundingClientRect().top + window.pageYOffset - 100;
+                        window.scrollTo({ top: tableTop, behavior: 'smooth' });
+                    }
+                }
+            });
+        });
+    });
 </script>
 @endauth

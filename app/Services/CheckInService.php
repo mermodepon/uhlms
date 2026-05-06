@@ -196,7 +196,7 @@ class CheckInService
                     'num_female_guests' => $femaleCount,
                 ]);
 
-                // Clear ALL room holds (both advance and short-term) since check-in is complete
+                // Clear all room holds since check-in is complete
                 // This includes any advance holds that weren't used (e.g., staff changed the room)
                 $deletedHolds = RoomHold::query()
                     ->where('reservation_id', $reservation->id)
@@ -245,31 +245,20 @@ class CheckInService
     }
 
     /**
-     * Prepare a reservation for payment by locking selected room/bed inventory.
+     * Complete onsite reception check-in in one step.
+     *
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
      */
-    public function preparePendingPayment(Reservation $reservation, array $payload): array
+    public function completeOnsiteCheckIn(Reservation $reservation, array $payload): array
     {
-        $this->releaseExpiredHolds();
-
-        if (! in_array($reservation->status, ['approved', 'confirmed', 'pending_payment'], true)) {
-            throw new \RuntimeException('Only approved or confirmed reservations can be prepared for payment.');
-        }
-
-        if ($reservation->status === 'pending_payment') {
-            $this->releasePendingPaymentHold($reservation, true);
-            $reservation->refresh();
+        if (! in_array($reservation->status, ['approved', 'confirmed'], true)) {
+            throw new \RuntimeException('Only approved or confirmed reservations can be checked in.');
         }
 
         $entries = $payload['reservation_rooms'] ?? [];
         if (empty($entries)) {
-            throw new \RuntimeException('Please add at least one room entry before preparing payment.');
-        }
-
-        // Validate hold_duration_minutes
-        $allowedDurations = [30, 45, 60, 90, 120, 240, 480, 720, 1440];
-        $holdMinutes = (int) ($payload['hold_duration_minutes'] ?? 30);
-        if (! in_array($holdMinutes, $allowedDurations, true)) {
-            throw new \RuntimeException('Invalid Payment Hold Duration. Allowed values: 30, 45, 60, 90, 120 minutes, or 4, 8, 12, 24 hours.');
+            throw new \RuntimeException('Please add at least one room entry before check-in.');
         }
 
         $primaryGuest = [
@@ -282,195 +271,29 @@ class CheckInService
             'contact_number' => $payload['guest_contact_number'] ?? null,
         ];
 
-        $entries = $this->normalizeEntriesWithPrimaryGuest(
+        $payload['reservation_rooms'] = $this->normalizeEntriesWithPrimaryGuest(
             $entries,
             $primaryGuest,
-            (bool) ($payload['include_primary_in_first_room'] ?? true)
+            false
         );
 
-        $holdPayloadData = $this->sanitizePreparePayload($payload);
-
-        $holdEntries = [];
-
-        DB::transaction(function () use ($reservation, $holdPayloadData, $entries, &$holdEntries, $holdMinutes) {
-            foreach ($entries as $entryIndex => $entry) {
-                $mode = $entry['room_mode'] ?? 'dorm';
-                $roomId = $entry['room_id'] ?? null;
-                $room = $roomId
-                    ? Room::query()->where('id', $roomId)->where('is_active', true)->first()
-                    : null;
-
-                if (! $room) {
-                    throw new \RuntimeException('No available room found for entry #'.($entryIndex + 1).'.');
-                }
-
-                $room->loadMissing('roomType');
-                if ($mode === 'dorm') {
-                    // Dorm rooms can accept guests while occupied, as long as they're not full or in maintenance/inactive
-                    if (in_array($room->status, ['maintenance', 'inactive', 'reserved'], true) || $room->isFull()) {
-                        throw new \RuntimeException("Room {$room->room_number} is not yet available for check-in.");
-                    }
-                } else {
-                    // Private rooms must be fully available
-                    if ($room->status !== 'available') {
-                        throw new \RuntimeException("Room {$room->room_number} is not yet available because it is still assigned to an active stay.");
-                    }
-                }
-
-                $entryGuests = collect($entry['guests'] ?? [])
-                    ->filter(fn ($guest) => filled($guest['first_name'] ?? null) || filled($guest['last_name'] ?? null))
-                    ->values()
-                    ->all();
-
-                if (empty($entryGuests)) {
-                    throw new \RuntimeException('No guests provided for room entry #'.($entryIndex + 1).'.');
-                }
-
-                if ($mode === 'private') {
-                    $holdGuests = [];
-                    foreach ($entryGuests as $guest) {
-
-                        $holdGuests[] = [
-                            'first_name' => $guest['first_name'] ?? null,
-                            'last_name' => $guest['last_name'] ?? null,
-                            'middle_initial' => $guest['middle_initial'] ?? null,
-                            'gender' => $guest['gender'] ?? null,
-                            'age' => $guest['age'] ?? null,
-                            'full_address' => $guest['full_address'] ?? null,
-                            'contact_number' => $guest['contact_number'] ?? null,
-                            '_is_primary' => (bool) ($guest['_is_primary'] ?? false),
-                        ];
-                    }
-
-                    $room->update(['status' => 'reserved']);
-                    $holdEntries[] = [
-                        'room_mode' => $mode,
-                        'room_id' => $room->id,
-                        'guests' => $holdGuests,
-                    ];
-
-                    continue;
-                }
-
-                $holdGuests = [];
-                foreach ($entryGuests as $guest) {
-                    $holdGuests[] = [
-                        'first_name' => $guest['first_name'] ?? null,
-                        'last_name' => $guest['last_name'] ?? null,
-                        'middle_initial' => $guest['middle_initial'] ?? null,
-                        'gender' => $guest['gender'] ?? null,
-                        'age' => $guest['age'] ?? null,
-                        'full_address' => $guest['full_address'] ?? null,
-                        'contact_number' => $guest['contact_number'] ?? null,
-                        '_is_primary' => (bool) ($guest['_is_primary'] ?? false),
-                    ];
-                }
-
-                // Reserve the room slot (same as private — the room is held for this reservation)
-                $room->update(['status' => 'reserved']);
-
-                $holdEntries[] = [
-                    'room_mode' => $mode,
-                    'room_id' => $room->id,
-                    'guests' => $holdGuests,
-                ];
-            }
-
-            $reservation->update([
-                'status' => 'pending_payment',
-                'checkin_hold_payload' => [
-                    'payload' => $holdPayloadData,
-                    'entries' => $holdEntries,
-                ],
-                'checkin_hold_started_at' => now(),
-                'checkin_hold_expires_at' => now()->addMinutes($holdMinutes),
-                'checkin_hold_by' => auth()->id(),
-            ]);
-
-            // Also create short-term room holds for date-range tracking
-            $expiresAt = now()->addMinutes($holdMinutes);
-            foreach ($holdEntries as $entry) {
-                $roomId = $entry['room_id'] ?? null;
-                if ($roomId) {
-                    RoomHold::create([
-                        'room_id' => $roomId,
-                        'reservation_id' => $reservation->id,
-                        'hold_from' => $reservation->check_in_date,
-                        'hold_to' => $reservation->check_out_date,
-                        'hold_type' => 'short_term',
-                        'expires_at' => $expiresAt,
-                    ]);
-                }
-            }
-        });
-
-        $heldGuestCount = collect($holdEntries)->sum(fn ($entry) => count($entry['guests'] ?? []));
-        $expiresAt = $reservation->fresh()->checkin_hold_expires_at;
-
-        ReservationLog::record(
-            $reservation,
-            'checkin_hold_prepared',
-            'Check-in hold prepared for '.$heldGuestCount.' guest(s) across '.count($holdEntries).' room(s). Hold expires at '.$expiresAt?->format('M d, Y h:i A').'.',
-            [
-                'held_room_count' => count($holdEntries),
-                'held_guest_count' => $heldGuestCount,
-                'expires_at' => $expiresAt?->toDateTimeString(),
-            ]
+        $payableAmount = $this->computePayloadPayableAmount($reservation, $payload);
+        $payload = array_merge(
+            $payload,
+            $this->validateAndNormalizeFinalizePaymentData($payload, $payableAmount)
         );
 
-        return [
-            'held_room_count' => count($holdEntries),
-            'held_guest_count' => $heldGuestCount,
-            'hold_expires_at' => $expiresAt,
-        ];
-    }
-
-    /**
-     * Finalize check-in from a pending-payment hold.
-     */
-    public function finalizePendingPayment(Reservation $reservation, array $paymentData): array
-    {
-        $this->releaseExpiredHolds();
-
-        if ($reservation->status !== 'pending_payment') {
-            throw new \RuntimeException('Reservation is not in pending payment state.');
-        }
-
-        if (! $reservation->checkin_hold_payload) {
-            throw new \RuntimeException('No pending hold data found for this reservation.');
-        }
-
-        $expiresAt = $reservation->checkin_hold_expires_at;
-        if ($expiresAt && Carbon::parse($expiresAt)->isPast()) {
-            $this->releasePendingPaymentHold($reservation, true);
-            throw new \RuntimeException('Payment hold expired and has been released. Please prepare check-in again.');
-        }
-
-        $holdPayload = $reservation->checkin_hold_payload;
-        $payload = $holdPayload['payload'] ?? [];
-        $payableAmount = $this->computeHoldPayableAmount($reservation, $holdPayload);
-        $paymentData = $this->validateAndNormalizeFinalizePaymentData($paymentData, $payableAmount);
-        $payload['reservation_rooms'] = $holdPayload['entries'] ?? [];
-        $payload = array_merge($payload, $paymentData);
-
-        $result = $this->execute($reservation, $payload, ['use_held_locks' => true]);
+        $result = $this->execute($reservation, $payload);
 
         if (($result['all_succeeded'] ?? false) === true) {
-            $reservation->update([
-                'checkin_hold_payload' => null,
-                'checkin_hold_started_at' => null,
-                'checkin_hold_expires_at' => null,
-                'checkin_hold_by' => null,
-            ]);
-
             $reservation->refresh();
             $this->persistCheckInSnapshot($reservation, $payload);
             $this->persistFinancialRecords($reservation, $payload);
 
             ReservationLog::record(
                 $reservation,
-                'checkin_finalized',
-                'Check-in finalized. '.$result['checked_in_count'].' guest(s) checked in.'
+                'checkin_completed',
+                'Onsite check-in completed. '.$result['checked_in_count'].' guest(s) checked in.'
                     .' Payment: PHP '.number_format((float) ($payload['payment_amount'] ?? 0), 2)
                     .' via '.strtoupper($payload['payment_mode'] ?? 'N/A')
                     .' (OR: '.($payload['payment_or_number'] ?? 'N/A').').',
@@ -487,87 +310,13 @@ class CheckInService
     }
 
     /**
-     * Extend an active pending payment hold by additional minutes.
-     */
-    public function extendPendingPaymentHold(Reservation $reservation, int $additionalMinutes = 15): array
-    {
-        if ($reservation->status !== 'pending_payment') {
-            throw new \RuntimeException('Reservation is not in pending payment state.');
-        }
-
-        $currentExpiry = $reservation->checkin_hold_expires_at;
-        if (! $currentExpiry) {
-            throw new \RuntimeException('No active hold found for this reservation.');
-        }
-
-        $currentExpiry = Carbon::parse($currentExpiry);
-        if ($currentExpiry->isPast()) {
-            throw new \RuntimeException('Hold has already expired. Please prepare check-in again.');
-        }
-
-        $newExpiry = $currentExpiry->addMinutes($additionalMinutes);
-
-        DB::transaction(function () use ($reservation, $newExpiry, $additionalMinutes) {
-            // Update reservation hold expiry
-            $reservation->update([
-                'checkin_hold_expires_at' => $newExpiry,
-            ]);
-
-            // Extend short-term room holds
-            RoomHold::query()
-                ->where('reservation_id', $reservation->id)
-                ->where('hold_type', 'short_term')
-                ->update(['expires_at' => $newExpiry]);
-
-            ReservationLog::record(
-                $reservation,
-                'checkin_hold_extended',
-                "Payment hold extended by {$additionalMinutes} minute(s). New expiry: ".$newExpiry->format('M d, Y h:i A').'.',
-                [
-                    'additional_minutes' => $additionalMinutes,
-                    'new_expiry' => $newExpiry->toDateTimeString(),
-                ]
-            );
-        });
-
-        return [
-            'new_expiry' => $newExpiry,
-            'minutes_added' => $additionalMinutes,
-        ];
-    }
-
-    /**
-     * Keep hold payload focused on assignment/schedule details only.
-     * Payment capture happens at finalization.
+     * Compute expected payable amount from room entries and selected add-ons.
      *
      * @param  array<string,mixed>  $payload
-     * @return array<string,mixed>
      */
-    private function sanitizePreparePayload(array $payload): array
+    private function computePayloadPayableAmount(Reservation $reservation, array $payload): float
     {
-        unset(
-            $payload['payment_mode'],
-            $payload['payment_mode_other'],
-            $payload['payment_amount'],
-            $payload['payment_or_number']
-        );
-
-        return $payload;
-    }
-
-    /**
-     * Compute expected payable amount from held room entries and selected add-ons.
-     *
-     * @param  array<string,mixed>  $holdPayload
-     */
-    private function computeHoldPayableAmount(Reservation $reservation, array $holdPayload): float
-    {
-        $entries = $holdPayload['entries'] ?? [];
-        $payload = $holdPayload['payload'] ?? [];
-
-        if (! is_array($entries) || empty($entries)) {
-            return (float) ($payload['payment_amount'] ?? 0);
-        }
+        $entries = $payload['reservation_rooms'] ?? [];
 
         $nights = max(1, Carbon::parse($reservation->check_in_date)->diffInDays(Carbon::parse($reservation->check_out_date)));
 
@@ -635,6 +384,8 @@ class CheckInService
     }
 
     /**
+     * Validate and normalize payment data for check-in.
+     *
      * @param  array<string,mixed>  $paymentData
      * @return array<string,mixed>
      */
@@ -653,7 +404,7 @@ class CheckInService
 
         $paymentMode = strtolower(trim((string) ($paymentData['payment_mode'] ?? '')));
         if ($paymentMode === '') {
-            throw new \RuntimeException('Mode of payment is required to finalize check-in.');
+            throw new \RuntimeException('Mode of payment is required to complete check-in.');
         }
 
         if ($paymentMode === 'others' && blank($paymentData['payment_mode_other'] ?? null)) {
@@ -661,7 +412,7 @@ class CheckInService
         }
 
         if (! array_key_exists('payment_amount', $paymentData)) {
-            throw new \RuntimeException('Paid amount is required to finalize check-in.');
+            throw new \RuntimeException('Paid amount is required to complete check-in.');
         }
 
         $paidAmount = (float) $paymentData['payment_amount'];
@@ -674,7 +425,7 @@ class CheckInService
         }
 
         if (blank($paymentData['payment_or_number'] ?? null)) {
-            throw new \RuntimeException('Official receipt number is required to finalize check-in.');
+            throw new \RuntimeException('Official receipt number is required to complete check-in.');
         }
 
         $paymentData['payment_mode'] = $paymentMode;
@@ -682,96 +433,6 @@ class CheckInService
         $paymentData['payment_or_number'] = trim((string) $paymentData['payment_or_number']);
 
         return $paymentData;
-    }
-
-    /**
-     * Release reserved inventory for a pending payment hold.
-     */
-    public function releasePendingPaymentHold(Reservation $reservation, bool $setApproved = false): void
-    {
-        $holdPayload = $reservation->checkin_hold_payload ?? [];
-        $entries = $holdPayload['entries'] ?? [];
-
-        DB::transaction(function () use ($reservation, $entries) {
-            foreach ($entries as $entry) {
-                $roomId = $entry['room_id'] ?? null;
-                if ($roomId) {
-                    $room = Room::with('roomType')->where('id', $roomId)->where('status', 'reserved')->first();
-                    if ($room) {
-                        $room->recalculateStatus();
-                    }
-                }
-            }
-
-            // Delete short-term room holds from this pending payment session
-            RoomHold::query()
-                ->where('reservation_id', $reservation->id)
-                ->where('hold_type', 'short_term')
-                ->delete();
-
-            // Also release any advance holds that aren't for rooms used in this pending payment
-            // This handles cases where staff selected different rooms than originally held
-            $paymentRoomIds = collect($entries)->pluck('room_id')->filter()->toArray();
-            if (! empty($paymentRoomIds)) {
-                RoomHold::query()
-                    ->where('reservation_id', $reservation->id)
-                    ->where('hold_type', 'advance')
-                    ->whereNotIn('room_id', $paymentRoomIds)
-                    ->delete();
-            }
-        });
-
-        $update = [
-            'checkin_hold_payload' => null,
-            'checkin_hold_started_at' => null,
-            'checkin_hold_expires_at' => null,
-            'checkin_hold_by' => null,
-        ];
-
-        if ($setApproved) {
-            // Check if there are advance holds - if so, set to 'confirmed', otherwise 'approved'
-            $hasAdvanceHolds = RoomHold::query()
-                ->where('reservation_id', $reservation->id)
-                ->where('hold_type', 'advance')
-                ->exists();
-
-            $update['status'] = $hasAdvanceHolds ? 'confirmed' : 'approved';
-        }
-
-        $reservation->update($update);
-    }
-
-    /**
-     * Release all expired pending-payment holds and return affected count.
-     */
-    public function releaseExpiredHolds(): int
-    {
-        $expiredReservations = Reservation::query()
-            ->where('status', 'pending_payment')
-            ->whereNotNull('checkin_hold_expires_at')
-            ->where('checkin_hold_expires_at', '<', now())
-            ->get();
-
-        foreach ($expiredReservations as $expiredReservation) {
-            ReservationLog::record(
-                $expiredReservation,
-                'checkin_hold_expired',
-                "Payment hold expired automatically for reservation #{$expiredReservation->reference_number}.",
-                [],
-                null,
-                'System'
-            );
-            $this->releasePendingPaymentHold($expiredReservation, true);
-        }
-
-        // Also clean up any orphaned expired short-term room holds
-        // (e.g., if reservation was deleted but holds remain)
-        RoomHold::query()
-            ->shortTerm()
-            ->expired()
-            ->delete();
-
-        return $expiredReservations->count();
     }
 
     /**
@@ -880,9 +541,8 @@ class CheckInService
 
     private function persistFinancialRecords(Reservation $reservation, array $payload): void
     {
-        // $payload already contains all hold data: reservation_rooms (from entries),
-        // discount flags, and datetime fields. The hold payload was cleared before
-        // this method is called, so we must NOT read from $reservation->checkin_hold_payload.
+        // $payload already contains the completed check-in data: reservation rooms,
+        // discount flags, and datetime fields.
         $entries = $payload['reservation_rooms'] ?? [];
         $paymentAmount = (float) ($payload['payment_amount'] ?? 0);
 

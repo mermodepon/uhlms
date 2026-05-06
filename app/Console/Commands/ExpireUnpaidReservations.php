@@ -3,9 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\Reservation;
-use App\Models\ReservationLog;
 use App\Models\Setting;
 use App\Notifications\NotificationHelper;
+use App\Services\ReservationWorkflowService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -63,26 +63,8 @@ class ExpireUnpaidReservations extends Command
 
         foreach ($expiredReservations as $reservation) {
             DB::transaction(function () use ($reservation, $hoursLimit, &$expiredCount) {
-                // Cancel the reservation
-                $reservation->update([
-                    'status' => 'cancelled',
-                    'admin_notes' => trim(
-                        ($reservation->admin_notes ?? '') . 
-                        "\n\n[Auto-cancelled on " . now()->format('Y-m-d H:i') . 
-                        "] Payment not received within {$hoursLimit} hours of approval."
-                    ),
-                ]);
-
-                // Log the cancellation
-                ReservationLog::record(
-                    $reservation,
-                    'auto_cancelled',
-                    "Reservation auto-cancelled: Payment not received within {$hoursLimit} hours of approval.",
-                    [
-                        'approved_at' => $reservation->approved_at?->toIso8601String(),
-                        'hours_limit' => $hoursLimit,
-                    ]
-                );
+                $reservation = app(ReservationWorkflowService::class)
+                    ->autoCancelUnpaid($reservation, $hoursLimit);
 
                 // Notify guest if email exists
                 if ($reservation->guest_email) {

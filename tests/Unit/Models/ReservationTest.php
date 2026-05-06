@@ -69,7 +69,6 @@ class ReservationTest extends TestCase
         $this->assertEquals('date', $casts['check_in_date']);
         $this->assertEquals('date', $casts['check_out_date']);
         $this->assertEquals('integer', $casts['guest_age']);
-        $this->assertEquals('array', $casts['checkin_hold_payload']);
         $this->assertEquals('decimal:2', $casts['addons_total']);
         $this->assertEquals('decimal:2', $casts['payments_total']);
         $this->assertEquals('decimal:2', $casts['balance_due']);

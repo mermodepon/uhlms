@@ -8,8 +8,11 @@ use App\Models\RoomAssignment;
 use App\Models\RoomType;
 use App\Models\Service;
 use App\Models\TourWaypoint;
+use App\Services\RoomHoldService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class GuestController extends Controller
 {
@@ -19,9 +22,15 @@ class GuestController extends Controller
     public function home()
     {
         $roomTypes = RoomType::where('is_active', true)
-            ->withCount('availableRooms')
             ->with('amenities')
             ->get();
+
+        $roomHoldService = app(RoomHoldService::class);
+
+        $roomTypes->each(function (RoomType $roomType) use ($roomHoldService) {
+            $this->applyAvailabilitySummary($roomType, $roomHoldService->getCurrentAvailabilitySummary($roomType));
+            $roomType->is_date_filtered = false;
+        });
 
         $stayInclusions = Amenity::query()
             ->where('is_active', true)
@@ -40,31 +49,41 @@ class GuestController extends Controller
             ->limit(4)
             ->get();
 
-        // Match the preview to the default scene used when the tour starts.
-        $previewWaypoint = TourWaypoint::query()
-            ->where('is_active', true)
-            ->where('type', 'entrance')
-            ->orderBy('position_order')
-            ->first()
-            ?? TourWaypoint::query()
-                ->where('is_active', true)
-                ->orderBy('position_order')
-                ->first();
-
-        return view('guest.home', compact('roomTypes', 'previewWaypoint', 'stayInclusions', 'optionalAddOns'));
+        return view('guest.home', compact('roomTypes', 'stayInclusions', 'optionalAddOns'));
     }
 
     /**
      * Room catalog - browse all room types
      */
-    public function rooms()
+    public function rooms(Request $request)
     {
+        $checkIn = $request->check_in ? Carbon::parse($request->check_in) : null;
+        $checkOut = $request->check_out ? Carbon::parse($request->check_out) : null;
+        $guests = $request->guests ? (int) $request->guests : null;
+
         $roomTypes = RoomType::where('is_active', true)
-            ->withCount(['rooms', 'availableRooms'])
             ->with('amenities')
             ->get();
 
-        return view('guest.rooms', compact('roomTypes'));
+        $roomHoldService = app(RoomHoldService::class);
+
+        // Calculate availability based on whether dates are provided
+        if ($checkIn && $checkOut) {
+            foreach ($roomTypes as $roomType) {
+                $this->applyAvailabilitySummary(
+                    $roomType,
+                    $roomHoldService->getDateAvailabilitySummary($roomType, $checkIn, $checkOut, $guests)
+                );
+                $roomType->is_date_filtered = true;
+            }
+        } else {
+            foreach ($roomTypes as $roomType) {
+                $this->applyAvailabilitySummary($roomType, $roomHoldService->getCurrentAvailabilitySummary($roomType, $guests));
+                $roomType->is_date_filtered = false;
+            }
+        }
+
+        return view('guest.rooms', compact('roomTypes', 'checkIn', 'checkOut', 'guests'));
     }
 
     /**
@@ -73,7 +92,7 @@ class GuestController extends Controller
     public function roomDetail(RoomType $roomType)
     {
         $roomType->load('amenities');
-        $roomType->loadCount(['rooms', 'availableRooms']);
+        $this->applyAvailabilitySummary($roomType, app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType));
 
         $tourWaypointSlug = TourWaypoint::query()
             ->active()
@@ -87,22 +106,6 @@ class GuestController extends Controller
             ")
             ->ordered()
             ->value('slug');
-
-        // Calculate aggregate availability only (no individual room details for security)
-        $isPrivate = $roomType->isPrivate();
-        
-        if ($isPrivate) {
-            // For private rooms, just use the count relationships
-            $totalCount = $roomType->rooms_count;
-            $availableCount = $roomType->available_rooms_count;
-        } else {
-            // For shared rooms, calculate total beds
-            $totalBeds = $roomType->rooms()->sum('capacity');
-            $availableBeds = $roomType->rooms()->get()->sum(function ($room) {
-                $checkedIn = $room->roomAssignments()->where('status', 'checked_in')->count();
-                return max(0, ($room->capacity ?? 0) - $checkedIn);
-            });
-        }
 
         return view('guest.room-detail', compact('roomType', 'tourWaypointSlug'));
     }
@@ -122,12 +125,9 @@ class GuestController extends Controller
     {
         $roomTypes = RoomType::where('is_active', true)
             ->with('rooms')
-            ->withCount('availableRooms')
             ->get()
-            ->each(function ($roomType) {
-                // Calculate slot availability based on capacity vs active assignments
-                $roomType->total_beds = $roomType->rooms->sum('capacity');
-                $roomType->available_beds = $roomType->rooms->sum(fn ($r) => max(0, ($r->capacity ?? 0) - $r->roomAssignments()->where('status', 'checked_in')->count()));
+            ->each(function (RoomType $roomType) {
+                $this->applyAvailabilitySummary($roomType, app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType));
             });
 
         return view('guest.reserve', compact('roomTypes'));
@@ -155,6 +155,7 @@ class GuestController extends Controller
             'special_requests' => 'nullable|string|max:2000',
             'discount_declared' => 'nullable|boolean',
             'discount_declared_type' => 'required_if:discount_declared,1|nullable|in:senior_citizen,pwd,student',
+            'availability_acknowledged' => 'nullable|boolean',
         ]);
 
         // Combine name fields for guest_name (backward compatibility)
@@ -167,10 +168,39 @@ class GuestController extends Controller
         $validated['status'] = 'pending';
         $validated['discount_declared'] = $request->has('discount_declared');
 
+        $availabilityContext = $this->resolveAvailabilityContext(
+            (int) $validated['preferred_room_type_id'],
+            $validated['check_in_date'],
+            $validated['check_out_date'],
+            (int) $validated['number_of_occupants']
+        );
+
+        if ($availabilityContext !== null) {
+            $warning = 'This room type currently shows '
+                .$availabilityContext['summary']['availability_label']
+                .' for your selected dates and guest count. You can still submit this request for staff review by checking the acknowledgement below.';
+
+            if (! $request->boolean('availability_acknowledged')) {
+                throw ValidationException::withMessages([
+                    'availability_acknowledged' => $warning,
+                ]);
+            }
+
+            $validated['special_requests'] = trim(
+                (($validated['special_requests'] ?? null) ? rtrim($validated['special_requests'])."\n" : '')
+                .'[Availability warning acknowledged by guest: '
+                .$availabilityContext['summary']['availability_label']
+                .' for '.$validated['number_of_occupants'].' occupant(s) on '
+                .$validated['check_in_date'].' to '.$validated['check_out_date'].']'
+            );
+        }
+
+        unset($validated['availability_acknowledged']);
+
         $reservation = Reservation::create($validated);
 
         return redirect()->route('guest.track')
-            ->with('success', 'Your reservation has been submitted successfully!')
+            ->with('success', 'Your reservation request has been submitted successfully!')
             ->with('reference_number', $reservation->reference_number)
             ->with('guest_email', $reservation->guest_email);
     }
@@ -256,5 +286,45 @@ class GuestController extends Controller
         ]);
 
         return [$reservation, false];
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private function applyAvailabilitySummary(RoomType $roomType, array $summary): void
+    {
+        $roomType->available_rooms_count = $summary['available_rooms_count'] ?? 0;
+        $roomType->available_beds_count = $summary['available_beds_count'] ?? null;
+        $roomType->total_rooms_count = $summary['total_rooms_count'] ?? 0;
+        $roomType->total_beds_count = $summary['total_beds_count'] ?? null;
+        $roomType->availability_display_count = $summary['availability_display_count'] ?? 0;
+        $roomType->availability_display_unit = $summary['availability_display_unit'] ?? 'rooms';
+        $roomType->availability_label = $summary['availability_label'] ?? '0 rooms available';
+        $roomType->can_accommodate_requested_guests = $summary['can_accommodate_requested_guests'] ?? false;
+    }
+
+    /**
+     * @return array{room_type: RoomType, summary: array<string,mixed>}|null
+     */
+    private function resolveAvailabilityContext(int $roomTypeId, string $checkInDate, string $checkOutDate, int $occupants): ?array
+    {
+        $roomType = RoomType::query()
+            ->where('is_active', true)
+            ->find($roomTypeId);
+
+        if (! $roomType) {
+            return null;
+        }
+
+        $summary = app(RoomHoldService::class)->getDateAvailabilitySummary(
+            $roomType,
+            Carbon::parse($checkInDate),
+            Carbon::parse($checkOutDate),
+            $occupants
+        );
+
+        return ($summary['can_accommodate_requested_guests'] ?? false)
+            ? null
+            : ['room_type' => $roomType, 'summary' => $summary];
     }
 }

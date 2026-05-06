@@ -21,12 +21,10 @@ class GuestPaymentController extends Controller
      */
     public function showPaymentPage(string $token)
     {
-        // Feature toggle check
         if (! Setting::isOnlinePaymentsEnabled()) {
             abort(404, 'Online payments are not available.');
         }
 
-        // Find reservation by token
         $reservation = Reservation::where('payment_link_token', $token)
             ->with('preferredRoomType')
             ->first();
@@ -35,14 +33,16 @@ class GuestPaymentController extends Controller
             abort(404, 'Payment link not found.');
         }
 
-        // Check if token is still valid
         if (! $reservation->isPaymentLinkValid()) {
             return view('guest.payment-expired', [
                 'reservation' => $reservation,
             ]);
         }
 
-        // Check if already paid
+        if (! $reservation->canAcceptGuestPayment()) {
+            abort(404, 'Payment is only available after staff approval.');
+        }
+
         $existingDeposit = ReservationPayment::where('reservation_id', $reservation->id)
             ->where('is_deposit', true)
             ->where('status', 'posted')
@@ -54,20 +54,19 @@ class GuestPaymentController extends Controller
                 ->with('message', 'This reservation has already been paid.');
         }
 
-        // Check if reservation status allows payment
-        if (in_array($reservation->status, ['cancelled', 'declined', 'checked_out'])) {
+        if (in_array($reservation->status, ['cancelled', 'declined', 'checked_out'], true)) {
             abort(404, 'Payment not available for this reservation.');
         }
 
-        // Calculate deposit and full amounts
-        $depositAmount = $reservation->calculateDepositAmount();
-        $fullAmount = $reservation->calculateFullAmount();
+        $gatewayService = app(PaymentGatewayService::class);
 
         return view('guest.payment', [
             'reservation' => $reservation,
-            'depositAmount' => $depositAmount,
-            'fullAmount' => $fullAmount,
+            'depositAmount' => $reservation->calculateDepositAmount(),
+            'fullAmount' => $reservation->calculateFullAmount(),
             'depositPercentage' => $reservation->deposit_percentage ?? Setting::getDefaultDepositPercentage(),
+            'guestPaymentMethods' => $gatewayService->getGuestPaymentMethods(),
+            'merchantPaymentMethods' => $gatewayService->getMerchantPaymentMethods(),
         ]);
     }
 
@@ -79,12 +78,10 @@ class GuestPaymentController extends Controller
      */
     public function initializePayment(string $token, Request $request)
     {
-        // Feature toggle check
         if (! Setting::isOnlinePaymentsEnabled()) {
             abort(404, 'Online payments are not available.');
         }
 
-        // Find reservation by token
         $reservation = Reservation::where('payment_link_token', $token)
             ->with('preferredRoomType')
             ->first();
@@ -93,52 +90,63 @@ class GuestPaymentController extends Controller
             abort(404, 'Payment link not found or expired.');
         }
 
-        // Validate terms acceptance and payment type
+        if (! $reservation->canAcceptGuestPayment()) {
+            abort(404, 'Payment is only available after staff approval.');
+        }
+
         $request->validate([
             'accept_terms' => 'required|accepted',
-            'payment_method' => 'required|in:gcash,paymaya,grab_pay',
+            'payment_method' => 'required|in:gcash,paymaya,grab_pay,card,billease,qrph',
             'payment_type' => 'required|in:deposit,full',
         ]);
 
         try {
-            // Determine payment amount based on type
             $paymentType = $request->input('payment_type');
             $paymentAmount = $paymentType === 'full'
                 ? $reservation->calculateFullAmount()
                 : $reservation->calculateDepositAmount();
 
-            $isDeposit = $paymentType === 'deposit';
-
-            // Validate payment amount
             if ($paymentAmount <= 0) {
                 return back()->withErrors(['amount' => 'Unable to calculate payment amount. Please contact the homestay office.']);
             }
 
-            // Validate PayMongo minimum (₱100.00)
             if ($paymentAmount < 100) {
                 return back()->withErrors([
-                    'amount' => 'The calculated payment of ₱'.number_format($paymentAmount, 2).' is below the minimum amount for online payment (₱100.00). Please pay at the front desk upon check-in.',
+                    'amount' => 'The calculated payment of P'.number_format($paymentAmount, 2).' is below the minimum amount for online payment (P100.00). Please pay at the front desk upon check-in.',
                 ]);
             }
 
-            // Create payment intent via PayMongo
             $gatewayService = app(PaymentGatewayService::class);
-            $paymentIntent = $gatewayService->createPaymentIntent($reservation, $paymentAmount, $paymentType);
+            $selectedPaymentMethod = $request->input('payment_method');
+            $checkoutPaymentMethods = [$selectedPaymentMethod];
 
-            // Create pending payment record
+            $checkoutSession = $gatewayService->createCheckoutSession(
+                $reservation,
+                $paymentAmount,
+                $paymentType,
+                $checkoutPaymentMethods,
+                [
+                    'success' => route('guest.payment.success', ['reservation' => $reservation->reference_number]),
+                    'cancel' => route('guest.payment.failed', ['reservation' => $reservation->reference_number]),
+                ]
+            );
+
+            $isDeposit = $paymentType === 'deposit';
             $payment = ReservationPayment::create([
                 'reservation_id' => $reservation->id,
                 'amount' => $paymentAmount,
-                'payment_mode' => $request->input('payment_method'),
+                'payment_mode' => $selectedPaymentMethod,
                 'gateway' => 'paymongo',
-                'gateway_payment_id' => $paymentIntent['payment_id'],
+                'gateway_payment_id' => $checkoutSession['payment_intent_id'],
+                'gateway_source_id' => $checkoutSession['checkout_session_id'],
                 'gateway_status' => 'pending',
-                'is_deposit' => $isDeposit,  // Set based on payment type
-                'status' => 'pending', // Will be updated to 'posted' when webhook arrives
+                'is_deposit' => $isDeposit,
+                'status' => 'pending',
                 'gateway_metadata' => [
-                    'payment_intent_created_at' => now()->toIso8601String(),
-                    'client_key' => $paymentIntent['client_key'] ?? null,
-                    'payment_type' => $paymentType,  // Track payment type
+                    'checkout_session_created_at' => now()->toIso8601String(),
+                    'checkout_session_id' => $checkoutSession['checkout_session_id'] ?? null,
+                    'checkout_payment_methods' => $checkoutSession['payment_method_types'] ?? $checkoutPaymentMethods,
+                    'payment_type' => $paymentType,
                 ],
                 'meta' => [
                     'source' => 'guest_payment_page',
@@ -146,42 +154,29 @@ class GuestPaymentController extends Controller
                 ],
             ]);
 
-            // Log payment initiation
             $paymentTypeLabel = $isDeposit ? 'deposit' : 'full payment';
             ReservationLog::record(
                 $reservation,
                 'payment_initiated',
-                "Guest initiated online {$paymentTypeLabel} of ₱".number_format($paymentAmount, 2)." via {$request->input('payment_method')}.",
+                'Guest initiated online '.$paymentTypeLabel.' of P'.number_format($paymentAmount, 2).' via PayMongo Checkout.',
                 [
                     'payment_id' => $payment->id,
-                    'gateway_payment_id' => $paymentIntent['payment_id'],
+                    'gateway_payment_id' => $checkoutSession['payment_intent_id'],
+                    'checkout_session_id' => $checkoutSession['checkout_session_id'] ?? null,
                     'amount' => $paymentAmount,
-                    'payment_method' => $request->input('payment_method'),
+                    'payment_method' => $selectedPaymentMethod,
+                    'checkout_payment_methods' => $checkoutSession['payment_method_types'] ?? $checkoutPaymentMethods,
                     'payment_type' => $paymentType,
                     'is_deposit' => $isDeposit,
                     'ip_address' => $request->ip(),
                 ]
             );
 
-            // Attach payment method and get checkout URL
-            $returnUrls = [
-                'success' => route('guest.payment.success', ['reservation' => $reservation->reference_number]),
-                'failed' => route('guest.payment.failed', ['reservation' => $reservation->reference_number]),
-            ];
+            if (blank($checkoutSession['checkout_url'] ?? null)) {
+                throw new PaymentGatewayException('No checkout URL returned from payment gateway.');
+            }
 
-            $checkoutData = $gatewayService->attachPaymentMethod(
-                $paymentIntent['payment_id'],
-                $request->input('payment_method'),
-                $returnUrls
-            );
-
-            // Update payment with source ID
-            $payment->update([
-                'gateway_source_id' => $checkoutData['source_id'],
-            ]);
-
-            // Redirect to PayMongo checkout
-            return redirect($checkoutData['checkout_url']);
+            return redirect($checkoutSession['checkout_url']);
         } catch (PaymentGatewayException $e) {
             Log::error('Payment initialization failed', [
                 'reservation_id' => $reservation->id,

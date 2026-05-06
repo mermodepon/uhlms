@@ -33,7 +33,6 @@ class StatsOverview extends BaseWidget
             // Consolidate reservation stats into a single query (down from 4 queries)
             $reservationStats = Reservation::select(
                 DB::raw("SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending"),
-                DB::raw("SUM(CASE WHEN status = 'pending_payment' THEN 1 ELSE 0 END) as pending_payment"),
                 DB::raw("SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as active"),
                 DB::raw("SUM(CASE WHEN status = 'approved' AND check_in_date = CURDATE() THEN 1 ELSE 0 END) as today_checkins"),
                 DB::raw("SUM(CASE WHEN status = 'checked_in' AND check_out_date = CURDATE() THEN 1 ELSE 0 END) as today_checkouts"),
@@ -62,7 +61,6 @@ class StatsOverview extends BaseWidget
                 'occupiedRooms' => $occupiedRooms,
                 'occupancyRate' => $occupancyRate,
                 'pendingReservations' => (int) ($reservationStats->pending ?? 0),
-                'pendingPaymentReservations' => (int) ($reservationStats->pending_payment ?? 0),
                 'nearDueReservations' => (int) ($reservationStats->near_due ?? 0),
                 'overdueReservations' => (int) ($reservationStats->overdue ?? 0),
                 'activeReservations' => (int) ($reservationStats->active ?? 0),
@@ -77,7 +75,6 @@ class StatsOverview extends BaseWidget
         $roomIndex = RoomResource::getUrl('index');
 
         $pendingUrl = $resourceIndex.'?status=pending';
-        $pendingPaymentUrl = $resourceIndex.'?status=pending_payment';
         $nearDueUrl = $resourceIndex.'?near_due=1';
         $activeUrl = $resourceIndex.'?status=approved';
         $checkedInUrl = $resourceIndex.'?status=checked_in';
@@ -102,12 +99,6 @@ class StatsOverview extends BaseWidget
                 ->descriptionIcon('heroicon-m-clock')
                 ->color('warning')
                 ->url($pendingUrl),
-
-            Stat::make('Pending Payment', $stats['pendingPaymentReservations'])
-                ->description('Room held, awaiting payment')
-                ->descriptionIcon('heroicon-m-credit-card')
-                ->color($stats['pendingPaymentReservations'] > 0 ? 'warning' : 'success')
-                ->url($pendingPaymentUrl),
 
             // Row 2: Situational awareness
             Stat::make('Occupancy Rate', $stats['occupancyRate'].'%')

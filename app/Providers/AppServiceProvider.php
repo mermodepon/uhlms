@@ -46,7 +46,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // ── Production Eloquent optimizations ──────────────────────────
+        // Production Eloquent optimizations
         // Prevent lazy loading in non-production to catch N+1 queries early;
         // log violations silently in production instead of crashing.
         Model::preventLazyLoading(! app()->isProduction());
@@ -58,13 +58,13 @@ class AppServiceProvider extends ServiceProvider
         // (all current models use timestamps, so this is a safety net)
         Model::preventAccessingMissingAttributes(! app()->isProduction());
 
-        // ── Production DB optimizations ────────────────────────────────
+        // Production DB optimizations
         if (app()->isProduction()) {
             // Disable query logging in production to save memory
             DB::disableQueryLog();
         }
 
-        // ── Global date picker defaults ─────────────────────────────
+        // Global date picker defaults
         // Sunday-first week (7) consistent across all calendars.
         DatePicker::configureUsing(fn (DatePicker $picker) => $picker->firstDayOfWeek(7));
         DateTimePicker::configureUsing(fn (DateTimePicker $picker) => $picker->firstDayOfWeek(7));

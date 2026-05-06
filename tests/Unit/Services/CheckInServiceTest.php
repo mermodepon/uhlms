@@ -204,173 +204,108 @@ class CheckInServiceTest extends TestCase
         $this->service->execute($reservation, $payload);
     }
 
-    public function test_prepare_pending_payment_only_for_approved(): void
-    {
-        $user = $this->createUser();
-        $this->actingAs($user);
-
-        $roomType = $this->createRoomType();
-        $reservation = $this->createReservation($roomType);
-        $reservation->update(['status' => 'pending']);
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Only approved reservations can be prepared for payment.');
-        $this->service->preparePendingPayment($reservation, []);
-    }
-
-    public function test_prepare_pending_payment_requires_room_entries(): void
-    {
-        $user = $this->createUser();
-        $this->actingAs($user);
-
-        $roomType = $this->createRoomType();
-        $reservation = $this->createReservation($roomType);
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Please add at least one room entry');
-        $this->service->preparePendingPayment($reservation, ['reservation_rooms' => []]);
-    }
-
-    public function test_prepare_pending_payment_locks_room(): void
+    public function test_complete_onsite_check_in_requires_one_primary_guest_room(): void
     {
         $user = $this->createUser();
         $this->actingAs($user);
 
         $roomType = $this->createRoomType('public', 'per_person');
-        $room = $this->createRoom($roomType);
+        $room = $this->createRoom($roomType, 'available', 4);
         $reservation = $this->createReservation($roomType);
 
         $payload = [
             'guest_first_name' => 'John',
             'guest_last_name' => 'Doe',
-            'include_primary_in_first_room' => true,
+            'guest_gender' => 'Male',
+            'guest_contact_number' => '09171234567',
+            'payment_mode' => 'cash',
+            'payment_amount' => 1000,
+            'payment_or_number' => 'OR-1001',
+            'or_date' => now()->toDateString(),
             'reservation_rooms' => [
                 [
                     'room_mode' => 'dorm',
                     'room_id' => $room->id,
-                    'guests' => [
-                        ['first_name' => 'Jane', 'last_name' => 'Doe'],
-                    ],
+                    'includes_primary_guest' => true,
+                    'guests' => [],
                 ],
             ],
         ];
 
-        $result = $this->service->preparePendingPayment($reservation, $payload);
+        $result = $this->service->completeOnsiteCheckIn($reservation, $payload);
 
-        $this->assertEquals(1, $result['held_room_count']);
-        $this->assertNotNull($result['hold_expires_at']);
-        $this->assertEquals('reserved', $room->fresh()->status);
-        $this->assertEquals('pending_payment', $reservation->fresh()->status);
+        $this->assertTrue($result['all_succeeded']);
+        $this->assertEquals(1, $result['checked_in_count']);
     }
 
-    public function test_release_pending_payment_hold(): void
+    public function test_complete_onsite_check_in_rejects_no_primary_guest_room(): void
     {
         $user = $this->createUser();
         $this->actingAs($user);
 
         $roomType = $this->createRoomType('public', 'per_person');
-        $room = $this->createRoom($roomType);
-        $reservation = $this->createReservation($roomType);
-
-        $payload = [
-            'guest_first_name' => 'John',
-            'guest_last_name' => 'Doe',
-            'include_primary_in_first_room' => true,
-            'reservation_rooms' => [
-                [
-                    'room_mode' => 'dorm',
-                    'room_id' => $room->id,
-                    'guests' => [
-                        ['first_name' => 'Jane', 'last_name' => 'Doe'],
-                    ],
-                ],
-            ],
-        ];
-
-        $this->service->preparePendingPayment($reservation, $payload);
-        $reservation->refresh();
-
-        $this->service->releasePendingPaymentHold($reservation, true);
-
-        $this->assertEquals('available', $room->fresh()->status);
-        $this->assertEquals('approved', $reservation->fresh()->status);
-        $this->assertNull($reservation->fresh()->checkin_hold_payload);
-    }
-
-    public function test_finalize_pending_payment_requires_pending_payment_status(): void
-    {
-        $user = $this->createUser();
-        $this->actingAs($user);
-
-        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType, 'available', 4);
         $reservation = $this->createReservation($roomType);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Reservation is not in pending payment state.');
-        $this->service->finalizePendingPayment($reservation, []);
-    }
+        $this->expectExceptionMessage('Please choose one room entry to include the primary guest.');
 
-    public function test_validate_payment_data_rejects_empty_mode(): void
-    {
-        $user = $this->createUser();
-        $this->actingAs($user);
-
-        $roomType = $this->createRoomType('public', 'per_person');
-        $room = $this->createRoom($roomType);
-        $reservation = $this->createReservation($roomType);
-
-        $payload = [
+        $this->service->completeOnsiteCheckIn($reservation, [
             'guest_first_name' => 'John',
             'guest_last_name' => 'Doe',
-            'include_primary_in_first_room' => true,
+            'guest_gender' => 'Male',
+            'payment_mode' => 'cash',
+            'payment_amount' => 1000,
+            'payment_or_number' => 'OR-1002',
+            'or_date' => now()->toDateString(),
             'reservation_rooms' => [
                 [
                     'room_mode' => 'dorm',
                     'room_id' => $room->id,
-                    'guests' => [
-                        ['first_name' => 'Jane', 'last_name' => 'Doe'],
-                    ],
+                    'includes_primary_guest' => false,
+                    'guests' => [],
                 ],
             ],
-        ];
-
-        $this->service->preparePendingPayment($reservation, $payload);
-        $reservation->refresh();
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Mode of payment is required');
-        $this->service->finalizePendingPayment($reservation, ['payment_mode' => '']);
-    }
-
-    public function test_release_expired_holds(): void
-    {
-        $user = $this->createUser();
-        $this->actingAs($user);
-
-        $roomType = $this->createRoomType('public', 'per_person');
-        $room = $this->createRoom($roomType);
-        $reservation = $this->createReservation($roomType);
-
-        // Simulate an expired hold
-        $reservation->update([
-            'status' => 'pending_payment',
-            'checkin_hold_payload' => [
-                'payload' => [],
-                'entries' => [
-                    ['room_id' => $room->id, 'room_mode' => 'dorm', 'guests' => []],
-                ],
-            ],
-            'checkin_hold_started_at' => now()->subHours(4),
-            'checkin_hold_expires_at' => now()->subHour(),
-            'checkin_hold_by' => $user->id,
         ]);
+    }
 
-        $room->update(['status' => 'reserved']);
+    public function test_complete_onsite_check_in_rejects_multiple_primary_guest_rooms(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
 
-        $released = $this->service->releaseExpiredHolds();
+        $roomType = $this->createRoomType('public', 'per_person');
+        $roomA = $this->createRoom($roomType, 'available', 4);
+        $roomB = $this->createRoom($roomType, 'available', 4);
+        $reservation = $this->createReservation($roomType);
 
-        $this->assertEquals(1, $released);
-        $this->assertEquals('available', $room->fresh()->status);
-        $this->assertEquals('approved', $reservation->fresh()->status);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Primary guest can only be included in one room entry.');
+
+        $this->service->completeOnsiteCheckIn($reservation, [
+            'guest_first_name' => 'John',
+            'guest_last_name' => 'Doe',
+            'guest_gender' => 'Male',
+            'payment_mode' => 'cash',
+            'payment_amount' => 1500,
+            'payment_or_number' => 'OR-1003',
+            'or_date' => now()->toDateString(),
+            'reservation_rooms' => [
+                [
+                    'room_mode' => 'dorm',
+                    'room_id' => $roomA->id,
+                    'includes_primary_guest' => true,
+                    'guests' => [],
+                ],
+                [
+                    'room_mode' => 'dorm',
+                    'room_id' => $roomB->id,
+                    'includes_primary_guest' => true,
+                    'guests' => [
+                        ['first_name' => 'Jane', 'last_name' => 'Doe', 'gender' => 'Female'],
+                    ],
+                ],
+            ],
+        ]);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\RoomTypeResource\Pages;
 use App\Models\RoomType;
+use App\Support\MediaUrl;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -103,7 +104,12 @@ class RoomTypeResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\ImageColumn::make('images')
-                    ->disk(config('media.disk'))
+                    ->getStateUsing(fn (RoomType $record) => collect($record->images)
+                        ->filter()
+                        ->map(fn (string $path) => MediaUrl::absoluteUrl($path))
+                        ->values()
+                        ->all())
+                    ->checkFileExistence(false)
                     ->circular()
                     ->stacked()
                     ->limit(3)

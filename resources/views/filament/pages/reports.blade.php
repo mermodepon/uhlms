@@ -321,7 +321,7 @@
 
             {{-- Charts Row --}}
             @php
-                $statusColors = ['pending' => '#F59E0B', 'approved' => '#3B82F6', 'confirmed' => '#10B981', 'pending_payment' => '#8B5CF6', 'declined' => '#EF4444', 'cancelled' => '#6B7280', 'checked_in' => '#059669', 'checked_out' => '#6366F1'];
+                $statusColors = ['pending' => '#F59E0B', 'approved' => '#3B82F6', 'confirmed' => '#10B981', 'declined' => '#EF4444', 'cancelled' => '#6B7280', 'checked_in' => '#059669', 'checked_out' => '#6366F1'];
                 $statusLabels = array_values(array_map(fn($s) => ucwords(str_replace('_', ' ', $s)), array_keys($data['by_status'])));
                 $statusBgColors = array_values(array_map(fn($s) => $statusColors[$s] ?? '#6B7280', array_keys($data['by_status'])));
                 $purposeLabels = array_values(array_map(fn($s) => ucwords($s), array_keys($data['by_purpose'])));
@@ -931,7 +931,7 @@
                                                 @case('checked_in') bg-green-100 text-green-800 @break
                                                 @case('checked_out') bg-gray-100 text-gray-800 @break
                                                 @case('cancelled') bg-red-100 text-red-800 @break
-                                                @case('pending_payment') text-gray-900 dark:text-gray-100 @break
+
                                                 @default bg-gray-100 text-gray-800
                                             @endswitch
                                         ">{{ ucfirst(str_replace('_', ' ', $reservation['status'])) }}</span>

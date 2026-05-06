@@ -25,7 +25,7 @@
                 <p class="text-gray-600 mb-6">{{ $message }}</p>
             @else
                 <p class="text-gray-600 mb-6">
-                    Thank you! Your payment has been successfully processed. Our staff will review your reservation and confirm your booking shortly.
+                    Thank you! Your payment has been successfully processed. Your approved reservation has been updated, and staff will send any remaining arrival details shortly.
                 </p>
             @endif
 
@@ -61,8 +61,8 @@
                     Next Steps
                 </h4>
                 <ul class="text-sm text-gray-700 space-y-1 list-disc list-inside ml-7">
-                    <li>You will receive a confirmation email shortly</li>
-                    <li>Our staff will review your reservation</li>
+                    <li>You will receive a status update email shortly</li>
+                    <li>Our staff will finalize any remaining reservation details</li>
                     <li>The remaining balance is payable upon check-in</li>
                     <li>Please bring a valid ID when you arrive</li>
                 </ul>

@@ -5,8 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 
 class Reservation extends Model
 {
@@ -33,10 +35,6 @@ class Reservation extends Model
         'status',
         'approved_at',
         'admin_notes',
-        'checkin_hold_payload',
-        'checkin_hold_started_at',
-        'checkin_hold_expires_at',
-        'checkin_hold_by',
         'addons_total',
         'payments_total',
         'balance_due',
@@ -60,9 +58,6 @@ class Reservation extends Model
             'num_female_guests' => 'integer',
             'check_in_date' => 'date',
             'check_out_date' => 'date',
-            'checkin_hold_payload' => 'array',
-            'checkin_hold_started_at' => 'datetime',
-            'checkin_hold_expires_at' => 'datetime',
             'addons_total' => 'decimal:2',
             'payments_total' => 'decimal:2',
             'balance_due' => 'decimal:2',
@@ -196,43 +191,12 @@ class Reservation extends Model
             'pending' => 'warning',
             'approved' => 'info',
             'confirmed' => 'success',
-            'pending_payment' => 'warning',
             'declined' => 'danger',
             'cancelled' => 'gray',
             'checked_in' => 'success',
             'checked_out' => 'gray',
             default => 'gray',
         };
-    }
-
-    /**
-     * Extract preferred room ID from special_requests metadata (virtual tour).
-     */
-    public function getPreferredRoomIdAttribute(): ?int
-    {
-        if (empty($this->special_requests)) {
-            return null;
-        }
-
-        // Match: [Preferred Room ID: 123]
-        if (preg_match('/\[Preferred Room ID: (\d+)\]/', $this->special_requests, $matches)) {
-            return (int) $matches[1];
-        }
-
-        return null;
-    }
-
-    /**
-     * Get the preferred Room model if it exists and is valid.
-     */
-    public function getPreferredRoomAttribute(): ?Room
-    {
-        $roomId = $this->getPreferredRoomIdAttribute();
-        if (!$roomId) {
-            return null;
-        }
-
-        return Room::with('roomType')->find($roomId);
     }
 
     /**
@@ -270,6 +234,28 @@ class Reservation extends Model
         }
 
         return now()->lessThan($this->payment_link_expires_at);
+    }
+
+    /**
+     * Whether the guest can currently use the online payment link.
+     */
+    public function canAcceptGuestPayment(): bool
+    {
+        return in_array($this->status, ['approved', 'confirmed'], true);
+    }
+
+    /**
+     * Start or refresh the guest payment link validity window.
+     */
+    public function issueGuestPaymentLink(bool $rotateToken = false, ?Carbon $expiresAt = null): self
+    {
+        if ($rotateToken || empty($this->payment_link_token)) {
+            $this->payment_link_token = (string) Str::uuid();
+        }
+
+        $this->payment_link_expires_at = $expiresAt ?? now()->addHours(48);
+
+        return $this;
     }
 
     /**
@@ -331,6 +317,234 @@ class Reservation extends Model
             ->where('gateway_status', 'paid')
             ->where('status', 'posted')
             ->exists();
+    }
+
+    /**
+     * Get payment gateway status label (optimized for table display).
+     * Expects payments to be eager-loaded.
+     */
+    public function getPaymentGatewayStatusAttribute(): string
+    {
+        // Check for full payment (is_deposit = false)
+        $fullPayment = $this->relationLoaded('payments')
+            ? $this->payments->where('gateway', 'paymongo')
+                ->where('is_deposit', false)
+                ->where('gateway_status', 'paid')
+                ->isNotEmpty()
+            : $this->payments()
+                ->where('gateway', 'paymongo')
+                ->where('is_deposit', false)
+                ->where('gateway_status', 'paid')
+                ->exists();
+
+        if ($fullPayment) {
+            return 'Online: Fully Paid';
+        }
+
+        // Check for deposit payment (is_deposit = true)
+        $depositPayment = $this->relationLoaded('payments')
+            ? $this->payments->where('gateway', 'paymongo')
+                ->where('is_deposit', true)
+                ->where('gateway_status', 'paid')
+                ->isNotEmpty()
+            : $this->payments()
+                ->where('gateway', 'paymongo')
+                ->where('is_deposit', true)
+                ->where('gateway_status', 'paid')
+                ->exists();
+
+        if ($depositPayment) {
+            return 'Online: Deposit Paid';
+        }
+
+        // Check for pending gateway payments
+        $pendingPayment = $this->relationLoaded('payments')
+            ? $this->payments->where('gateway', 'paymongo')
+                ->where('gateway_status', 'pending')
+                ->isNotEmpty()
+            : $this->payments()
+                ->where('gateway', 'paymongo')
+                ->where('gateway_status', 'pending')
+                ->exists();
+
+        if ($pendingPayment) {
+            return 'Online: Pending';
+        }
+
+        return 'Manual';
+    }
+
+    /**
+     * Get payment gateway status color (optimized for table display).
+     * Expects payments to be eager-loaded.
+     */
+    public function getPaymentGatewayColorAttribute(): string
+    {
+        // Full payment = green
+        $fullPayment = $this->relationLoaded('payments')
+            ? $this->payments->where('gateway', 'paymongo')
+                ->where('is_deposit', false)
+                ->where('gateway_status', 'paid')
+                ->isNotEmpty()
+            : $this->payments()
+                ->where('gateway', 'paymongo')
+                ->where('is_deposit', false)
+                ->where('gateway_status', 'paid')
+                ->exists();
+
+        if ($fullPayment) {
+            return 'success';
+        }
+
+        // Deposit payment = yellow/warning
+        $depositPayment = $this->relationLoaded('payments')
+            ? $this->payments->where('gateway', 'paymongo')
+                ->where('is_deposit', true)
+                ->where('gateway_status', 'paid')
+                ->isNotEmpty()
+            : $this->payments()
+                ->where('gateway', 'paymongo')
+                ->where('is_deposit', true)
+                ->where('gateway_status', 'paid')
+                ->exists();
+
+        if ($depositPayment) {
+            return 'warning';
+        }
+
+        // Pending = blue/info
+        $pendingPayment = $this->relationLoaded('payments')
+            ? $this->payments->where('gateway', 'paymongo')
+                ->where('gateway_status', 'pending')
+                ->isNotEmpty()
+            : $this->payments()
+                ->where('gateway', 'paymongo')
+                ->where('gateway_status', 'pending')
+                ->exists();
+
+        if ($pendingPayment) {
+            return 'info';
+        }
+
+        return 'gray';
+    }
+
+    /**
+     * Get room display data (optimized for table display).
+     * Expects roomAssignments, roomHolds relationships to be eager-loaded.
+     *
+     * @return array{rooms: array<string>, color: string, tooltip: string|null}
+     */
+    public function getRoomDisplayInfoAttribute(): array
+    {
+        // Priority 1: Actual room assignments (for checked-in/out)
+        if (in_array($this->status, ['checked_in', 'checked_out'], true)) {
+            $assignedRooms = $this->relationLoaded('roomAssignments')
+                ? $this->roomAssignments->pluck('room.room_number')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->toArray()
+                : $this->roomAssignments()
+                    ->with('room')
+                    ->get()
+                    ->pluck('room.room_number')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->toArray();
+
+            if (!empty($assignedRooms)) {
+                return [
+                    'rooms' => $assignedRooms,
+                    'color' => 'success',
+                    'tooltip' => 'Room assignment (occupied)'
+                ];
+            }
+        }
+
+        // Priority 2: Advance holds (for approved/confirmed)
+        if (in_array($this->status, ['approved', 'confirmed'], true)) {
+            $holds = $this->relationLoaded('roomHolds')
+                ? $this->roomHolds->where('hold_type', 'advance')->filter(fn ($h) => $h->room)
+                : $this->roomHolds()->advance()->with('room')->get();
+
+            if ($holds->isNotEmpty()) {
+                $heldRooms = $holds
+                    ->pluck('room.room_number')
+                    ->filter()
+                    ->unique()
+                    ->map(fn ($r) => "[Held] {$r}")
+                    ->values()
+                    ->toArray();
+
+                if (!empty($heldRooms)) {
+                    return [
+                        'rooms' => $heldRooms,
+                        'color' => 'info',
+                        'tooltip' => 'Advance hold (reserved)',
+                    ];
+                }
+            }
+        }
+
+        return ['rooms' => [], 'color' => 'gray', 'tooltip' => null];
+    }
+
+    /**
+     * Get discount information (optimized for table display).
+     * Expects charges relationship to be eager-loaded.
+     *
+     * @return array{label: string, applied: bool, amount: float}
+     */
+    public function getDiscountInfoAttribute(): array
+    {
+        $charges = $this->relationLoaded('charges')
+            ? $this->charges
+            : $this->charges()->get();
+
+        $discountCharges = $charges->where('charge_type', 'discount');
+
+        $discountTotal = (float) abs($discountCharges->sum('amount'));
+
+        $discountTypes = $discountCharges
+            ->flatMap(function ($charge) {
+                $types = data_get($charge->meta, 'discount_types', []);
+                if (is_array($types) && !empty($types)) {
+                    return $types;
+                }
+                // Fallback: legacy 'discount_type' (singular string)
+                $legacy = data_get($charge->meta, 'discount_type');
+
+                return $legacy ? [(string) $legacy] : [];
+            })
+            ->filter()
+            ->map(fn ($type) => $this->formatDiscountLabel((string) $type))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $discountApplied = $discountTotal > 0 || $discountTypes->isNotEmpty();
+        $label = $discountApplied ? $discountTypes->implode(', ') : 'No';
+
+        return [
+            'label' => $label,
+            'applied' => $discountApplied,
+            'amount' => $discountTotal,
+        ];
+    }
+
+    /**
+     * Format discount type label for display.
+     */
+    private function formatDiscountLabel(string $raw): string
+    {
+        return match (strtolower($raw)) {
+            'pwd' => 'PWD',
+            'senior_citizen', 'senior' => 'Senior Citizen',
+            'student' => 'Student',
+            default => ucwords(str_replace('_', ' ', $raw)),
+        };
     }
 
     private function resolveTrackingLinkExpiry()

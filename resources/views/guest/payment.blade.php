@@ -6,37 +6,22 @@
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-bold mb-2">Complete Your Payment</h1>
-            <p class="text-gray-200">Secure online payment for your reservation</p>
+            <p class="text-gray-200">Secure online payment for your reservation request or confirmed stay</p>
         </div>
     </section>
 
     <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {{-- Status-based Message --}}
-        @if($reservation->status === 'pending')
-            <div class="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-5 mb-6">
-                <div class="flex items-start">
-                    <svg class="w-6 h-6 text-amber-600 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-                    </svg>
-                    <div>
-                        <h3 class="text-lg font-semibold text-amber-900 mb-1">Reservation Under Review</h3>
-                        <p class="text-amber-800 text-sm leading-relaxed">
-                            Your reservation is currently being reviewed by our staff. You can proceed with payment now to <strong>expedite confirmation</strong> — 
-                            paying in advance will automatically confirm your reservation once processed.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        @elseif($reservation->status === 'approved')
+        @if($reservation->status === 'approved')
             <div class="bg-green-50 border-l-4 border-green-500 rounded-lg p-5 mb-6">
                 <div class="flex items-start">
                     <svg class="w-6 h-6 text-green-600 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                     </svg>
                     <div class="flex-1">
-                        <h3 class="text-lg font-semibold text-green-900 mb-1">✅ Reservation Approved!</h3>
+                        <h3 class="text-lg font-semibold text-green-900 mb-1">Reservation Request Approved</h3>
                         <p class="text-green-800 text-sm leading-relaxed mb-2">
-                            Great news! Your reservation has been approved. Complete your payment below to <strong>confirm your reservation</strong>.
+                            Great news! Your request has been approved. Complete your payment below to move it into <strong>confirmed status</strong>.
                         </p>
                         @if($reservation->approved_at)
                             @php
@@ -77,9 +62,9 @@
                         <path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                     </svg>
                     <div>
-                        <h3 class="text-lg font-semibold text-blue-900 mb-1">🎉 Reservation Confirmed!</h3>
+                        <h3 class="text-lg font-semibold text-blue-900 mb-1">Reservation Confirmed</h3>
                         <p class="text-blue-800 text-sm">
-                            Your deposit has been received and your reservation is confirmed. We look forward to welcoming you!
+                            Your deposit has been received and your reservation is now in confirmed status. We look forward to welcoming you!
                         </p>
                     </div>
                 </div>
@@ -137,7 +122,7 @@
                             <h3 class="text-yellow-900 font-bold text-lg mb-1">Discount Holder - Deposit Payment Only</h3>
                             <p class="text-yellow-800 text-sm mb-2">
                                 You declared eligibility for a <strong>{{ ucwords(str_replace('_', ' ', $reservation->discount_declared_type)) }} discount</strong>. 
-                                You can only pay a deposit now to secure your reservation.
+                                You can only pay a deposit now to keep your request moving toward confirmation.
                             </p>
                             <p class="text-yellow-800 text-sm">
                                 <strong>Upon check-in:</strong> Present your valid ID to verify your discount eligibility. 
@@ -259,7 +244,7 @@
                     <svg class="w-4 h-4 inline mr-1 text-green-600" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                     </svg>
-                    <strong>Full payment secured!</strong> No additional payment needed upon check-in. Just show your confirmation and ID.
+                    <strong>Full payment received.</strong> No additional payment is normally needed upon check-in unless staff adjusts the stay charges.
                 </p>
             </div>
         </div>
@@ -273,42 +258,50 @@
                     Select Payment Method
                 </h2>
 
+                <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                    <p class="font-semibold">You will continue on PayMongo Checkout.</p>
+                    <p class="mt-1 text-emerald-800">
+                        Choose your preferred payment method here. The final hosted PayMongo checkout page will only show methods that are activated on the connected PayMongo account.
+                    </p>
+                    @if(!empty($merchantPaymentMethods ?? []))
+                        <p class="mt-2 text-xs text-emerald-700">
+                            Current PayMongo account capability check: {{ implode(', ', $merchantPaymentMethods) }}.
+                        </p>
+                    @endif
+                </div>
+
                 <div class="space-y-3">
-                    {{-- GCash Option --}}
-                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-                        <input type="radio" name="payment_method" value="gcash" class="w-5 h-5 text-blue-600 focus:ring-blue-500" required>
-                        <div class="ml-3 flex-1 flex items-center justify-between">
-                            <span class="font-medium text-gray-900">GCash</span>
-                            <svg class="h-6" viewBox="0 0 100 30" fill="none">
-                                <rect width="100" height="30" rx="4" fill="#007DFF"/>
-                                <text x="50" y="20" font-family="Arial" font-weight="bold" font-size="16" fill="white" text-anchor="middle">GCash</text>
-                            </svg>
-                        </div>
-                    </label>
-
-                    {{-- PayMaya Option --}}
-                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-                        <input type="radio" name="payment_method" value="paymaya" class="w-5 h-5 text-blue-600 focus:ring-blue-500" required>
-                        <div class="ml-3 flex-1 flex items-center justify-between">
-                            <span class="font-medium text-gray-900">Maya (PayMaya)</span>
-                            <svg class="h-6" viewBox="0 0 100 30" fill="none">
-                                <rect width="100" height="30" rx="4" fill="#4CAF50"/>
-                                <text x="50" y="20" font-family="Arial" font-weight="bold" font-size="16" fill="white" text-anchor="middle">Maya</text>
-                            </svg>
-                        </div>
-                    </label>
-
-                    {{-- GrabPay Option --}}
-                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-                        <input type="radio" name="payment_method" value="grab_pay" class="w-5 h-5 text-blue-600 focus:ring-blue-500" required>
-                        <div class="ml-3 flex-1 flex items-center justify-between">
-                            <span class="font-medium text-gray-900">GrabPay</span>
-                            <svg class="h-6" viewBox="0 0 100 30" fill="none">
-                                <rect width="100" height="30" rx="4" fill="#00B14F"/>
-                                <text x="50" y="20" font-family="Arial" font-weight="bold" font-size="14" fill="white" text-anchor="middle">GrabPay</text>
-                            </svg>
-                        </div>
-                    </label>
+                    @foreach(($guestPaymentMethods ?? []) as $methodKey => $method)
+                        @php
+                            $badgeClasses = match($method['badge_color'] ?? 'slate') {
+                                'emerald' => 'bg-emerald-100 text-emerald-700',
+                                'blue' => 'bg-blue-100 text-blue-700',
+                                'green' => 'bg-green-100 text-green-700',
+                                'amber' => 'bg-amber-100 text-amber-700',
+                                'violet' => 'bg-violet-100 text-violet-700',
+                                default => 'bg-slate-100 text-slate-700',
+                            };
+                        @endphp
+                        <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+                            <input
+                                type="radio"
+                                name="payment_method"
+                                value="{{ $methodKey }}"
+                                class="w-5 h-5 text-blue-600 focus:ring-blue-500"
+                                {{ $loop->first ? 'checked' : '' }}
+                                required
+                            >
+                            <div class="ml-3 flex-1 flex items-start justify-between gap-3">
+                                <div>
+                                    <p class="font-medium text-gray-900">{{ $method['label'] }}</p>
+                                    <p class="text-sm text-gray-600 mt-1">{{ $method['description'] }}</p>
+                                </div>
+                                <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap {{ $badgeClasses }}">
+                                    {{ $method['badge'] }}
+                                </span>
+                            </div>
+                        </label>
+                    @endforeach
                 </div>
 
                 @error('payment_method')

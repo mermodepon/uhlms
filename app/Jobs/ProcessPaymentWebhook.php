@@ -6,6 +6,7 @@ use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\ReservationPayment;
 use App\Notifications\NotificationHelper;
+use App\Services\ReservationWorkflowService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -77,6 +78,12 @@ class ProcessPaymentWebhook implements ShouldQueue
                 return;
             }
 
+            if ($eventType === 'checkout_session.payment.paid') {
+                $this->handleCheckoutSessionPaid($eventData);
+
+                return;
+            }
+
             Log::info('Unhandled webhook event type', ['type' => $eventType]);
         } catch (\Exception $e) {
             Log::error('Webhook processing failed', [
@@ -131,6 +138,33 @@ class ProcessPaymentWebhook implements ShouldQueue
     }
 
     /**
+     * Handle checkout_session.payment.paid webhook event.
+     */
+    protected function handleCheckoutSessionPaid(array $checkoutSessionData): void
+    {
+        $checkoutAttributes = $checkoutSessionData['attributes'] ?? [];
+        $payments = $checkoutAttributes['payments'] ?? [];
+        $paymentData = $payments[0] ?? null;
+
+        if (! is_array($paymentData)) {
+            Log::warning('Checkout session payment webhook missing payment payload', [
+                'checkout_session_id' => $checkoutSessionData['id'] ?? null,
+            ]);
+
+            return;
+        }
+
+        $paymentData['attributes']['metadata'] = array_merge(
+            $checkoutAttributes['metadata'] ?? [],
+            $paymentData['attributes']['metadata'] ?? []
+        );
+
+        $paymentData['attributes']['checkout_session_id'] = $checkoutSessionData['id'] ?? null;
+
+        $this->handlePaymentPaid($paymentData);
+    }
+
+    /**
      * Handle payment.paid webhook event.
      */
     protected function handlePaymentPaid(array $paymentData): void
@@ -139,6 +173,8 @@ class ProcessPaymentWebhook implements ShouldQueue
             $paymentId = $paymentData['id'] ?? null;
             $paymentStatus = $paymentData['attributes']['status'] ?? null;
             $paymentAmount = ($paymentData['attributes']['amount'] ?? 0) / 100; // Convert centavos to PHP
+            $paymentIntentId = $paymentData['attributes']['payment_intent_id'] ?? null;
+            $checkoutSessionId = $paymentData['attributes']['checkout_session_id'] ?? null;
 
             // Extract reservation ID from source metadata or payment attributes
             $sourceData = $paymentData['attributes']['source'] ?? [];
@@ -168,15 +204,21 @@ class ProcessPaymentWebhook implements ShouldQueue
             }
 
             // Process payment within transaction
-            DB::transaction(function () use ($paymentId, $paymentStatus, $paymentAmount, $reservation, $paymentData, $sourceData, $sourceAttributes) {
+            DB::transaction(function () use ($paymentId, $paymentStatus, $paymentAmount, $paymentIntentId, $checkoutSessionId, $reservation, $paymentData, $sourceData, $sourceAttributes) {
             $sourceId = $sourceData['id'] ?? null;
 
             // Check if payment already processed (idempotency)
-            // Look for existing payment by gateway_payment_id OR gateway_source_id
-            $existingPayment = ReservationPayment::where(function ($query) use ($paymentId, $sourceId) {
+            // Look for existing payment by actual payment ID, payment intent ID, or source/checkout session ID.
+            $existingPayment = ReservationPayment::where(function ($query) use ($paymentId, $paymentIntentId, $sourceId, $checkoutSessionId) {
                 $query->where('gateway_payment_id', $paymentId);
+                if ($paymentIntentId) {
+                    $query->orWhere('gateway_payment_id', $paymentIntentId);
+                }
                 if ($sourceId) {
                     $query->orWhere('gateway_source_id', $sourceId);
+                }
+                if ($checkoutSessionId) {
+                    $query->orWhere('gateway_source_id', $checkoutSessionId);
                 }
             })->first();
 
@@ -197,6 +239,8 @@ class ProcessPaymentWebhook implements ShouldQueue
                 'paymaya' => 'Maya',
                 'grab_pay' => 'GrabPay',
                 'card' => 'Card',
+                'billease' => 'BillEase',
+                'qrph' => 'QR Ph',
                 default => ucfirst(str_replace('_', ' ', $sourceType)),
             };
 
@@ -217,6 +261,8 @@ class ProcessPaymentWebhook implements ShouldQueue
                         $existingPayment->gateway_metadata ?? [],
                         [
                             'webhook_received_at' => now()->toIso8601String(),
+                            'payment_intent_id' => $paymentIntentId,
+                            'checkout_session_id' => $checkoutSessionId,
                             'payment_data' => $paymentData,
                             'source_data' => $sourceData,
                         ]
@@ -241,6 +287,8 @@ class ProcessPaymentWebhook implements ShouldQueue
                     'or_date' => now()->toDateString(),
                     'gateway_metadata' => [
                         'webhook_received_at' => now()->toIso8601String(),
+                        'payment_intent_id' => $paymentIntentId,
+                        'checkout_session_id' => $checkoutSessionId,
                         'payment_data' => $paymentData,
                         'source_data' => $sourceData,
                     ],
@@ -251,24 +299,8 @@ class ProcessPaymentWebhook implements ShouldQueue
                 ]);
             }
 
-            // Update reservation status based on current status
-            $currentStatus = $reservation->status;
-            $newStatus = match ($currentStatus) {
-                'pending' => 'confirmed', // Auto-confirm if paid before approval (skip approval step)
-                'approved' => 'confirmed', // Normal flow: approved then paid = confirmed
-                default => $currentStatus, // Keep current status otherwise
-            };
-
-            $updateData = ['status' => $newStatus];
-            
-            // Set approved_at if transitioning from pending to confirmed (auto-approved by payment)
-            if ($currentStatus === 'pending' && $newStatus === 'confirmed' && empty($reservation->approved_at)) {
-                $updateData['approved_at'] = now();
-            }
-
-            if ($newStatus !== $currentStatus) {
-                $reservation->update($updateData);
-            }
+                $reservation = app(ReservationWorkflowService::class)
+                    ->markConfirmedFromOnlinePayment($reservation);
 
                 // Refresh financial summary
                 $reservation->refreshFinancialSummary();
@@ -281,11 +313,11 @@ class ProcessPaymentWebhook implements ShouldQueue
                     "Online {$paymentTypeLabel} of ₱".number_format($paymentAmount, 2)." received via PayMongo ({$payment->payment_mode}).",
                     [
                         'payment_id' => $payment->id,
-                        'gateway_payment_id' => $paymentId,
-                        'amount' => $paymentAmount,
-                        'gateway' => 'paymongo',
-                        'is_deposit' => $payment->is_deposit,
-                    ]
+                    'gateway_payment_id' => $paymentId,
+                    'amount' => $paymentAmount,
+                    'gateway' => 'paymongo',
+                    'is_deposit' => $payment->is_deposit,
+                ]
                 );
 
                 // Notify staff of successful payment
@@ -304,7 +336,7 @@ class ProcessPaymentWebhook implements ShouldQueue
                     'payment_id' => $payment->id,
                     'gateway_payment_id' => $paymentId,
                     'amount' => $paymentAmount,
-                    'new_status' => $newStatus,
+                    'new_status' => $reservation->status,
                 ]);
             });
         } catch (\Exception $e) {

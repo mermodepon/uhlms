@@ -14,7 +14,6 @@ class Kernel extends ConsoleKernel
      */
     protected $commands = [
         \App\Console\Commands\SendNearDueReservationReminders::class,
-        \App\Console\Commands\ReleaseExpiredRoomHolds::class,
         \App\Console\Commands\ExpireUnpaidReservations::class,
         \App\Console\Commands\RepairNotificationLinks::class,
         \App\Console\Commands\PurgeNotifications::class,
@@ -27,9 +26,6 @@ class Kernel extends ConsoleKernel
     {
         // Run reservation reminders hourly (checks for near-due reservations)
         $schedule->command('reservation:remind-near-due')->hourly();
-
-        // Release expired room holds every 15 minutes
-        $schedule->command('room-holds:release-expired')->everyFifteenMinutes();
 
         // Auto-cancel approved unpaid reservations daily (72 hour deadline)
         $schedule->command('reservations:expire-unpaid')->dailyAt('02:00');

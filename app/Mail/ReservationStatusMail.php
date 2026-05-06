@@ -57,7 +57,7 @@ class ReservationStatusMail extends Mailable
     private function resolveSubject(): string
     {
         if ($this->context === 'submitted') {
-            return "Reservation Received - {$this->reservation->reference_number}";
+            return "Reservation Request Received - {$this->reservation->reference_number}";
         }
 
         return "Reservation {$this->formatStatus($this->reservation->status)} - {$this->reservation->reference_number}";

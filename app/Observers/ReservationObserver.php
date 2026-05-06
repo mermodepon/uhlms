@@ -7,7 +7,6 @@ use App\Models\ReservationLog;
 use App\Models\RoomAssignment;
 use App\Notifications\NotificationHelper;
 use App\Services\ReservationStatusMailer;
-use Illuminate\Support\Str;
 
 class ReservationObserver
 {
@@ -17,11 +16,8 @@ class ReservationObserver
      */
     public function creating(Reservation $reservation): void
     {
-        // Auto-generate payment link token and expiry (48 hours from now)
-        if (empty($reservation->payment_link_token)) {
-            $reservation->payment_link_token = (string) Str::uuid();
-            $reservation->payment_link_expires_at = now()->addHours(48);
-        }
+        // Seed a payment token early so the reservation always has a trackable link state.
+        $reservation->issueGuestPaymentLink();
     }
 
     public function created(Reservation $reservation): void
@@ -90,8 +86,6 @@ class ReservationObserver
                 $newStatus === 'declined' => 'reservation_declined',
                 $newStatus === 'cancelled' => 'reservation_cancelled',
                 $oldStatus === 'checked_in' && $newStatus === 'checked_out' => 'reservation_checked_out',
-                $oldStatus === 'pending_payment' && $newStatus === 'approved' => 'checkin_hold_released',
-                $oldStatus === 'pending_payment' && $newStatus === 'confirmed' => 'checkin_hold_released',
                 default => null,
             };
 
@@ -103,7 +97,6 @@ class ReservationObserver
                     'reservation_cancelled' => "Reservation #{$reservation->reference_number} cancelled."
                         .($reservation->admin_notes ? " Reason: {$reservation->admin_notes}" : ''),
                     'reservation_checked_out' => "Reservation #{$reservation->reference_number} checked out.",
-                    'checkin_hold_released' => "Payment hold released. Reservation #{$reservation->reference_number} returned to ".($newStatus === 'confirmed' ? 'confirmed' : 'approved').".",
                     default => "Status changed from {$oldStatus} to {$newStatus}.",
                 };
 

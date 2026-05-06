@@ -21,8 +21,10 @@ class TourController extends Controller
     public function viewer(?string $slug = null)
     {
         $startWaypoint = $slug ?: 'entrance';
-        
-        return view('guest.virtual-tour-viewer', compact('startWaypoint'));
+        $waypointCount = TourWaypoint::query()->active()->count();
+        $hasWaypoints = $waypointCount > 0;
+
+        return view('guest.virtual-tour-viewer', compact('startWaypoint', 'hasWaypoints', 'waypointCount'));
     }
 
     /**
@@ -162,26 +164,33 @@ class TourController extends Controller
         $guests = $request->get('guests', 1);
 
         $availabilityData = $this->formatRoomTypeData($roomType);
+        $requestedGuests = max(1, (int) $guests);
 
         // Add date-specific availability if dates provided
         if ($checkIn && $checkOut) {
             try {
                 $checkInDate = Carbon::parse($checkIn);
                 $checkOutDate = Carbon::parse($checkOut);
-
-                $availabilityData['available_rooms_count'] = $roomType
-                    ->availableRoomsForDates($checkInDate, $checkOutDate)
-                    ->count();
+                $availabilityData = array_merge(
+                    $availabilityData,
+                    app(RoomHoldService::class)->getDateAvailabilitySummary($roomType, $checkInDate, $checkOutDate, $requestedGuests)
+                );
             } catch (\Exception $e) {
-                $availabilityData['available_rooms_count'] = $roomType->availableRooms()->count();
+                $availabilityData = array_merge(
+                    $availabilityData,
+                    app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType, $requestedGuests)
+                );
             }
         } else {
-            // Current real-time availability
-            $availabilityData['available_rooms_count'] = $roomType->availableRooms()->count();
+            $availabilityData = array_merge(
+                $availabilityData,
+                app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType, $requestedGuests)
+            );
         }
 
-        $availabilityData['total_rooms_count'] = $roomType->rooms()->count();
         $availabilityData['pricing_display'] = $roomType->getFormattedPrice();
+        $availabilityData['requested_guests'] = $requestedGuests;
+        unset($availabilityData['available_rooms']);
 
         return response()->json([
             'success' => true,
@@ -250,12 +259,12 @@ class TourController extends Controller
             'guest_gender' => 'required|in:Male,Female,Other',
             'guest_address' => 'nullable|string|max:1000',
             'preferred_room_type_id' => 'required|exists:room_types,id',
-            'preferred_room_id' => 'nullable|exists:rooms,id',
             'check_in_date' => 'required|date|after_or_equal:today',
             'check_out_date' => 'required|date|after:check_in_date',
             'number_of_occupants' => 'required|integer|min:1|max:20',
             'special_requests' => 'nullable|string|max:2000',
             'source' => 'nullable|string|in:virtual_tour',
+            'availability_acknowledged' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -267,7 +276,6 @@ class TourController extends Controller
         }
 
         $validated = $validator->validated();
-        $validated['preferred_room_id'] = null;
 
         // Combine name fields
         $validated['guest_name'] = trim(
@@ -276,21 +284,54 @@ class TourController extends Controller
         );
 
         $validated['status'] = 'pending';
+
+        $availabilityContext = $this->resolveAvailabilityContext(
+            (int) $validated['preferred_room_type_id'],
+            $validated['check_in_date'],
+            $validated['check_out_date'],
+            (int) $validated['number_of_occupants']
+        );
+
+        if ($availabilityContext !== null) {
+            $warning = 'This room type currently shows '
+                .$availabilityContext['summary']['availability_label']
+                .' for your selected dates and guest count. You can still submit this request for staff review by confirming the warning.';
+
+            if (! $request->boolean('availability_acknowledged')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Availability confirmation required',
+                    'requires_availability_confirmation' => true,
+                    'availability_warning' => $warning,
+                    'availability_summary' => [
+                        'availability_label' => $availabilityContext['summary']['availability_label'],
+                        'can_accommodate_requested_guests' => false,
+                    ],
+                ], 422);
+            }
+
+            $validated['special_requests'] = trim(
+                (($validated['special_requests'] ?? null) ? rtrim($validated['special_requests'])."\n" : '')
+                .'[Availability warning acknowledged by guest: '
+                .$availabilityContext['summary']['availability_label']
+                .' for '.$validated['number_of_occupants'].' occupant(s) on '
+                .$validated['check_in_date'].' to '.$validated['check_out_date'].']'
+            );
+        }
         
         // Build special requests message
-        $tourNotice = "\n[Booked via Virtual Tour]";
+        $tourNotice = "\n[Reservation request submitted via Virtual Tour]";
         $validated['special_requests'] = ($validated['special_requests'] ?? '') . $tourNotice;
 
         // source is metadata for validation/context only and is not persisted on reservations.
         unset($validated['source']);
-        
-        unset($validated['preferred_room_id']);
+        unset($validated['availability_acknowledged']);
 
         $reservation = Reservation::create($validated);
 
         return response()->json([
             'success' => true,
-            'message' => 'Reservation submitted successfully!',
+            'message' => 'Reservation request submitted successfully!',
             'data' => [
                 'reference_number' => $reservation->reference_number,
                 'track_url' => $reservation->generateGuestTrackingUrl(),
@@ -327,6 +368,31 @@ class TourController extends Controller
                 'description' => $amenity->description,
             ])->toArray(),
         ];
+    }
+
+    /**
+     * @return array{room_type: RoomType, summary: array<string,mixed>}|null
+     */
+    protected function resolveAvailabilityContext(int $roomTypeId, string $checkInDate, string $checkOutDate, int $occupants): ?array
+    {
+        $roomType = RoomType::query()
+            ->where('is_active', true)
+            ->find($roomTypeId);
+
+        if (! $roomType) {
+            return null;
+        }
+
+        $summary = app(RoomHoldService::class)->getDateAvailabilitySummary(
+            $roomType,
+            Carbon::parse($checkInDate),
+            Carbon::parse($checkOutDate),
+            $occupants
+        );
+
+        return ($summary['can_accommodate_requested_guests'] ?? false)
+            ? null
+            : ['room_type' => $roomType, 'summary' => $summary];
     }
 
     /**

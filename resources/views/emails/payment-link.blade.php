@@ -101,7 +101,7 @@
 
         <p>Dear <strong>{{ $reservation->guest_name }}</strong>,</p>
 
-        <p>Thank you for your reservation at our University Homestay! To confirm your booking, please complete your deposit payment using the secure link below.</p>
+        <p>Thank you for your reservation request at our University Homestay. To move it toward confirmed status, please complete your deposit payment using the secure link below.</p>
 
         <div class="reservation-details">
             <h3 style="margin-top: 0; color: #00491E;">Reservation Details</h3>
@@ -131,7 +131,7 @@
 
         <div class="info-box">
             <strong>📋 What You'll Pay:</strong><br>
-            You'll pay a deposit now to secure your reservation. The remaining balance will be collected when you check in at the homestay.
+            You'll pay a deposit now to move your request forward. The remaining balance will be collected when you check in at the homestay.
         </div>
 
         <div class="button-container">
@@ -142,7 +142,7 @@
 
         <div class="warning-box">
             <strong>⏰ Important:</strong> This payment link will expire on <strong>{{ $expiresAt ? $expiresAt->format('F j, Y \a\t g:i A') : 'N/A' }}</strong>. 
-            Please complete your payment before this time to secure your reservation.
+            Please complete your payment before this time so your request can continue through the approval and confirmation flow.
         </div>
 
         <p><strong>Payment Methods Available:</strong></p>
@@ -159,7 +159,7 @@
             <li>Choose your preferred payment method</li>
             <li>Complete the secure payment</li>
             <li>You'll receive a confirmation email</li>
-            <li>Our staff will review and finalize your reservation</li>
+            <li>Our staff will finalize your reservation details and status</li>
         </ol>
 
         <div class="info-box">

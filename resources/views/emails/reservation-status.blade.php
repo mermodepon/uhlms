@@ -97,7 +97,7 @@
         @if($context === 'submitted')
             <p>We received your reservation request. You can use the secure link below to check updates without relying on a public reference-number search alone.</p>
         @else
-            <p>Your reservation status has been updated.</p>
+            <p>Your reservation request status has been updated.</p>
         @endif
 
         <p>
@@ -127,11 +127,11 @@
             For privacy, manual tracking in the app now requires both your reservation reference number and guest email address.
         </div>
 
-        @if($paymentLink && in_array($reservation->status, ['approved', 'confirmed', 'pending_payment'], true))
+        @if($paymentLink && in_array($reservation->status, ['approved', 'confirmed'], true))
             <div class="button-wrap">
                 <a href="{{ $paymentLink }}" class="button">Open Payment Link</a>
             </div>
-        @elseif(!($onlinePaymentsEnabled ?? true) && in_array($reservation->status, ['approved', 'confirmed', 'pending_payment'], true))
+        @elseif(!($onlinePaymentsEnabled ?? true) && in_array($reservation->status, ['approved', 'confirmed'], true))
             <div class="notice">
                 Online payment is currently unavailable. Please wait for staff instructions regarding payment.
             </div>

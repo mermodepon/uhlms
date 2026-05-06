@@ -50,17 +50,17 @@
                     <li>Check your account balance or payment method</li>
                     <li>Try again using a different payment method</li>
                     <li>Contact our staff if the problem persists</li>
-                    <li>Your reservation is still active and awaiting payment</li>
+                    <li>Your approved reservation is still active and awaiting payment</li>
                 </ul>
             </div>
 
             <div class="space-y-3">
-                @if($reservation && $reservation->isPaymentLinkValid())
+                @if($reservation && $reservation->isPaymentLinkValid() && $reservation->canAcceptGuestPayment())
                     <a href="{{ $reservation->generatePaymentLink(false) }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
                         Try Again
                     </a>
                 @endif
-                <a href="{{ route('guest.home', [], false) }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all {{ $reservation && $reservation->isPaymentLinkValid() ? 'ml-0 sm:ml-3' : '' }}">
+                <a href="{{ route('guest.home', [], false) }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all {{ $reservation && $reservation->isPaymentLinkValid() && $reservation->canAcceptGuestPayment() ? 'ml-0 sm:ml-3' : '' }}">
                     Return to Homepage
                 </a>
             </div>

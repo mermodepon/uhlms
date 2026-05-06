@@ -30,6 +30,74 @@
         height: 100%;
     }
 
+    .tour-empty-state {
+        width: 100%;
+        max-width: 1100px;
+        margin: 2rem auto;
+        padding: 4rem 1.5rem;
+        border-radius: 1rem;
+        background:
+            radial-gradient(circle at top right, rgba(255, 198, 0, 0.16), transparent 28%),
+            linear-gradient(135deg, #f7faf7 0%, #edf7ef 100%);
+        border: 1px solid rgba(0, 73, 30, 0.12);
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+    }
+
+    .tour-empty-card {
+        max-width: 42rem;
+        margin: 0 auto;
+        text-align: center;
+    }
+
+    .tour-empty-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.45rem 0.9rem;
+        border-radius: 9999px;
+        background: rgba(255, 198, 0, 0.18);
+        color: #7a5b00;
+        font-size: 0.85rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .tour-empty-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.9rem;
+        margin-top: 1.75rem;
+    }
+
+    .tour-empty-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 12rem;
+        padding: 0.9rem 1.4rem;
+        border-radius: 0.8rem;
+        font-weight: 700;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+
+    .tour-empty-link:hover {
+        transform: translateY(-1px);
+    }
+
+    .tour-empty-link-primary {
+        background: linear-gradient(135deg, #00491E 0%, #02681E 100%);
+        color: white;
+        box-shadow: 0 12px 26px rgba(2, 104, 30, 0.22);
+    }
+
+    .tour-empty-link-secondary {
+        background: #FFC600;
+        color: #00491E;
+        box-shadow: 0 12px 26px rgba(255, 198, 0, 0.2);
+    }
+
     /* Loading Indicator */
     #loading-indicator {
         position: absolute;
@@ -185,6 +253,31 @@
         margin-top: 0.25rem;
         font-weight: 400;
     }
+    #gaze-tooltip .gaze-status {
+        font-size: 0.72rem;
+        color: #ffe082;
+        margin-top: 0.35rem;
+        font-weight: 600;
+        display: none;
+    }
+    #gaze-tooltip .gaze-progress {
+        width: 100%;
+        height: 0.35rem;
+        background: rgba(255, 255, 255, 0.18);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 0.45rem;
+        display: none;
+    }
+    #gaze-tooltip .gaze-progress-fill {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, #FFC600 0%, #ffe082 100%);
+        border-radius: 999px;
+        transition: width 0.08s linear;
+    }
+
+
 
     /* Navigation Controls */
     .nav-controls {
@@ -246,6 +339,14 @@
     .top-right-controls button:hover,
     .top-right-controls a:hover {
         background: rgba(0, 0, 0, 0.9);
+    }
+
+    .top-right-controls .home-btn {
+        background: rgba(0, 73, 30, 0.9);
+    }
+
+    .top-right-controls .home-btn:hover {
+        background: rgba(0, 73, 30, 1);
     }
 
     .top-right-controls .exit-btn {
@@ -641,6 +742,22 @@
             line-height: 1;
         }
 
+        .top-right-controls .home-btn {
+            width: 42px;
+            height: 42px;
+            overflow: hidden;
+            white-space: nowrap;
+            font-size: 0;
+            display: inline-grid;
+            place-items: center;
+            line-height: 1;
+        }
+
+        .top-right-controls .home-btn svg {
+            width: 19px;
+            height: 19px;
+        }
+
         .mobile-glyph {
             display: inline-grid;
             place-items: center;
@@ -658,7 +775,8 @@
         }
 
         .nav-label,
-        .exit-label {
+        .exit-label,
+        .home-label {
             display: none;
         }
 
@@ -1008,6 +1126,22 @@
 <!-- CSRF Token -->
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
+@if(!$hasWaypoints)
+<section class="tour-empty-state">
+    <div class="tour-empty-card">
+        <span class="tour-empty-badge">Virtual Tour Unavailable</span>
+        <h1 class="mt-5 text-3xl md:text-4xl font-bold text-[#00491E]">No tour scenes are available right now.</h1>
+        <p class="mt-4 text-base md:text-lg text-gray-600 leading-relaxed">
+            We're currently updating the interactive tour. You can still explore our accommodations and submit a reservation while the tour is being prepared.
+        </p>
+        <div class="tour-empty-actions">
+            <a href="{{ route('guest.rooms', [], false) }}" class="tour-empty-link tour-empty-link-primary">Browse Rooms</a>
+            <a href="{{ route('guest.reserve', [], false) }}" class="tour-empty-link tour-empty-link-secondary">Make a Reservation</a>
+            <a href="{{ route('guest.home', [], false) }}" class="tour-empty-link bg-white text-[#00491E] border border-[#00491E]/15">Back to Home</a>
+        </div>
+    </div>
+</section>
+@else
 <!-- Tour Viewer -->
 <div id="tour-viewer">
     <!-- Loading Indicator -->
@@ -1068,6 +1202,13 @@
                 <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/>
                 <line x1="1" y1="1" x2="23" y2="23"/>
             </svg>
+        </button>
+        <button class="home-btn" onclick="window.location.href='{{ route('guest.home', [], false) }}'" title="Return to homepage" aria-label="Go to homepage">
+            <svg class="home-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+            <span class="home-label">Home</span>
         </button>
         <button class="exit-btn" onclick="window.location.href='{{ route('guest.virtual-tours', [], false) }}'" aria-label="Exit tour">
             <span class="mobile-glyph" aria-hidden="true">X</span>
@@ -1157,6 +1298,8 @@
     <div id="gaze-tooltip">
         <div class="gaze-title"></div>
         <div class="gaze-subtitle"></div>
+        <div class="gaze-status"></div>
+        <div class="gaze-progress"><div class="gaze-progress-fill"></div></div>
     </div>
 
     <!-- Room Info Overlay -->
@@ -1179,7 +1322,6 @@
 
                 <form id="reservation-form" onsubmit="handleReservationSubmit(event)">
                     <input type="hidden" id="preferred_room_type_id" name="preferred_room_type_id">
-                    <input type="hidden" id="preferred_room_id" name="preferred_room_id">
                     <input type="hidden" name="source" value="virtual_tour">
                     @honeypot
 
@@ -1214,7 +1356,7 @@
 
                     <div class="form-group">
                         <label for="guest_gender">Gender *</label>
-                        <select id="guest_gender" name="guest_gender" required>
+                        <select id="guest_gender" name="guest_gender" class="guest-select" required>
                             <option value="">Select...</option>
                             <option value="Male">Male</option>
                             <option value="Female">Female</option>
@@ -1257,12 +1399,22 @@
                         </p>
                     </div>
 
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                        <label for="availability_acknowledged" class="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox" id="availability_acknowledged" name="availability_acknowledged" value="1" class="mt-1">
+                            <span class="text-sm text-amber-900">
+                                <strong>Submit even if availability looks limited.</strong>
+                                Staff can still review your request if the selected room type appears unavailable for your dates or guest count.
+                            </span>
+                        </label>
+                    </div>
+
                     <button type="submit" class="btn-submit">
                         Submit Reservation Request
                     </button>
 
                     <p class="text-xs text-gray-500 mt-4 text-center">
-                        This will create a pending reservation. You'll receive a reference number to track and complete your booking.
+                        This will create a pending reservation request. You'll receive a reference number to track it and follow the next steps.
                     </p>
                 </form>
             </div>
@@ -1277,7 +1429,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                 </svg>
             </div>
-            <h2 class="text-2xl font-bold text-gray-900 mb-2">Reservation Submitted!</h2>
+            <h2 class="text-2xl font-bold text-gray-900 mb-2">Reservation Request Submitted!</h2>
             <p class="text-gray-600 mb-4">Your reservation request has been submitted successfully.</p>
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <p class="text-sm text-gray-600 mb-1">Reference Number:</p>
@@ -1338,7 +1490,7 @@
                         </li>
                         <li>
                             <span class="help-icon">VR</span>
-                            <div><strong>VR Mode</strong><br>Enter an immersive WebXR session on supported VR browsers and headsets (top-left button)</div>
+                            <div><strong>VR Mode</strong><br>Enter an immersive WebXR session on supported VR browsers and headsets. Reservation actions will first exit VR, then open the booking flow</div>
                         </li>
                     </ul>
                 </div>
@@ -1431,9 +1583,11 @@
         </div>
     </div>
 </div>
+@endif
 @endsection
 
 @push('scripts')
+@if($hasWaypoints)
 @vite(['resources/js/tour-engine.js'])
 <script>
     // Initialize tour engine when page loads
@@ -1621,11 +1775,11 @@
             guest_gender: document.getElementById('guest_gender').value,
             guest_address: document.getElementById('guest_address').value,
             preferred_room_type_id: document.getElementById('preferred_room_type_id').value,
-            preferred_room_id: document.getElementById('preferred_room_id')?.value || null,
             check_in_date: document.getElementById('check_in_date').value,
             check_out_date: document.getElementById('check_out_date').value,
             number_of_occupants: document.getElementById('number_of_occupants').value,
             special_requests: document.getElementById('special_requests').value,
+            availability_acknowledged: document.getElementById('availability_acknowledged')?.checked ? 1 : 0,
             source: 'virtual_tour'
         };
 
@@ -1707,4 +1861,5 @@
         }
     }, true); // capture phase so it fires before panorama handlers
 </script>
+@endif
 @endpush

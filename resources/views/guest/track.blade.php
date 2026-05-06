@@ -5,22 +5,28 @@
 @section('content')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h1 class="text-3xl font-bold mb-2">Track Your Reservation</h1>
+            <h1 class="text-3xl font-bold mb-2">Track Your Reservation Request</h1>
             <p class="text-gray-200">Use your reservation reference number and guest email address, or open the secure tracking link sent to your email.</p>
         </div>
     </section>
 
-    <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <section class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {{-- Search Form --}}
         <div class="bg-white rounded-xl shadow-md p-6 mb-8">
-            <form action="{{ route('guest.track', [], false) }}" method="GET" class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4">
-                <input type="text" name="reference" value="{{ $reference }}"
-                       placeholder="Reference number (e.g., 2026-0001)"
-                       class="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
-                <input type="email" name="guest_email" value="{{ $guestEmail ?? '' }}"
-                       placeholder="Guest email used on the reservation"
-                       class="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
-                <button type="submit" class="bg-[#00491E] text-white px-6 py-2 rounded-lg hover:bg-[#02681E] transition font-medium">
+            <form action="{{ route('guest.track', [], false) }}" method="GET" class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-4 items-end">
+                <label class="block min-w-0">
+                    <span class="block text-sm font-semibold text-gray-700 mb-1">Reference Number</span>
+                    <input type="text" name="reference" value="{{ $reference }}"
+                           placeholder="e.g. 2026-0001"
+                           class="w-full min-w-0 rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                </label>
+                <label class="block min-w-0">
+                    <span class="block text-sm font-semibold text-gray-700 mb-1">Guest Email</span>
+                    <input type="email" name="guest_email" value="{{ $guestEmail ?? '' }}"
+                           placeholder="name@example.com"
+                           class="w-full min-w-0 rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                </label>
+                <button type="submit" class="h-[42px] bg-[#00491E] text-white px-6 py-2 rounded-lg hover:bg-[#02681E] transition font-medium">
                     Track
                 </button>
             </form>
@@ -61,9 +67,8 @@
 
                 $statusGuidance = [
                     'pending' => 'Your request is waiting for staff review. Please watch your email for approval or follow-up instructions.',
-                    'approved' => 'Your reservation has been approved. Watch your email for payment instructions or additional confirmation details.',
-                    'confirmed' => 'Your reservation is confirmed. Please keep monitoring your email for any payment reminders or arrival instructions.',
-                    'pending_payment' => 'Your reservation is waiting for payment. Complete the payment step shown below to avoid delays.',
+                    'approved' => 'Your reservation request has been approved. You may now use the payment link sent by staff or shown below, if available.',
+                    'confirmed' => 'Your reservation has moved into confirmed status. Please keep monitoring your email for payment reminders or arrival instructions.',
                     'declined' => 'This reservation request was declined. Please contact the homestay staff if you need clarification or would like to submit a new request.',
                     'cancelled' => 'This reservation has been cancelled. Contact staff if you believe this was made in error.',
                     'checked_in' => 'You are currently checked in. If you need help during your stay, please contact the homestay staff.',
@@ -89,7 +94,7 @@
                     ]);
 
                 $showAssignmentNotes = $showAssignments && $remarksGrouped->isNotEmpty();
-                $showSubmittedAt = in_array($reservation->status, ['pending', 'approved', 'confirmed', 'pending_payment'], true);
+                $showSubmittedAt = in_array($reservation->status, ['pending', 'approved', 'confirmed'], true);
                 $guidanceTone = in_array($reservation->status, ['declined', 'cancelled'], true)
                     ? 'bg-red-50 border-red-200 text-red-800'
                     : 'bg-blue-50 border-blue-200 text-blue-800';
@@ -104,7 +109,6 @@
                             'pending' => 'bg-yellow-100 text-yellow-800 border-yellow-300',
                             'approved' => 'bg-blue-100 text-blue-800 border-blue-300',
                             'confirmed' => 'bg-green-100 text-green-800 border-green-300',
-                            'pending_payment' => 'bg-amber-100 text-amber-800 border-amber-300',
                             'declined' => 'bg-red-100 text-red-800 border-red-300',
                             'cancelled' => 'bg-gray-100 text-gray-800 border-gray-300',
                             'checked_in' => 'bg-emerald-100 text-emerald-900 border-emerald-300',
@@ -114,7 +118,7 @@
                             'pending' => 'Pending Review',
                             'approved' => 'Approved',
                             'confirmed' => 'Confirmed',
-                            'pending_payment' => 'Pending Payment',
+
                             'declined' => 'Declined',
                             'cancelled' => 'Cancelled',
                             'checked_in' => 'Checked In',
@@ -128,7 +132,7 @@
 
                 {{-- Progress Bar --}}
                 @php
-                    $steps = ['pending', 'approved', 'confirmed', 'pending_payment', 'checked_in', 'checked_out'];
+                    $steps = ['pending', 'approved', 'confirmed', 'checked_in', 'checked_out'];
                     $currentIndex = array_search($reservation->status, $steps);
                     if ($reservation->status === 'declined' || $reservation->status === 'cancelled') {
                         $currentIndex = -1;
@@ -198,7 +202,7 @@
             @php
                 $onlinePaymentsEnabled = \App\Models\Setting::isOnlinePaymentsEnabled();
                 $hasValidPaymentLink = $reservation->payment_link_token && $reservation->isPaymentLinkValid();
-                $canPay = in_array($reservation->status, ['pending', 'approved', 'confirmed']);
+                $canPay = $reservation->canAcceptGuestPayment();
                 
                 // Check if a payment has been made (deposit or full)
                 $gatewayPayment = $reservation->payments

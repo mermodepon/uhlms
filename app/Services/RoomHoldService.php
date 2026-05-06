@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\Room;
+use App\Models\RoomAssignment;
 use App\Models\RoomHold;
 use App\Models\RoomType;
 use Illuminate\Support\Carbon;
@@ -13,6 +14,115 @@ use Illuminate\Support\Facades\DB;
 
 class RoomHoldService
 {
+    /**
+     * Build a guest-facing availability summary for the current moment.
+     *
+     * @return array<string, mixed>
+     */
+    public function getCurrentAvailabilitySummary(RoomType $roomType, ?int $requestedGuests = null): array
+    {
+        $rooms = $this->getSellableRooms($roomType);
+
+        if ($roomType->isPrivate()) {
+            $availableRoomsCount = $rooms->filter(fn (Room $room) => $room->isAvailable())->count();
+
+            return [
+                'available_rooms' => $rooms->filter(fn (Room $room) => $room->isAvailable())->values(),
+                'available_rooms_count' => $availableRoomsCount,
+                'available_beds_count' => null,
+                'total_rooms_count' => $rooms->count(),
+                'total_beds_count' => null,
+                'availability_display_count' => $availableRoomsCount,
+                'availability_display_unit' => 'rooms',
+                'availability_label' => $this->formatAvailabilityLabel($availableRoomsCount, 'room'),
+                'can_accommodate_requested_guests' => $this->canPrivateRoomTypeAccommodate($roomType, $availableRoomsCount, $requestedGuests),
+            ];
+        }
+
+        $totalBedsCount = $rooms->sum(fn (Room $room) => max(0, (int) ($room->capacity ?? 0)));
+        $availableBedsCount = $rooms->sum(fn (Room $room) => $room->isAvailable() ? $room->availableSlots() : 0);
+        $availableRoomsCount = $rooms->filter(fn (Room $room) => $room->isAvailable() && $room->availableSlots() > 0)->count();
+
+        return [
+            'available_rooms' => $rooms->filter(fn (Room $room) => $room->isAvailable() && $room->availableSlots() > 0)->values(),
+            'available_rooms_count' => $availableRoomsCount,
+            'available_beds_count' => $availableBedsCount,
+            'total_rooms_count' => $rooms->count(),
+            'total_beds_count' => $totalBedsCount,
+            'availability_display_count' => $availableBedsCount,
+            'availability_display_unit' => 'beds',
+            'availability_label' => $this->formatAvailabilityLabel($availableBedsCount, 'bed'),
+            'can_accommodate_requested_guests' => $requestedGuests
+                ? $availableBedsCount >= $requestedGuests
+                : $availableBedsCount > 0,
+        ];
+    }
+
+    /**
+     * Build a guest-facing availability summary for a specific date range.
+     *
+     * @return array<string, mixed>
+     */
+    public function getDateAvailabilitySummary(
+        RoomType $roomType,
+        Carbon $checkIn,
+        Carbon $checkOut,
+        ?int $requestedGuests = null
+    ): array {
+        $rooms = $this->getSellableRooms($roomType);
+
+        if ($roomType->isPrivate()) {
+            $availableRooms = $this->getAvailableRooms($roomType, $checkIn, $checkOut);
+            $availableRoomsCount = $availableRooms->count();
+
+            return [
+                'available_rooms' => $availableRooms,
+                'available_rooms_count' => $availableRoomsCount,
+                'available_beds_count' => null,
+                'total_rooms_count' => $rooms->count(),
+                'total_beds_count' => null,
+                'availability_display_count' => $availableRoomsCount,
+                'availability_display_unit' => 'rooms',
+                'availability_label' => $this->formatAvailabilityLabel($availableRoomsCount, 'room'),
+                'can_accommodate_requested_guests' => $this->canPrivateRoomTypeAccommodate($roomType, $availableRoomsCount, $requestedGuests),
+            ];
+        }
+
+        $roomAvailability = $rooms->map(function (Room $room) use ($checkIn, $checkOut) {
+            $reservedSlots = $this->getReservedSlotsForDates($room, $checkIn, $checkOut);
+            $capacity = max(0, (int) ($room->capacity ?? 0));
+            $availableSlots = max(0, $capacity - $reservedSlots);
+
+            return [
+                'room' => $room,
+                'available_slots' => $availableSlots,
+                'capacity' => $capacity,
+            ];
+        });
+
+        $availableRooms = $roomAvailability
+            ->filter(fn (array $entry) => $entry['available_slots'] > 0)
+            ->map(fn (array $entry) => $entry['room'])
+            ->values();
+
+        $availableBedsCount = $roomAvailability->sum('available_slots');
+        $totalBedsCount = $roomAvailability->sum('capacity');
+
+        return [
+            'available_rooms' => $availableRooms,
+            'available_rooms_count' => $availableRooms->count(),
+            'available_beds_count' => $availableBedsCount,
+            'total_rooms_count' => $rooms->count(),
+            'total_beds_count' => $totalBedsCount,
+            'availability_display_count' => $availableBedsCount,
+            'availability_display_unit' => 'beds',
+            'availability_label' => $this->formatAvailabilityLabel($availableBedsCount, 'bed'),
+            'can_accommodate_requested_guests' => $requestedGuests
+                ? $availableBedsCount >= $requestedGuests
+                : $availableBedsCount > 0,
+        ];
+    }
+
     /**
      * Check if a specific room is available for a given date range.
      * A room is available if no active hold overlaps the requested dates.
@@ -117,6 +227,14 @@ class RoomHoldService
     }
 
     /**
+     * Get remaining guest capacity for a room type and date range.
+     */
+    public function getAvailableCapacity(RoomType $roomType, Carbon $checkIn, Carbon $checkOut): int
+    {
+        return (int) ($this->getDateAvailabilitySummary($roomType, $checkIn, $checkOut)['available_beds_count'] ?? 0);
+    }
+
+    /**
      * Create an advance hold on specific rooms for a reservation's date range.
      * This is called when staff approves a reservation with room assignment.
      *
@@ -185,38 +303,6 @@ class RoomHoldService
     }
 
     /**
-     * Create a short-term hold (for preparePendingPayment flow).
-     * This integrates with the existing CheckInService::preparePendingPayment.
-     *
-     * @param  array<int, array{room_id: int}>  $roomEntries
-     */
-    public function createShortTermHolds(
-        Reservation $reservation,
-        array $roomEntries,
-        Carbon $checkIn,
-        Carbon $checkOut,
-        Carbon $expiresAt
-    ): void {
-        DB::transaction(function () use ($reservation, $roomEntries, $checkIn, $checkOut, $expiresAt) {
-            foreach ($roomEntries as $entry) {
-                $roomId = $entry['room_id'] ?? null;
-                if (! $roomId) {
-                    continue;
-                }
-
-                RoomHold::create([
-                    'room_id' => $roomId,
-                    'reservation_id' => $reservation->id,
-                    'hold_from' => $checkIn->toDateString(),
-                    'hold_to' => $checkOut->toDateString(),
-                    'hold_type' => 'short_term',
-                    'expires_at' => $expiresAt,
-                ]);
-            }
-        });
-    }
-
-    /**
      * Release all holds for a reservation (e.g., on cancellation or decline).
      */
     public function releaseAllHolds(Reservation $reservation): int
@@ -233,60 +319,6 @@ class RoomHoldService
         }
 
         return $count;
-    }
-
-    /**
-     * Release expired short-term holds.
-     * Also updates the rooms.status back to available via recalculateStatus.
-     */
-    public function releaseExpiredHolds(): int
-    {
-        $expiredHolds = RoomHold::query()
-            ->shortTerm()
-            ->expired()
-            ->with('room')
-            ->get();
-
-        $affectedReservationIds = $expiredHolds->pluck('reservation_id')->unique();
-
-        if ($expiredHolds->isEmpty()) {
-            return 0;
-        }
-
-        DB::transaction(function () use ($expiredHolds) {
-            foreach ($expiredHolds as $hold) {
-                $room = $hold->room;
-                if ($room && $room->status === 'reserved') {
-                    $room->recalculateStatus();
-                }
-                $hold->delete();
-            }
-        });
-
-        // Update affected reservations back to approved
-        foreach ($affectedReservationIds as $resId) {
-            $reservation = Reservation::find($resId);
-            if ($reservation && $reservation->status === 'pending_payment') {
-                // Check if all holds are gone
-                if ($reservation->roomHolds()->count() === 0) {
-                    $reservation->update([
-                        'status' => 'approved',
-                        'checkin_hold_payload' => null,
-                        'checkin_hold_started_at' => null,
-                        'checkin_hold_expires_at' => null,
-                        'checkin_hold_by' => null,
-                    ]);
-
-                    ReservationLog::record(
-                        $reservation,
-                        'room_holds_expired',
-                        "Room holds expired for reservation #{$reservation->reference_number}. Status reverted to approved."
-                    );
-                }
-            }
-        }
-
-        return $expiredHolds->count();
     }
 
     /**
@@ -375,17 +407,75 @@ class RoomHoldService
             ->with(['reservation', 'room'])
             ->get();
 
-        $activeShortTermHolds = RoomHold::query()
-            ->shortTerm()
-            ->active()
-            ->with(['reservation', 'room'])
-            ->get();
-
         return [
             'advance_holds' => $activeAdvanceHolds,
-            'short_term_holds' => $activeShortTermHolds,
             'advance_count' => $activeAdvanceHolds->count(),
-            'short_term_count' => $activeShortTermHolds->count(),
         ];
+    }
+
+    /**
+     * Get guest-bookable rooms for a room type.
+     *
+     * @return Collection<int, Room>
+     */
+    protected function getSellableRooms(RoomType $roomType): Collection
+    {
+        return Room::query()
+            ->where('room_type_id', $roomType->id)
+            ->where('is_active', true)
+            ->whereNotIn('status', ['maintenance', 'inactive'])
+            ->with([
+                'roomType',
+                'floor',
+                'roomAssignments' => fn ($query) => $query
+                    ->select(['id', 'room_id', 'status'])
+                    ->where('status', 'checked_in'),
+            ])
+            ->orderBy('room_number')
+            ->get();
+    }
+
+    protected function canPrivateRoomTypeAccommodate(RoomType $roomType, int $availableRoomsCount, ?int $requestedGuests = null): bool
+    {
+        if ($availableRoomsCount <= 0) {
+            return false;
+        }
+
+        if ($requestedGuests === null) {
+            return true;
+        }
+
+        return $requestedGuests <= ($roomType->capacity ?? 0);
+    }
+
+    protected function formatAvailabilityLabel(int $count, string $singularUnit): string
+    {
+        $unit = $count === 1 ? $singularUnit : "{$singularUnit}s";
+
+        return "{$count} {$unit} available";
+    }
+
+    protected function getReservedSlotsForDates(Room $room, Carbon $checkIn, Carbon $checkOut): int
+    {
+        $heldSlots = RoomHold::query()
+            ->where('room_id', $room->id)
+            ->active()
+            ->conflictingWith($checkIn, $checkOut)
+            ->with('reservation:id,number_of_occupants')
+            ->get()
+            ->sum(function (RoomHold $hold) {
+                return max(1, (int) ($hold->reservation?->number_of_occupants ?? 1));
+            });
+
+        $checkedInSlots = RoomAssignment::query()
+            ->where('room_id', $room->id)
+            ->whereNull('checked_out_at')
+            ->whereHas('reservation', function ($query) use ($checkIn, $checkOut) {
+                $query->where('check_in_date', '<', $checkOut->format('Y-m-d'))
+                    ->where('check_out_date', '>', $checkIn->format('Y-m-d'));
+            })
+            ->count();
+
+        return min(max(0, (int) ($room->capacity ?? 0)), $heldSlots + $checkedInSlots);
     }
 }

@@ -9,7 +9,7 @@
             @foreach([
                 ['key' => 'pending', 'color' => '#fbbf24', 'label' => 'Pending'],
                 ['key' => 'approved', 'color' => '#3b82f6', 'label' => 'Approved'],
-                ['key' => 'pending_payment', 'color' => '#8b5cf6', 'label' => 'Pending Payment'],
+
                 ['key' => 'checked_in', 'color' => '#16a34a', 'label' => 'Checked In'],
                 ['key' => 'checked_out', 'color' => '#94a3b8', 'label' => 'Checked Out'],
             ] as $item)

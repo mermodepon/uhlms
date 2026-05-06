@@ -13,16 +13,12 @@
             <h1 class="text-3xl font-bold mb-2">{{ $roomType->name }}</h1>
             @php
                 $isPrivate = $roomType->isPrivate();
-                $totalRooms = $roomType->rooms_count;
+                $totalRooms = $roomType->total_rooms_count;
                 $availableRooms = $roomType->available_rooms_count;
                 
-                // Calculate aggregate bed availability for shared rooms
                 if (!$isPrivate) {
-                    $totalBeds = $roomType->rooms()->sum('capacity');
-                    $availableBeds = $roomType->rooms()->get()->sum(function ($room) {
-                        $checkedIn = $room->roomAssignments()->where('status', 'checked_in')->count();
-                        return max(0, ($room->capacity ?? 0) - $checkedIn);
-                    });
+                    $totalBeds = $roomType->total_beds_count ?? 0;
+                    $availableBeds = $roomType->available_beds_count ?? 0;
                 } else {
                     $totalBeds = 0;
                     $availableBeds = 0;
@@ -104,7 +100,7 @@
 
             {{-- Sidebar --}}
             <div class="space-y-6 lg:sticky lg:top-6 self-start">
-                {{-- Booking Card --}}
+                {{-- Reservation Request Card --}}
                 <div class="bg-white rounded-xl shadow-md p-6">
                     <div class="text-center mb-6">
                         <div class="text-3xl font-bold text-[#00491E]">₱{{ number_format($roomType->base_rate, 0) }}</div>
@@ -142,14 +138,14 @@
                         </div>
                         <div class="flex justify-between">
                             <span>Total Rooms</span>
-                            <span class="font-medium">{{ $roomType->rooms_count }}</span>
+                            <span class="font-medium">{{ $roomType->total_rooms_count }}</span>
                         </div>
                     </div>
 
                     @if(($isPrivate && $availableRooms > 0) || (! $isPrivate && $availableBeds > 0))
                         <a href="{{ route('guest.reserve', ['room_type' => $roomType->id], false) }}"
                            class="block w-full bg-[#FFC600] text-[#00491E] text-center px-6 py-3 rounded-lg font-bold hover:bg-yellow-400 transition">
-                            Reserve This Room
+                            Request This Room Type
                         </a>
                     @else
                         <div class="block w-full bg-gray-300 text-gray-600 text-center px-6 py-3 rounded-lg font-bold cursor-not-allowed">

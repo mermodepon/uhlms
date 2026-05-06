@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     @php
-        $siteTitle    = 'CMU University Homestay';
-        $siteTagline  = 'Lodging Management System';
+        $siteTitle    = 'CMU Homestay';
         $logoSrc      = asset('images/uh_logo.jpg');
         $themeColor   = '#FFC600';
         $themeFont    = 'sans';
@@ -14,7 +13,7 @@
         $highContrast = false;
         $largeText    = false;
     @endphp
-    <title>@yield('title', $siteTitle) - {{ $siteTagline }}</title>
+    <title>{{ trim($__env->yieldContent('title', '')) !== '' ? trim($__env->yieldContent('title')) . ' - ' . $siteTitle : $siteTitle }}</title>
     <link rel="icon" type="image/png" href="{{ $logoSrc }}">
     <link rel="apple-touch-icon" href="{{ $logoSrc }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -77,6 +76,19 @@
         input::placeholder,
         textarea::placeholder {
             color: #9ca3af !important;
+        }
+        .guest-select {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            padding-right: 2.75rem !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M6 8l4 4 4-4' stroke='%23111827' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.9rem center;
+            background-size: 1rem 1rem;
+        }
+        .guest-select::-ms-expand {
+            display: none;
         }
         @keyframes tour-ping {
             0%, 100% { opacity: 1; transform: scale(1); }
@@ -149,7 +161,7 @@
                         <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                         Virtual Tour
                     </a>
-                    <a href="{{ route('guest.reserve', [], false) }}" class="bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold transition-all duration-200 hover:bg-white hover:text-[#00491E] hover:scale-105 active:scale-95 {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">Reserve Now</a>
+                    <a href="{{ route('guest.reserve', [], false) }}" class="bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold transition-all duration-200 hover:bg-white hover:text-[#00491E] hover:scale-105 active:scale-95 {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">Request Stay</a>
                     <a href="{{ route('guest.track', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.track') ? 'text-[#FFC600]' : '' }}">Track Status</a>
                 </div>
                 {{-- Mobile menu button --}}
@@ -171,7 +183,7 @@
                     <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                     Virtual Tour
                 </a>
-                <a href="{{ route('guest.reserve', [], false) }}" class="block text-[#FFC600] font-bold py-2">Reserve Now</a>
+                <a href="{{ route('guest.reserve', [], false) }}" class="block text-[#FFC600] font-bold py-2">Request Stay</a>
                 <a href="{{ route('guest.track', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">Track Status</a>
             </div>
         </div>
@@ -210,13 +222,9 @@
                     <ul class="space-y-2 text-sm">
                         <li><a href="{{ route('guest.rooms', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Room Catalog</a></li>
                         <li><a href="{{ route('guest.virtual-tours', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Virtual Tour</a></li>
-                        <li><a href="{{ route('guest.reserve', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Make a Reservation</a></li>
+                        <li><a href="{{ route('guest.reserve', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Request a Reservation</a></li>
                         <li><a href="{{ route('guest.track', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Track Reservation</a></li>
                     </ul>
-                </div>
-                <div>
-                    <h3 class="text-[#FFC600] font-bold text-lg mb-3">Staff Access</h3>
-                    <a href="{{ route('filament.admin.auth.login', [], false) }}" class="inline-block bg-[#02681E] text-white px-4 py-2 rounded hover:bg-[#00491E] transition text-sm border border-[#FFC600]/30">Staff Login</a>
                 </div>
             </div>
             <div class="border-t border-[#02681E] mt-8 pt-6 text-center text-gray-400 text-sm">

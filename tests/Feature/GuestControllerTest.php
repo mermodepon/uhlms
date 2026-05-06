@@ -59,6 +59,52 @@ class GuestControllerTest extends TestCase
         ]);
     }
 
+    private function createReservationForRoomType(RoomType $roomType, array $overrides = []): Reservation
+    {
+        return Reservation::create(array_merge([
+            'guest_first_name' => 'Booked',
+            'guest_last_name' => 'Guest',
+            'guest_email' => 'booked-'.uniqid().'@example.com',
+            'guest_phone' => '09171234567',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->addDay()->toDateString(),
+            'check_out_date' => now()->addDays(3)->toDateString(),
+            'number_of_occupants' => 1,
+            'status' => 'checked_in',
+        ], $overrides));
+    }
+
+    private function occupyRoomForDates(RoomType $roomType, string $checkInDate, string $checkOutDate): Room
+    {
+        $user = $this->createStaffUser();
+        $room = $this->createRoom($roomType, 'occupied');
+        $reservation = $this->createReservationForRoomType($roomType, [
+            'check_in_date' => $checkInDate,
+            'check_out_date' => $checkOutDate,
+            'number_of_occupants' => 1,
+        ]);
+
+        RoomAssignment::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $room->id,
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+            'assigned_by' => $user->id,
+        ]);
+
+        return $room;
+    }
+
+    private function createStaffUser(): User
+    {
+        return User::create([
+            'name' => 'Staff '.uniqid(),
+            'email' => 'staff-'.uniqid().'@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'staff',
+        ]);
+    }
+
     // ── Home Page ────────────────────────────────────────────
 
     public function test_home_page_returns_200(): void
@@ -98,6 +144,119 @@ class GuestControllerTest extends TestCase
 
         $response->assertSee('Visible Dorm');
         $response->assertDontSee('Inactive Dorm');
+    }
+
+    public function test_rooms_page_keeps_shared_room_type_available_when_remaining_beds_cover_requested_guests(): void
+    {
+        $user = $this->createStaffUser();
+        $this->actingAs($user);
+
+        $roomType = $this->createRoomType([
+            'name' => 'Dormitory',
+            'room_sharing_type' => 'public',
+        ]);
+
+        $room = $this->createRoom($roomType);
+        $room->update(['capacity' => 8]);
+
+        $reservation = $this->createReservationForRoomType($roomType, [
+            'check_in_date' => '2026-04-29',
+            'check_out_date' => '2026-04-30',
+            'number_of_occupants' => 1,
+        ]);
+
+        RoomAssignment::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $room->id,
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+            'assigned_by' => $user->id,
+        ]);
+
+        $response = $this->get(route('guest.rooms', [
+            'check_in' => '2026-04-29',
+            'check_out' => '2026-04-30',
+            'guests' => 2,
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertViewHas('roomTypes', function ($roomTypes) use ($roomType) {
+            $dormitory = $roomTypes->firstWhere('id', $roomType->id);
+
+            return $dormitory
+                && $dormitory->available_beds_count === 7
+                && $dormitory->total_beds_count === 8
+                && $dormitory->can_accommodate_requested_guests === true;
+        });
+    }
+
+    public function test_rooms_page_marks_shared_room_type_unavailable_when_requested_guests_exceed_remaining_beds(): void
+    {
+        $user = $this->createStaffUser();
+        $this->actingAs($user);
+
+        $roomType = $this->createRoomType([
+            'name' => 'Dormitory',
+            'room_sharing_type' => 'public',
+        ]);
+
+        $room = $this->createRoom($roomType);
+        $room->update(['capacity' => 8]);
+
+        $reservation = $this->createReservationForRoomType($roomType, [
+            'check_in_date' => '2026-04-29',
+            'check_out_date' => '2026-04-30',
+            'number_of_occupants' => 1,
+        ]);
+
+        RoomAssignment::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $room->id,
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+            'assigned_by' => $user->id,
+        ]);
+
+        $response = $this->get(route('guest.rooms', [
+            'check_in' => '2026-04-29',
+            'check_out' => '2026-04-30',
+            'guests' => 8,
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertViewHas('roomTypes', function ($roomTypes) use ($roomType) {
+            $dormitory = $roomTypes->firstWhere('id', $roomType->id);
+
+            return $dormitory
+                && $dormitory->available_beds_count === 7
+                && $dormitory->can_accommodate_requested_guests === false;
+        });
+    }
+
+    public function test_rooms_page_keeps_private_room_type_unavailable_when_requested_guests_exceed_room_capacity(): void
+    {
+        $roomType = $this->createRoomType([
+            'name' => 'Standard Room',
+            'room_sharing_type' => 'private',
+        ]);
+
+        $room = $this->createRoom($roomType);
+        $room->update(['capacity' => 2]);
+
+        $response = $this->get(route('guest.rooms', [
+            'check_in' => '2026-04-29',
+            'check_out' => '2026-04-30',
+            'guests' => 3,
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertViewHas('roomTypes', function ($roomTypes) use ($roomType) {
+            $private = $roomTypes->firstWhere('id', $roomType->id);
+
+            return $private
+                && $private->available_rooms_count === 1
+                && $private->can_accommodate_requested_guests === false;
+        });
     }
 
     // ── Room Detail ──────────────────────────────────────────
@@ -150,7 +309,7 @@ class GuestControllerTest extends TestCase
         $response = $this->get(route('guest.room-detail', $roomType));
 
         $response->assertStatus(200);
-        $response->assertSee(route('guest.tour.viewer', ['slug' => 'deluxe-suite-interior']), false);
+        $response->assertSee(route('guest.tour.viewer', ['slug' => 'deluxe-suite-interior'], false), false);
         $response->assertSee('View This Room in 360', false);
     }
 
@@ -162,7 +321,7 @@ class GuestControllerTest extends TestCase
         $response = $this->get(route('guest.room-detail', $roomType));
 
         $response->assertStatus(200);
-        $response->assertSee(route('guest.tour.viewer'), false);
+        $response->assertSee(route('guest.tour.viewer', [], false), false);
         $response->assertSee('Start Virtual Tour', false);
     }
 
@@ -171,7 +330,7 @@ class GuestControllerTest extends TestCase
     public function test_virtual_tours_page_returns_200(): void
     {
         $response = $this->get(route('guest.virtual-tours'));
-        $response->assertStatus(200);
+        $response->assertRedirect(route('guest.tour.viewer'));
     }
 
     // ── Reserve Form ─────────────────────────────────────────
@@ -187,6 +346,7 @@ class GuestControllerTest extends TestCase
     public function test_reserve_submit_creates_reservation(): void
     {
         $roomType = $this->createRoomType();
+        $this->createRoom($roomType);
 
         $response = $this->post(route('guest.reserve.submit'), [
             'guest_last_name' => 'Doe',
@@ -222,6 +382,58 @@ class GuestControllerTest extends TestCase
             'check_out_date',
             'number_of_occupants',
         ]);
+    }
+
+    public function test_reserve_submit_requires_acknowledgement_when_availability_looks_unavailable(): void
+    {
+        $roomType = $this->createRoomType();
+        $checkIn = now()->addDay()->toDateString();
+        $checkOut = now()->addDays(3)->toDateString();
+        $this->occupyRoomForDates($roomType, $checkIn, $checkOut);
+
+        $response = $this->from(route('guest.reserve'))->post(route('guest.reserve.submit'), [
+            'guest_last_name' => 'Doe',
+            'guest_first_name' => 'John',
+            'guest_gender' => 'Male',
+            'guest_email' => 'john@example.com',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => $checkIn,
+            'check_out_date' => $checkOut,
+            'number_of_occupants' => 1,
+        ]);
+
+        $response->assertRedirect(route('guest.reserve'));
+        $response->assertSessionHasErrors('availability_acknowledged');
+        $this->assertDatabaseMissing('reservations', [
+            'guest_email' => 'john@example.com',
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_reserve_submit_allows_acknowledged_request_despite_low_availability(): void
+    {
+        $roomType = $this->createRoomType();
+        $checkIn = now()->addDay()->toDateString();
+        $checkOut = now()->addDays(3)->toDateString();
+        $this->occupyRoomForDates($roomType, $checkIn, $checkOut);
+
+        $response = $this->post(route('guest.reserve.submit'), [
+            'guest_last_name' => 'Doe',
+            'guest_first_name' => 'John',
+            'guest_gender' => 'Male',
+            'guest_email' => 'john-ack@example.com',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => $checkIn,
+            'check_out_date' => $checkOut,
+            'number_of_occupants' => 1,
+            'availability_acknowledged' => '1',
+        ]);
+
+        $response->assertRedirect(route('guest.track'));
+
+        $reservation = Reservation::where('guest_email', 'john-ack@example.com')->first();
+        $this->assertNotNull($reservation);
+        $this->assertStringContainsString('Availability warning acknowledged by guest', (string) $reservation->special_requests);
     }
 
     public function test_reserve_submit_rejects_past_check_in_date(): void
@@ -362,7 +574,59 @@ class GuestControllerTest extends TestCase
         ]));
 
         $response->assertStatus(200);
-        // The reservation should be treated as expired and not shown
-        $response->assertDontSee('old@example.com');
+        $response->assertSee('Tracking period has ended');
+        $response->assertDontSee($reservation->reference_number.' status');
+    }
+
+    public function test_track_hides_payment_link_for_pending_requests(): void
+    {
+        $roomType = $this->createRoomType();
+        $reservation = Reservation::create([
+            'guest_first_name' => 'Pending',
+            'guest_last_name' => 'Guest',
+            'guest_email' => 'pending@example.com',
+            'guest_phone' => '09171234567',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->addDay(),
+            'check_out_date' => now()->addDays(3),
+            'number_of_occupants' => 1,
+            'status' => 'pending',
+        ]);
+
+        $response = $this->get(route('guest.track', [
+            'reference' => $reservation->reference_number,
+            'guest_email' => $reservation->guest_email,
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertDontSee('Pay Deposit Now');
+    }
+
+    public function test_track_shows_payment_link_for_approved_requests(): void
+    {
+        \App\Models\Setting::create(['key' => 'online_payments_enabled', 'value' => '1']);
+        \App\Models\Setting::create(['key' => 'default_deposit_percentage', 'value' => '30']);
+
+        $roomType = $this->createRoomType();
+        $reservation = Reservation::create([
+            'guest_first_name' => 'Approved',
+            'guest_last_name' => 'Guest',
+            'guest_email' => 'approved@example.com',
+            'guest_phone' => '09171234567',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->addDay(),
+            'check_out_date' => now()->addDays(3),
+            'number_of_occupants' => 1,
+            'status' => 'approved',
+            'approved_at' => now(),
+        ]);
+
+        $response = $this->get(route('guest.track', [
+            'reference' => $reservation->reference_number,
+            'guest_email' => $reservation->guest_email,
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertSee('Pay Deposit Now');
     }
 }

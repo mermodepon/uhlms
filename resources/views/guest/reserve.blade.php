@@ -1,12 +1,12 @@
 @extends('layouts.guest')
 
-@section('title', 'Make a Reservation')
+@section('title', 'Request a Reservation')
 
 @section('content')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h1 class="text-3xl font-bold mb-2">Make a Reservation</h1>
-            <p class="text-gray-200">Fill out the form below to request a reservation. Our staff will review and respond to your request.</p>
+            <h1 class="text-3xl font-bold mb-2">Request a Reservation</h1>
+            <p class="text-gray-200">Fill out the form below to submit a reservation request. Room assignment and confirmation happen after staff review.</p>
         </div>
     </section>
 
@@ -60,7 +60,7 @@
                     <div>
                         <label for="guest_gender" class="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
                         <select name="guest_gender" id="guest_gender" required
-                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                                class="guest-select w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                             <option value="">Select gender...</option>
                             <option value="Male" {{ old('guest_gender') == 'Male' ? 'selected' : '' }}>Male</option>
                             <option value="Female" {{ old('guest_gender') == 'Female' ? 'selected' : '' }}>Female</option>
@@ -84,13 +84,13 @@
                     <div class="md:col-span-2">
                         <label for="preferred_room_type_id" class="block text-sm font-medium text-gray-700 mb-1">Preferred Room Type *</label>
                         <select name="preferred_room_type_id" id="preferred_room_type_id" required
-                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                                class="guest-select w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                             <option value="">Select a room type...</option>
                             @foreach($roomTypes as $rt)
                                 @php
                                     $availabilityText = $rt->room_sharing_type === 'public' 
-                                        ? "{$rt->available_beds} beds available"
-                                        : "{$rt->available_rooms_count} rooms available";
+                                        ? ($rt->availability_label ?? (($rt->available_beds_count ?? 0) . ' beds available'))
+                                        : ($rt->availability_label ?? "{$rt->available_rooms_count} rooms available");
                                     
                                     $displayText = "{$rt->name} - {$rt->getFormattedPrice()} ({$availabilityText}, Up to {$rt->capacity} guests)";
                                 @endphp
@@ -124,7 +124,7 @@
                     <div>
                         <label for="purpose" class="block text-sm font-medium text-gray-700 mb-1">Purpose of Stay</label>
                         <select name="purpose" id="purpose"
-                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                                class="guest-select w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                             <option value="">Select purpose...</option>
                             <option value="academic" {{ old('purpose') === 'academic' ? 'selected' : '' }}>Academic</option>
                             <option value="official" {{ old('purpose') === 'official' ? 'selected' : '' }}>Official Business</option>
@@ -140,6 +140,21 @@
                                   placeholder="Any special requirements or requests..."
                                   class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">{{ old('special_requests') }}</textarea>
                         @error('special_requests') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div class="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                        <label for="availability_acknowledged" class="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                   name="availability_acknowledged"
+                                   id="availability_acknowledged"
+                                   value="1"
+                                   {{ old('availability_acknowledged') ? 'checked' : '' }}
+                                   class="mt-1 h-4 w-4 rounded border-amber-400 text-[#00491E] focus:ring-[#00491E]">
+                            <span>
+                                <span class="block text-sm font-semibold text-amber-900">Submit even if availability looks limited</span>
+                                <span class="block text-sm text-amber-800">If your selected room type appears unavailable for those dates, you can still send a reservation request for staff review.</span>
+                            </span>
+                        </label>
+                        @error('availability_acknowledged') <p class="text-red-500 text-xs mt-3">{{ $message }}</p> @enderror
                     </div>
 
                     {{-- Discount Declaration --}}
@@ -169,7 +184,7 @@
                             <select name="discount_declared_type" 
                                     id="discount_declared_type"
                                     :required="discountDeclared"
-                                    class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
+                                    class="guest-select w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                                 <option value="">Select discount type...</option>
                                 <option value="senior_citizen" {{ old('discount_declared_type') === 'senior_citizen' ? 'selected' : '' }}>Senior Citizen (20% discount)</option>
                                 <option value="pwd" {{ old('discount_declared_type') === 'pwd' ? 'selected' : '' }}>PWD - Person with Disability (20% discount)</option>
@@ -193,7 +208,7 @@
                     ← Back to Rooms
                 </a>
                 <button type="submit" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg hover:bg-yellow-400 transition shadow-lg">
-                    Submit Reservation
+                    Submit Reservation Request
                 </button>
             </div>
         </form>

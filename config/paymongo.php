@@ -60,6 +60,16 @@ return [
         'grab_pay',
     ],
 
+    // Hosted checkout methods exposed through PayMongo Checkout Sessions.
+    'checkout_payment_methods' => [
+        'card',
+        'gcash',
+        'paymaya',
+        'grab_pay',
+        'billease',
+        'qrph',
+    ],
+
     // Enable strict webhook signature verification (recommended: true)
     'strict_webhook_verification' => env('PAYMONGO_STRICT_WEBHOOK_VERIFICATION', true),
 ];

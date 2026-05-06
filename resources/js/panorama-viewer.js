@@ -225,7 +225,10 @@ class PanoramaViewer {
 
         // Tooltip
         if (config.tooltip) {
-            marker.tooltip = config.tooltip;
+            marker.tooltip = {
+                ...config.tooltip,
+                content: this._escapeHtml(config.tooltip.content || ''),
+            };
         }
 
         // Determine HTML content + size
@@ -248,6 +251,27 @@ class PanoramaViewer {
 
         this._markers.addMarker(marker);
         this._markerConfigs.set(config.id, { ...config });
+    }
+
+    _escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    _sanitizeMediaUrl(value) {
+        const raw = String(value ?? '').trim();
+        if (!raw) return '';
+
+        try {
+            const parsed = new URL(raw, window.location.href);
+            return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+        } catch (_) {
+            return '';
+        }
     }
 
     /**
@@ -275,7 +299,6 @@ class PanoramaViewer {
         const scale = sizeScale[sprite.size] ?? 1.0;
         const scaledSize = 36 * scale;
         const scaledIconSize = 18 * scale;
-
         let border = sprite.dashed ? '2px dashed #fff' : '2px solid #fff';
         let cursor = sprite.noCursor ? 'default' : 'pointer';
         let animation = sprite.selected || sprite.dashed
@@ -285,12 +308,14 @@ class PanoramaViewer {
             ? '0 0 0 3px #fff, 0 0 0 6px #3b82f6'
             : '';
 
-        return `<div class="pv-hotspot-circle" style="width:${scaledSize}px;height:${scaledSize}px;border-radius:50%;background:${bg};opacity:${opacity};border:${border};${boxShadow ? 'box-shadow:' + boxShadow + ';' : ''}display:flex;align-items:center;justify-content:center;cursor:${cursor};filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));animation:${animation};transition:transform 0.2s">${PanoramaViewer.iconSvg(icon, scaledIconSize, '#fff')}</div>`;
+        const focusStyle = sprite.focused ? 'transform:scale(1.2);animation:none!important;' : '';
+
+        return `<div class="pv-hotspot-circle" style="width:${scaledSize}px;height:${scaledSize}px;border-radius:50%;background:${bg};opacity:${opacity};border:${border};${boxShadow ? 'box-shadow:' + boxShadow + ';' : ''}display:flex;align-items:center;justify-content:center;cursor:${cursor};filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));animation:${animation};transition:transform 0.2s;${focusStyle}">${PanoramaViewer.iconSvg(icon, scaledIconSize, '#fff')}</div>`;
     }
 
     _badgeSpriteToHtml(sprite) {
         const icon  = sprite.icon || '🏠';
-        const label = sprite.label || '';
+        const label = this._escapeHtml(sprite.label || '');
         const dashed = sprite.dashed;
         const opacity = sprite.opacity ?? 1;
 
@@ -299,20 +324,26 @@ class PanoramaViewer {
         let opacityStyle = opacity < 1 ? `opacity:${opacity};` : '';
         let hiddenStyle  = opacity < 0.05 ? 'width:1px;height:1px;overflow:hidden;pointer-events:none;' : '';
 
-        return `<div class="pv-badge-marker" style="display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,#00491E 0%,#02681E 100%);color:#FFC600;font-size:13px;font-weight:700;padding:8px 14px;border-radius:999px;border:2px ${borderStyle} #FFC600;cursor:${cursor};white-space:nowrap;animation:pv-badge-pulse 2.4s ease-in-out infinite;transition:transform 0.2s;${opacityStyle}${hiddenStyle}"><span>${icon}</span> ${label}</div>`;
+        const focusStyle = sprite.focused ? 'transform:scale(1.1);animation:none!important;' : '';
+
+        return `<div class="pv-badge-marker" style="display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,#00491E 0%,#02681E 100%);color:#FFC600;font-size:13px;font-weight:700;padding:8px 14px;border-radius:999px;border:2px ${borderStyle} #FFC600;cursor:${cursor};white-space:nowrap;animation:pv-badge-pulse 2.4s ease-in-out infinite;transition:transform 0.2s;${focusStyle}${opacityStyle}${hiddenStyle}"><span>${icon}</span> ${label}</div>`;
     }
 
     _cardSpriteToHtml(sprite) {
         // Info card or room-info card — build a styled HTML card
-        const title    = sprite.title || '';
-        const subtitle = sprite.subtitle || '';
-        const body     = sprite.body || '';
-        const price    = sprite.price || '';
-        const tags     = Array.isArray(sprite.tags) ? sprite.tags : [];
-        const badge    = sprite.headerBadge || '';
+        const title    = this._escapeHtml(sprite.title || '');
+        const subtitle = this._escapeHtml(sprite.subtitle || '');
+        const body     = this._escapeHtml(sprite.body || '');
+        const price    = this._escapeHtml(sprite.price || '');
+        const tags     = Array.isArray(sprite.tags) ? sprite.tags.map(tag => this._escapeHtml(tag)) : [];
+        const badge    = this._escapeHtml(sprite.headerBadge || '');
         const badgeClr = sprite.headerBadgeColor || '#86efac';
         const hasYouTubeVideo = !!sprite.mediaYouTubeId;
-        const hasImageMedia = !!(sprite.mediaGallery?.length || sprite.mediaUrl);
+        const safeGallery = Array.isArray(sprite.mediaGallery)
+            ? sprite.mediaGallery.map(url => this._sanitizeMediaUrl(url)).filter(Boolean)
+            : [];
+        const safeMediaUrl = this._sanitizeMediaUrl(sprite.mediaUrl);
+        const hasImageMedia = !!(safeGallery.length || safeMediaUrl);
         const hasExpandedMediaCard = hasYouTubeVideo || hasImageMedia;
         const cardWidth = hasYouTubeVideo
             ? 'min(560px,calc(100vw - 32px))'
@@ -329,8 +360,8 @@ class PanoramaViewer {
             mediaHtml = `<div style="position:relative;padding-top:${videoMediaPaddingTop};background:#000;overflow:hidden;flex-shrink:0">`
                 + `<iframe src="${src}" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media;fullscreen" allowfullscreen loading="lazy"></iframe>`
                 + `</div>`;
-        } else if (sprite.mediaGallery?.length > 0) {
-            const imgs = sprite.mediaGallery.map(url =>
+        } else if (safeGallery.length > 0) {
+            const imgs = safeGallery.map(url =>
                 `<div style="min-width:${hasExpandedMediaCard ? 'calc(100% - 8px)' : '220px'};scroll-snap-align:center;scroll-snap-stop:always;flex:0 0 auto">`
                 + `<img src="${url}" style="width:100%;height:${hasExpandedMediaCard ? '240px' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.parentElement.style.display='none'" loading="lazy">`
                 + `</div>`
@@ -339,9 +370,9 @@ class PanoramaViewer {
                 + `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase"><span>Image Gallery</span><span>Wheel or swipe</span></div>`
                 + `<div data-gallery-track onwheel="event.stopPropagation();event.preventDefault();const delta=((event.deltaX||0)+(event.deltaY||0))*(event.deltaMode===1?16:1);this.scrollBy({left:delta,behavior:'auto'});return false;" style="display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:2px 0 6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin">${imgs}</div>`
                 + `</div>`;
-        } else if (sprite.mediaUrl) {
+        } else if (safeMediaUrl) {
             mediaHtml = `<div style="flex-shrink:0;overflow:hidden">`
-                + `<img src="${sprite.mediaUrl}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? '360px' : '240px'};object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                + `<img src="${safeMediaUrl}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? '360px' : '240px'};object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
                 + `</div>`;
         }
 
@@ -433,6 +464,16 @@ class PanoramaViewer {
                 position: { yaw: `${m.config.position.yaw}`, pitch: `${m.config.position.pitch}` },
             },
         };
+    }
+
+    setMarkerFocused(id, focused) {
+        const existing = this._markerConfigs.get(id);
+        if (!existing?.sprite) return;
+
+        const sprite = { ...existing.sprite, focused: Boolean(focused) };
+        if (Boolean(existing.sprite.focused) === sprite.focused) return;
+
+        this.updateMarker({ id, sprite });
     }
 
     clearMarkers() {

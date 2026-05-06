@@ -58,7 +58,7 @@ class RoomResource extends Resource
                         Forms\Components\Select::make('status')
                             ->options([
                                 'available' => 'Available',
-                                'reserved' => 'Reserved (Pending Payment)',
+                                'reserved' => 'Reserved',
                                 'occupied' => 'Occupied',
                                 'maintenance' => 'Under Maintenance',
                                 'inactive' => 'Inactive',

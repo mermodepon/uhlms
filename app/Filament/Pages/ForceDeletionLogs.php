@@ -56,7 +56,7 @@ class ForceDeletionLogs extends Page implements HasTable
                         'checked_out' => 'gray',
                         'declined' => 'danger',
                         'cancelled' => 'gray',
-                        'pending_payment' => 'warning',
+
                         default => 'gray',
                     })
                     ->formatStateUsing(fn (string $state) => ucwords(str_replace('_', ' ', $state))),

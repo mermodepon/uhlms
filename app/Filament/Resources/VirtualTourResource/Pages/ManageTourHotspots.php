@@ -9,6 +9,7 @@ use App\Support\MediaUrl;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Support\Facades\Validator;
 use Livewire\Attributes\Computed;
 use Livewire\WithFileUploads;
 
@@ -147,12 +148,10 @@ class ManageTourHotspots extends Page
         ?string $mediaUrl = null,
         int $size = 3,
     ): void {
-        TourHotspot::create([
+        $validated = $this->validateHotspotPayload([
             'waypoint_id' => $waypointId,
             'title' => $title,
-            'description' => $description ?: null,
-            'media_type' => $mediaType ?: null,
-            'media_url' => ($mediaType && $mediaUrl) ? $mediaUrl : null,
+            'description' => $description,
             'icon' => $icon,
             'pitch' => $pitch,
             'yaw' => $yaw,
@@ -160,7 +159,28 @@ class ManageTourHotspots extends Page
             'action_target' => $actionTarget,
             'sort_order' => $sortOrder,
             'is_active' => $isActive,
+            'media_type' => $mediaType,
+            'media_url' => $mediaUrl,
             'size' => $size,
+        ]);
+        if (!$validated) {
+            return;
+        }
+
+        TourHotspot::create([
+            'waypoint_id' => $validated['waypoint_id'],
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?: null,
+            'media_type' => $validated['media_type'] ?: null,
+            'media_url' => ($validated['media_type'] && $validated['media_url']) ? $validated['media_url'] : null,
+            'icon' => $validated['icon'],
+            'pitch' => $validated['pitch'],
+            'yaw' => $validated['yaw'],
+            'action_type' => $validated['action_type'],
+            'action_target' => $validated['action_target'],
+            'sort_order' => $validated['sort_order'],
+            'is_active' => $validated['is_active'],
+            'size' => $validated['size'],
         ]);
 
         Notification::make()->title('Hotspot created!')->success()->send();
@@ -186,11 +206,10 @@ class ManageTourHotspots extends Page
         int $size = 3,
     ): void {
         $hotspot = TourHotspot::findOrFail($hotspotId);
-        $hotspot->update([
+        $validated = $this->validateHotspotPayload([
+            'waypoint_id' => $hotspot->waypoint_id,
             'title' => $title,
-            'description' => $description ?: null,
-            'media_type' => $mediaType ?: null,
-            'media_url' => ($mediaType && $mediaUrl) ? $mediaUrl : null,
+            'description' => $description,
             'icon' => $icon,
             'pitch' => $pitch,
             'yaw' => $yaw,
@@ -198,7 +217,27 @@ class ManageTourHotspots extends Page
             'action_target' => $actionTarget,
             'sort_order' => $sortOrder,
             'is_active' => $isActive,
+            'media_type' => $mediaType,
+            'media_url' => $mediaUrl,
             'size' => $size,
+        ]);
+        if (!$validated) {
+            return;
+        }
+
+        $hotspot->update([
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?: null,
+            'media_type' => $validated['media_type'] ?: null,
+            'media_url' => ($validated['media_type'] && $validated['media_url']) ? $validated['media_url'] : null,
+            'icon' => $validated['icon'],
+            'pitch' => $validated['pitch'],
+            'yaw' => $validated['yaw'],
+            'action_type' => $validated['action_type'],
+            'action_target' => $validated['action_target'],
+            'sort_order' => $validated['sort_order'],
+            'is_active' => $validated['is_active'],
+            'size' => $validated['size'],
         ]);
 
         Notification::make()->title('Hotspot updated!')->success()->send();
@@ -224,6 +263,149 @@ class ManageTourHotspots extends Page
         foreach ($orderedIds as $order => $id) {
             TourHotspot::where('id', (int) $id)->update(['sort_order' => $order]);
         }
+    }
+
+    protected function validateHotspotPayload(array $payload): ?array
+    {
+        $payload['title'] = trim((string) ($payload['title'] ?? ''));
+        $payload['description'] = trim((string) ($payload['description'] ?? ''));
+        $payload['icon'] = trim((string) ($payload['icon'] ?? ''));
+        $payload['action_target'] = $this->normalizeNullableString($payload['action_target'] ?? null);
+        $payload['media_type'] = $this->normalizeNullableString($payload['media_type'] ?? null);
+        $payload['media_url'] = $this->normalizeNullableString($payload['media_url'] ?? null);
+
+        $validator = Validator::make($payload, [
+            'waypoint_id' => ['required', 'integer', 'exists:tour_waypoints,id'],
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'icon' => ['required', 'string', 'max:100'],
+            'pitch' => ['required', 'numeric', 'between:-90,90'],
+            'yaw' => ['required', 'numeric', 'between:-360,360'],
+            'action_type' => ['required', 'in:navigate,info,bookmark,external-link,audio,video'],
+            'action_target' => ['nullable', 'string', 'max:2048'],
+            'sort_order' => ['required', 'integer', 'min:0'],
+            'is_active' => ['required', 'boolean'],
+            'media_type' => ['nullable', 'in:image,gallery,video'],
+            'media_url' => ['nullable', 'string', 'max:12000'],
+            'size' => ['required', 'integer', 'between:1,5'],
+        ]);
+
+        $validator->after(function ($validator) use ($payload) {
+            $actionType = $payload['action_type'] ?? null;
+            $actionTarget = $payload['action_target'] ?? null;
+            $mediaType = $payload['media_type'] ?? null;
+            $mediaUrl = $payload['media_url'] ?? null;
+
+            if ($actionType === 'navigate') {
+                if (!$actionTarget) {
+                    $validator->errors()->add('action_target', 'Choose a target scene.');
+                } elseif (!TourWaypoint::where('slug', $actionTarget)->exists()) {
+                    $validator->errors()->add('action_target', 'The selected target scene does not exist.');
+                }
+            }
+
+            if (in_array($actionType, ['external-link', 'video'], true) && !$this->isValidHttpUrl($actionTarget)) {
+                $validator->errors()->add('action_target', 'Enter a valid http or https URL.');
+            }
+
+            if ($mediaType === 'video' && $mediaUrl && !$this->isValidYouTubeUrl($mediaUrl)) {
+                $validator->errors()->add('media_url', 'Enter a valid YouTube video, Shorts, or youtu.be link.');
+            }
+
+            if (in_array($mediaType, ['image', 'gallery'], true)) {
+                $urls = preg_split('/\r\n|\r|\n/', (string) $mediaUrl) ?: [];
+                $urls = array_values(array_filter(array_map('trim', $urls)));
+
+                if (empty($urls)) {
+                    $validator->errors()->add('media_url', 'Upload at least one image or choose no media.');
+                    return;
+                }
+
+                foreach ($urls as $url) {
+                    if (!$this->isValidMediaUrl($url)) {
+                        $validator->errors()->add('media_url', 'Image URLs must use http, https, or a local /storage path.');
+                        break;
+                    }
+                }
+            }
+        });
+
+        if ($validator->fails()) {
+            Notification::make()
+                ->title('Invalid hotspot data')
+                ->body($validator->errors()->first())
+                ->danger()
+                ->send();
+
+            return null;
+        }
+
+        return $validator->validated();
+    }
+
+    protected function normalizeNullableString(?string $value): ?string
+    {
+        $normalized = trim((string) $value);
+        return $normalized === '' ? null : $normalized;
+    }
+
+    protected function isValidHttpUrl(?string $value): bool
+    {
+        if (!$value) {
+            return false;
+        }
+
+        if (!filter_var($value, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        $scheme = parse_url($value, PHP_URL_SCHEME);
+        return in_array($scheme, ['http', 'https'], true);
+    }
+
+    protected function isValidYouTubeUrl(?string $value): bool
+    {
+        if (!$this->isValidHttpUrl($value)) {
+            return false;
+        }
+
+        $parts = parse_url($value);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $host = preg_replace('/^www\./', '', $host);
+        parse_str((string) ($parts['query'] ?? ''), $query);
+
+        $id = '';
+        if ($host === 'youtu.be') {
+            $id = trim((string) ($parts['path'] ?? ''), '/');
+        } elseif (in_array($host, ['youtube.com', 'm.youtube.com'], true)) {
+            $id = (string) ($query['v'] ?? '');
+
+            if ($id === '' && str_starts_with((string) ($parts['path'] ?? ''), '/shorts/')) {
+                $segments = array_values(array_filter(explode('/', (string) $parts['path'])));
+                $id = (string) ($segments[1] ?? '');
+            }
+
+            if ($id === '' && str_starts_with((string) ($parts['path'] ?? ''), '/embed/')) {
+                $segments = array_values(array_filter(explode('/', (string) $parts['path'])));
+                $id = (string) ($segments[1] ?? '');
+            }
+        }
+
+        return (bool) preg_match('/^[A-Za-z0-9_-]{11}$/', $id);
+    }
+
+    protected function isValidMediaUrl(?string $value): bool
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return false;
+        }
+
+        if ($this->isValidHttpUrl($value)) {
+            return true;
+        }
+
+        return (bool) preg_match('#^/(?!/)[A-Za-z0-9/_\-.%]+$#', $value);
     }
 
     // ── Computed Properties ──────────────────────────────────────

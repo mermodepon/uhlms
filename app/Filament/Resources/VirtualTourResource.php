@@ -3,8 +3,8 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\VirtualTourResource\Pages;
-
 use App\Models\TourWaypoint;
+use App\Support\MediaUrl;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -148,8 +148,8 @@ class VirtualTourResource extends Resource
                 Tables\Columns\ImageColumn::make('thumbnail_image')
                     ->label('Preview')
                     ->size(40)
-                    ->disk(config('media.disk'))
-                    ->getStateUsing(fn (TourWaypoint $record) => $record->thumbnail_image ?: $record->panorama_image),
+                    ->getStateUsing(fn (TourWaypoint $record) => MediaUrl::absoluteUrl($record->thumbnail_image ?: $record->panorama_image))
+                    ->checkFileExistence(false),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()
                     ->sortable()
