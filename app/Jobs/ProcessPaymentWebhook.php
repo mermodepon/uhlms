@@ -179,7 +179,13 @@ class ProcessPaymentWebhook implements ShouldQueue
             // Extract reservation ID from source metadata or payment attributes
             $sourceData = $paymentData['attributes']['source'] ?? [];
             $sourceAttributes = $sourceData['attributes'] ?? [];
-            $metadata = $sourceAttributes['metadata'] ?? $sourceData['metadata'] ?? $paymentData['attributes']['metadata'] ?? [];
+            $metadata = $sourceAttributes['metadata'] ?? [];
+            if (empty($metadata)) {
+                $metadata = $sourceData['metadata'] ?? [];
+            }
+            if (empty($metadata)) {
+                $metadata = $paymentData['attributes']['metadata'] ?? [];
+            }
             $reservationId = $metadata['reservation_id'] ?? null;
 
             if (! $paymentId || ! $reservationId) {
@@ -206,6 +212,7 @@ class ProcessPaymentWebhook implements ShouldQueue
             // Process payment within transaction
             DB::transaction(function () use ($paymentId, $paymentStatus, $paymentAmount, $paymentIntentId, $checkoutSessionId, $reservation, $paymentData, $sourceData, $sourceAttributes) {
             $sourceId = $sourceData['id'] ?? null;
+            $gatewaySourceId = $sourceId ?: $checkoutSessionId;
 
             // Check if payment already processed (idempotency)
             // Look for existing payment by actual payment ID, payment intent ID, or source/checkout session ID.
@@ -247,12 +254,17 @@ class ProcessPaymentWebhook implements ShouldQueue
             // Detect payment type from metadata
             $paymentMetadata = $paymentData['attributes']['metadata'] ?? [];
             $isDeposit = ($paymentMetadata['payment_type'] ?? 'deposit') === 'deposit';
+            $wasCancelledBeforePayment = $existingPayment?->gateway_status === 'cancelled'
+                || $existingPayment?->status === 'cancelled';
+            if (($paymentMetadata['payment_type'] ?? null) === 'checkin_balance') {
+                $paymentMethod = 'PayMongo Online';
+            }
 
             if ($existingPayment) {
                 // Update existing payment record
                 $existingPayment->update([
                     'gateway_payment_id' => $paymentId,
-                    'gateway_source_id' => $sourceId,
+                    'gateway_source_id' => $gatewaySourceId,
                     'gateway_status' => 'paid',
                     'status' => 'posted',
                     'payment_mode' => $paymentMethod,
@@ -263,6 +275,7 @@ class ProcessPaymentWebhook implements ShouldQueue
                             'webhook_received_at' => now()->toIso8601String(),
                             'payment_intent_id' => $paymentIntentId,
                             'checkout_session_id' => $checkoutSessionId,
+                            'paid_after_staff_cancellation' => $wasCancelledBeforePayment,
                             'payment_data' => $paymentData,
                             'source_data' => $sourceData,
                         ]
@@ -278,7 +291,7 @@ class ProcessPaymentWebhook implements ShouldQueue
                     'payment_mode' => $paymentMethod,
                     'gateway' => 'paymongo',
                     'gateway_payment_id' => $paymentId,
-                    'gateway_source_id' => $sourceId,
+                    'gateway_source_id' => $gatewaySourceId,
                     'gateway_status' => 'paid',
                     'is_deposit' => $isDeposit,  // Set based on metadata
                     'status' => 'posted',
@@ -294,7 +307,7 @@ class ProcessPaymentWebhook implements ShouldQueue
                     ],
                     'meta' => [
                         'source' => 'online_payment_webhook',
-                        'payment_type' => $isDeposit ? 'deposit' : 'full',
+                        'payment_type' => $paymentMetadata['payment_type'] ?? ($isDeposit ? 'deposit' : 'full'),
                     ],
                 ]);
             }
@@ -331,12 +344,25 @@ class ProcessPaymentWebhook implements ShouldQueue
                     'reservations_view'
                 );
 
+                if ($wasCancelledBeforePayment) {
+                    NotificationHelper::notifyAllStaff(
+                        'Cancelled PayMongo Request Was Paid',
+                        "Reservation #{$reservation->reference_number} received PayMongo payment of â‚±".number_format($paymentAmount, 2).' after staff had cancelled the checkout request. Please reconcile against any manual collection.',
+                        'warning',
+                        'payment',
+                        route('filament.admin.resources.reservations.index', [], false).'?tableSearch='.urlencode($reservation->reference_number),
+                        null,
+                        'reservations_view'
+                    );
+                }
+
                 Log::info('Payment webhook processed successfully', [
                     'reservation_id' => $reservation->id,
                     'payment_id' => $payment->id,
                     'gateway_payment_id' => $paymentId,
                     'amount' => $paymentAmount,
                     'new_status' => $reservation->status,
+                    'paid_after_staff_cancellation' => $wasCancelledBeforePayment,
                 ]);
             });
         } catch (\Exception $e) {

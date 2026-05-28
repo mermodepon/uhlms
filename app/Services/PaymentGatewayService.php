@@ -189,7 +189,11 @@ class PaymentGatewayService
     ): array {
         try {
             $amountInCentavos = (int) round($amount * 100);
-            $paymentTypeLabel = $paymentType === 'full' ? 'Full Payment' : 'Deposit';
+            $paymentTypeLabel = match ($paymentType) {
+                'full' => 'Full Payment',
+                'checkin_balance' => 'Check-in Balance',
+                default => 'Deposit',
+            };
             $description = "{$paymentTypeLabel} for Reservation {$reservation->reference_number}";
             $paymentMethodTypes = array_values(array_unique($paymentMethods ?: config('paymongo.checkout_payment_methods', [])));
 
@@ -216,7 +220,11 @@ class PaymentGatewayService
                             'amount' => $amountInCentavos,
                             'currency' => 'PHP',
                             'description' => $description,
-                            'name' => $paymentType === 'full' ? 'Reservation Full Payment' : 'Reservation Deposit',
+                            'name' => match ($paymentType) {
+                                'full' => 'Reservation Full Payment',
+                                'checkin_balance' => 'Reservation Check-in Balance',
+                                default => 'Reservation Deposit',
+                            },
                             'quantity' => 1,
                         ]],
                         'payment_method_types' => $paymentMethodTypes,

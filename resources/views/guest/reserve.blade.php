@@ -148,7 +148,7 @@
                                    id="availability_acknowledged"
                                    value="1"
                                    {{ old('availability_acknowledged') ? 'checked' : '' }}
-                                   class="mt-1 h-4 w-4 rounded border-amber-400 text-[#00491E] focus:ring-[#00491E]">
+                                   class="mt-1 w-5 h-5 flex-shrink-0 rounded border-gray-300 text-[#00491E] focus:ring-[#00491E]">
                             <span>
                                 <span class="block text-sm font-semibold text-amber-900">Submit even if availability looks limited</span>
                                 <span class="block text-sm text-amber-800">If your selected room type appears unavailable for those dates, you can still send a reservation request for staff review.</span>
@@ -158,17 +158,17 @@
                     </div>
 
                     {{-- Discount Declaration --}}
-                    <div class="md:col-span-2 bg-blue-50 border-2 border-blue-200 rounded-xl p-6" x-data="{ discountDeclared: {{ old('discount_declared') ? 'true' : 'false' }} }">
-                        <div class="flex items-start gap-3 mb-4">
+                    <div class="md:col-span-2 bg-blue-50 border border-blue-200 rounded-xl p-4" x-data="{ discountDeclared: {{ old('discount_declared') ? 'true' : 'false' }} }">
+                        <div class="flex items-start gap-3">
                             <input type="checkbox" 
                                    name="discount_declared" 
                                    id="discount_declared" 
                                    value="1"
                                    x-model="discountDeclared"
                                    {{ old('discount_declared') ? 'checked' : '' }}
-                                   class="w-5 h-5 text-[#00491E] focus:ring-[#00491E] mt-1 rounded">
+                                   class="w-5 h-5 flex-shrink-0 text-[#00491E] focus:ring-[#00491E] mt-1 rounded border-gray-300">
                             <div class="flex-1">
-                                <label for="discount_declared" class="block text-base font-semibold text-gray-900 cursor-pointer">
+                                <label for="discount_declared" class="block text-sm font-semibold text-gray-900 cursor-pointer">
                                     I am eligible for a discount (PWD / Senior Citizen / Student)
                                 </label>
                                 <p class="text-sm text-gray-600 mt-1">

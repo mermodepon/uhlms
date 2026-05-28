@@ -5,47 +5,63 @@
 @section('content')
     {{-- Hero Section --}}
     @php
-        $welcomeMessage = 'Comfortable and affordable lodging for visiting scholars, faculty, students, and guests of Central Mindanao University.';
-        $siteTitle      = 'University Homestay';
+        $guestSite = \App\Support\GuestSiteSettings::all();
+        $welcomeMessage = $guestSite['guest_hero_message'];
+        $siteTitle = $guestSite['guest_hero_headline'];
         $defaultCheckIn = request('check_in', date('Y-m-d'));
         $defaultCheckOut = request('check_out', date('Y-m-d', strtotime('+1 day')));
+        $heroBullets = array_filter($guestSite['guest_hero_bullets'] ?? []);
+        $heroBackgroundUrl = \App\Support\GuestSiteSettings::heroBackgroundUrl();
+        $heroOverlayOpacity = \App\Support\GuestSiteSettings::heroBackgroundOverlayOpacity();
+        $heroImageVisibility = max(0.25, min(0.65, 1 - ($heroOverlayOpacity / 2)));
     @endphp
-    <section class="relative bg-gradient-to-br from-[#00491E] via-[#02681E] to-[#00491E] text-white">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16 lg:py-24">
+    <section class="relative overflow-hidden bg-gradient-to-br from-[#00491E] via-[#02681E] to-[#00491E] text-white">
+        @if($heroBackgroundUrl)
+            <img
+                src="{{ $heroBackgroundUrl }}"
+                alt=""
+                class="absolute inset-0 h-full w-full object-cover"
+                style="opacity: {{ $heroImageVisibility }};"
+                aria-hidden="true"
+            >
+            <div class="absolute inset-0" style="background: linear-gradient(90deg, rgba(0, 35, 14, 0.82) 0%, rgba(0, 54, 21, 0.66) 42%, rgba(0, 54, 21, 0.48) 62%, rgba(0, 35, 14, 0.62) 100%);"></div>
+        @endif
+        <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16 lg:py-24">
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-10 lg:gap-12 items-start lg:items-center">
                 {{-- Left: Text --}}
                 <div>
-                    <span class="inline-block bg-[#FFC600] text-[#00491E] px-3 py-1 rounded-full text-xs font-bold mb-4 md:mb-5 uppercase tracking-widest">360° Virtual Tour Available</span>
+                    @if($guestSite['guest_hero_badge'])
+                        <span class="inline-block bg-[#FFC600] text-[#00491E] px-3 py-1 rounded-full text-xs font-bold mb-4 md:mb-5 uppercase tracking-widest">{{ $guestSite['guest_hero_badge'] }}</span>
+                    @endif
                     <h1 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-3 sm:mb-4 md:mb-5 leading-tight">{{ $siteTitle }}</h1>
                     <p class="text-sm sm:text-base md:text-lg text-gray-200 mb-5 sm:mb-6 md:mb-8 max-w-lg">{{ $welcomeMessage }}</p>
-                    <ul class="space-y-2 sm:space-y-2.5 md:space-y-3 mb-5 sm:mb-6 md:mb-8 text-xs sm:text-sm md:text-base text-gray-200">
-                        <li class="flex items-center gap-2 sm:gap-2.5 md:gap-3">
-                            <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[#FFC600] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                            Navigate freely between rooms and common areas
-                        </li>
-                        <li class="flex items-center gap-2 sm:gap-2.5 md:gap-3">
-                            <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[#FFC600] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                            View room details and real-time availability
-                        </li>
-                        <li class="flex items-center gap-2 sm:gap-2.5 md:gap-3">
-                            <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[#FFC600] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                            Request a reservation directly from within the tour
-                        </li>
-                    </ul>
+                    @if(count($heroBullets))
+                        <ul class="space-y-2 sm:space-y-2.5 md:space-y-3 mb-5 sm:mb-6 md:mb-8 text-xs sm:text-sm md:text-base text-gray-200">
+                            @foreach($heroBullets as $bullet)
+                                <li class="flex items-center gap-2 sm:gap-2.5 md:gap-3">
+                                    <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[#FFC600] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                    {{ is_array($bullet) ? ($bullet['text'] ?? '') : $bullet }}
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
                     <div class="flex flex-col sm:flex-row gap-2.5 md:gap-3">
+                        @if($guestSite['guest_show_virtual_tour_cta'])
                         <a href="{{ route('guest.tour.viewer', [], false) }}" class="inline-flex items-center justify-center gap-2 bg-[#FFC600] text-[#00491E] px-5 sm:px-6 md:px-8 py-2.5 sm:py-3 md:py-3.5 rounded-lg font-bold text-sm sm:text-base md:text-lg hover:bg-yellow-400 transition shadow-lg">
                             <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                            Start Virtual Tour
+                            {{ $guestSite['guest_hero_primary_cta_label'] }}
                         </a>
+                        @endif
                         <a href="{{ route('guest.rooms', [], false) }}" class="inline-flex items-center justify-center gap-2 bg-white/10 border border-white/30 text-white px-5 sm:px-6 md:px-8 py-2.5 sm:py-3 md:py-3.5 rounded-lg font-bold text-sm sm:text-base md:text-lg hover:bg-white/20 transition">
-                            Browse Rooms
+                            {{ $guestSite['guest_hero_secondary_cta_label'] }}
                         </a>
                     </div>
                 </div>
                 {{-- Right: Quick Request Widget --}}
+                @if($guestSite['guest_show_quick_availability'])
                 <div class="flex items-center justify-center mt-8 lg:mt-0">
                     <div class="relative w-full max-w-lg">
-                        <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-4 sm:p-5 md:p-6 lg:p-8 border border-white/20 shadow-2xl">
+                        <div class="rounded-2xl p-4 sm:p-5 md:p-6 lg:p-8 border border-white/25 shadow-2xl" style="background: rgba(0, 54, 21, 0.68); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);">
                             <div class="text-center mb-4 md:mb-5 lg:mb-6">
                                 <svg class="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-[#FFC600] mx-auto mb-2 md:mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                 <h3 class="text-lg sm:text-xl md:text-2xl font-bold text-white mb-1">Quick Availability Check</h3>
@@ -114,9 +130,10 @@
                         </div>
                     </div>
                 </div>
+                @endif
             </div>
         </div>
-        <div class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-gray-50 to-transparent"></div>
+        <div class="absolute bottom-0 left-0 right-0 z-10 h-16 bg-gradient-to-t from-gray-50 to-transparent"></div>
     </section>
 
     {{-- About & Amenities --}}
@@ -155,8 +172,8 @@
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
         <div>
             <div class="text-center mb-10 md:mb-12">
-                <h2 class="text-2xl md:text-3xl font-bold text-[#00491E] mb-3 md:mb-4">Our Accommodations</h2>
-                <p class="text-sm md:text-base text-gray-600 max-w-2xl mx-auto">Choose from a variety of room types designed to meet your needs and budget during your stay at CMU.</p>
+                <h2 class="text-2xl md:text-3xl font-bold text-[#00491E] mb-3 md:mb-4">{{ $guestSite['guest_home_rooms_heading'] }}</h2>
+                <p class="text-sm md:text-base text-gray-600 max-w-2xl mx-auto">{{ $guestSite['guest_home_rooms_intro'] }}</p>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
@@ -213,15 +230,16 @@
         </div>
     </section>
 
+    @if($guestSite['guest_show_stay_guide'])
     <section class="py-12 md:py-16 bg-gradient-to-b from-white to-[#00491E]/5 border-y border-[#00491E]/10">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-8 md:mb-10">
                 <span class="inline-flex items-center rounded-full bg-[#FFC600]/20 px-4 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[#00491E]">
                     Stay Guide
                 </span>
-                <h2 class="text-2xl md:text-3xl font-bold text-[#00491E] mt-3 md:mt-4 mb-2 md:mb-3">Stay Inclusions &amp; Optional Add-ons</h2>
+                <h2 class="text-2xl md:text-3xl font-bold text-[#00491E] mt-3 md:mt-4 mb-2 md:mb-3">{{ $guestSite['guest_stay_guide_heading'] }}</h2>
                 <p class="text-sm md:text-base text-gray-600 max-w-3xl mx-auto">
-                    A quick overview of what guests commonly enjoy during their stay and the extra services that may be arranged when needed.
+                    {{ $guestSite['guest_stay_guide_intro'] }}
                 </p>
             </div>
 
@@ -311,13 +329,14 @@
             </div>
         </div>
     </section>
+    @endif
 
     {{-- Booking Policy & FAQ --}}
     @php
-        $bookingPolicy = null;
-        $faq           = [];
+        $bookingPolicy = $guestSite['guest_booking_policy'];
+        $faq = $guestSite['guest_faq_items'];
     @endphp
-    @if($bookingPolicy)
+    @if($guestSite['guest_show_booking_policy'] && $bookingPolicy)
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div class="text-center mb-8">
             <h2 class="text-2xl font-bold text-[#00491E] mb-4">Booking Policy & Terms</h2>
@@ -325,7 +344,7 @@
         </div>
     </section>
     @endif
-    @if(is_array($faq) && count($faq))
+    @if($guestSite['guest_show_faq'] && is_array($faq) && count($faq))
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div class="text-center mb-8">
             <h2 class="text-2xl font-bold text-[#00491E] mb-4">Frequently Asked Questions</h2>
@@ -343,28 +362,29 @@
     <section class="bg-[#00491E]/5 py-12 md:py-16">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-10 md:mb-12">
-                <h2 class="text-2xl md:text-3xl font-bold text-[#00491E] mb-3 md:mb-4">How to Reserve</h2>
-                <p class="text-sm md:text-base text-gray-600">Simple steps to request a stay at CMU University Homestay</p>
+                <h2 class="text-2xl md:text-3xl font-bold text-[#00491E] mb-3 md:mb-4">{{ $guestSite['guest_reservation_steps_heading'] }}</h2>
+                <p class="text-sm md:text-base text-gray-600">{{ $guestSite['guest_reservation_steps_intro'] }}</p>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
                 @php
-                    $steps = [
-                        ['icon' => 'M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z', 'title' => 'Browse Rooms', 'desc' => 'Explore our room types and take virtual tours'],
-                        ['icon' => 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z', 'title' => 'Submit Request', 'desc' => 'Send your reservation request with your stay details'],
-                        ['icon' => 'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'title' => 'Review & Approval', 'desc' => 'Staff checks availability, policy, and room options'],
-                        ['icon' => 'M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z', 'title' => 'Check In', 'desc' => 'Room assigned and ready for your arrival'],
+                    $icons = [
+                        'M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z',
+                        'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z',
+                        'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+                        'M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z',
                     ];
+                    $steps = $guestSite['guest_reservation_steps'] ?: \App\Support\GuestSiteSettings::defaults()['guest_reservation_steps'];
                 @endphp
                 @foreach($steps as $i => $step)
                     <div class="text-center">
                         <div class="w-16 h-16 bg-[#00491E] rounded-full flex items-center justify-center mx-auto mb-4">
                             <svg class="w-8 h-8 text-[#FFC600]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="{{ $step['icon'] }}"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="{{ $icons[$i] ?? $icons[0] }}"/>
                             </svg>
                         </div>
                         <div class="text-[#FFC600] font-bold text-sm mb-1">Step {{ $i + 1 }}</div>
                         <h3 class="font-bold text-[#00491E] mb-2">{{ $step['title'] }}</h3>
-                        <p class="text-gray-600 text-sm">{{ $step['desc'] }}</p>
+                        <p class="text-gray-600 text-sm">{{ $step['description'] ?? ($step['desc'] ?? '') }}</p>
                     </div>
                 @endforeach
             </div>

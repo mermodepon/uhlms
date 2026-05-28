@@ -8,6 +8,7 @@ use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
+use App\Models\Setting;
 use App\Models\TourWaypoint;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -125,6 +126,60 @@ class GuestControllerTest extends TestCase
         $response->assertStatus(200);
         $response->assertSee('Active Suite');
         $response->assertDontSee('Hidden Room');
+    }
+
+    public function test_home_page_uses_guest_site_settings(): void
+    {
+        $this->createRoomType();
+        Setting::set('guest_site_title', 'Custom Homestay');
+        Setting::set('guest_hero_headline', 'Stay at the Campus Lodge');
+        Setting::set('guest_hero_message', 'A configurable public welcome message.');
+        Setting::set('guest_announcement_enabled', '1');
+        Setting::set('guest_announcement_text', 'Public notice for guests.');
+        Setting::set('guest_show_booking_policy', '1');
+        Setting::set('guest_booking_policy', 'Bring a valid ID during check-in.');
+        Setting::set('guest_show_faq', '1');
+        Setting::set('guest_faq_items', json_encode([
+            ['question' => 'Do you accept walk-ins?', 'answer' => 'Please submit a request first.'],
+        ]));
+
+        $response = $this->get(route('guest.home'));
+
+        $response->assertStatus(200);
+        $response->assertSee('Stay at the Campus Lodge');
+        $response->assertSee('A configurable public welcome message.');
+        $response->assertSee('Public notice for guests.');
+        $response->assertSee('Bring a valid ID during check-in.');
+        $response->assertSee('Do you accept walk-ins?');
+    }
+
+    public function test_home_page_keeps_gradient_fallback_without_enabled_hero_background(): void
+    {
+        $this->createRoomType();
+        Setting::set('guest_hero_background_image', 'site-settings/hero/lobby.jpg');
+        Setting::set('guest_hero_background_enabled', '0');
+
+        $response = $this->get(route('guest.home'));
+
+        $response->assertStatus(200);
+        $response->assertDontSee('/storage/site-settings/hero/lobby.jpg', false);
+    }
+
+    public function test_home_page_renders_enabled_hero_background_image(): void
+    {
+        $this->createRoomType();
+        Setting::set('guest_hero_background_image', 'site-settings/hero/lobby.jpg');
+        Setting::set('guest_hero_background_enabled', '1');
+        Setting::set('guest_hero_background_opacity', '82');
+
+        $response = $this->get(route('guest.home'));
+
+        $response->assertStatus(200);
+        $response->assertSee('/storage/site-settings/hero/lobby.jpg', false);
+        $response->assertSee('absolute inset-0 h-full w-full object-cover', false);
+        $response->assertSee('opacity: 0.59', false);
+        $response->assertSee('rgba(0, 35, 14, 0.82)', false);
+        $response->assertSee('backdrop-filter: blur(18px)', false);
     }
 
     // ── Rooms Catalog ────────────────────────────────────────

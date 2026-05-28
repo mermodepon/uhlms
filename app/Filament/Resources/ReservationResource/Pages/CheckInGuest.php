@@ -4,8 +4,12 @@ namespace App\Filament\Resources\ReservationResource\Pages;
 
 use App\Filament\Resources\ReservationResource;
 use App\Models\Reservation;
+use App\Models\ReservationLog;
+use App\Models\ReservationPayment;
 use App\Models\Room;
 use App\Models\Service;
+use App\Models\Setting;
+use App\Services\PaymentGatewayService;
 use App\Services\CheckInService;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -13,6 +17,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Filament\Support\Enums\MaxWidth;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
 class CheckInGuest extends Page
 {
@@ -551,6 +556,15 @@ class CheckInGuest extends Page
                         ->columnSpanFull(),
                 ])->columns(2),
 
+            Forms\Components\Section::make('Online Payments')
+                ->visible(fn () => Setting::isOnlinePaymentsEnabled() || $this->record->payments()->where('gateway', 'paymongo')->exists())
+                ->schema([
+                    Forms\Components\Placeholder::make('online_payment_status')
+                        ->label('')
+                        ->content(fn () => $this->renderOnlinePaymentPanel())
+                        ->columnSpanFull(),
+                ]),
+
             Forms\Components\Section::make('Payment Details')
                 ->schema([
                     Forms\Components\Select::make('payment_mode')
@@ -564,10 +578,12 @@ class CheckInGuest extends Page
                             'others' => 'Others',
                         ])
                         ->live()
-                        ->required(),
+                        ->disabled(fn () => $this->shouldDisableManualPaymentFields())
+                        ->required(fn () => ! $this->shouldDisableManualPaymentFields()),
                     Forms\Components\TextInput::make('payment_mode_other')
                         ->label('Specify Payment Mode')
                         ->visible(fn ($get) => $get('payment_mode') === 'others')
+                        ->disabled(fn () => $this->shouldDisableManualPaymentFields())
                         ->maxLength(100),
                     Forms\Components\TextInput::make('payment_amount')
                         ->label('Paid Amount')
@@ -592,19 +608,331 @@ class CheckInGuest extends Page
                             return round(max(0, $pricing['grand_total'] - $existingPayments), 2);
                         })
                         ->helperText('Enter the amount collected at reception. The system will reject amounts below the payable balance.')
-                        ->required(),
+                        ->disabled(fn () => $this->shouldDisableManualPaymentFields())
+                        ->required(fn () => ! $this->shouldDisableManualPaymentFields()),
                     Forms\Components\TextInput::make('payment_or_number')
                         ->label('Official Receipt Number')
                         ->maxLength(100)
-                        ->required(),
+                        ->disabled(fn () => $this->shouldDisableManualPaymentFields())
+                        ->required(fn () => ! $this->shouldDisableManualPaymentFields()),
                     Forms\Components\DatePicker::make('or_date')
                         ->label('OR Date')
                         ->displayFormat('M d, Y')
                         ->default(now()->toDateString())
-                        ->required()
+                        ->disabled(fn () => $this->shouldDisableManualPaymentFields())
+                        ->required(fn () => ! $this->shouldDisableManualPaymentFields())
                         ->helperText('Date on the official receipt'),
                 ])->columns(2),
         ];
+    }
+
+    public function createPayMongoBalanceCheckout(): void
+    {
+        $this->record->refresh();
+
+        if (! Setting::isOnlinePaymentsEnabled()) {
+            Notification::make()
+                ->danger()
+                ->title('Online payments are disabled.')
+                ->send();
+
+            return;
+        }
+
+        if (! in_array($this->record->status, ['approved', 'confirmed'], true)) {
+            Notification::make()
+                ->danger()
+                ->title('This reservation cannot collect online check-in balance.')
+                ->send();
+
+            return;
+        }
+
+        if ($this->getPendingCheckInBalancePayment()) {
+            Notification::make()
+                ->warning()
+                ->title('A PayMongo balance checkout is already pending.')
+                ->send();
+
+            return;
+        }
+
+        $amount = $this->getRemainingBalance();
+        if ($amount <= 0.01) {
+            Notification::make()
+                ->success()
+                ->title('No remaining balance to collect.')
+                ->send();
+
+            return;
+        }
+
+        try {
+            $returnUrl = $this->absoluteUrl(ReservationResource::getUrl('check-in', ['record' => $this->record]));
+            $checkoutSession = app(PaymentGatewayService::class)->createCheckoutSession(
+                $this->record,
+                $amount,
+                'checkin_balance',
+                null,
+                [
+                    'success' => $returnUrl,
+                    'cancel' => $returnUrl,
+                ]
+            );
+
+            ReservationPayment::create([
+                'reservation_id' => $this->record->id,
+                'amount' => $amount,
+                'payment_mode' => 'paymongo_online',
+                'gateway' => 'paymongo',
+                'gateway_payment_id' => $checkoutSession['payment_intent_id'],
+                'gateway_source_id' => $checkoutSession['checkout_session_id'],
+                'gateway_status' => 'pending',
+                'is_deposit' => false,
+                'status' => 'pending',
+                'gateway_metadata' => [
+                    'checkout_session_created_at' => now()->toIso8601String(),
+                    'checkout_session_id' => $checkoutSession['checkout_session_id'] ?? null,
+                    'checkout_url' => $checkoutSession['checkout_url'] ?? null,
+                    'checkout_payment_methods' => $checkoutSession['payment_method_types'] ?? [],
+                    'payment_type' => 'checkin_balance',
+                    'reservation_id' => (string) $this->record->id,
+                    'reservation_ref' => (string) $this->record->reference_number,
+                ],
+                'meta' => [
+                    'source' => 'checkin_balance',
+                    'payment_type' => 'checkin_balance',
+                ],
+            ]);
+
+            ReservationLog::record(
+                $this->record,
+                'checkin_balance_payment_initiated',
+                'Staff generated PayMongo Checkout for check-in balance of PHP '.number_format($amount, 2).'.',
+                [
+                    'amount' => $amount,
+                    'checkout_session_id' => $checkoutSession['checkout_session_id'] ?? null,
+                    'gateway_payment_id' => $checkoutSession['payment_intent_id'] ?? null,
+                ]
+            );
+
+            $this->record->refresh();
+
+            Notification::make()
+                ->success()
+                ->title('PayMongo checkout generated.')
+                ->body('Ask the guest to scan the QR code or open the checkout link below.')
+                ->send();
+        } catch (\Throwable $e) {
+            Notification::make()
+                ->danger()
+                ->title('Unable to generate PayMongo checkout.')
+                ->body($e->getMessage())
+                ->persistent()
+                ->send();
+        }
+    }
+
+    public function cancelPendingPayMongoBalanceCheckout(): void
+    {
+        $this->record->refresh();
+        $pendingPayment = $this->getPendingCheckInBalancePayment();
+
+        if (! $pendingPayment) {
+            Notification::make()
+                ->warning()
+                ->title('No pending PayMongo request to cancel.')
+                ->send();
+
+            return;
+        }
+
+        $pendingPayment->update([
+            'gateway_status' => 'cancelled',
+            'status' => 'cancelled',
+            'gateway_metadata' => array_merge(
+                $pendingPayment->gateway_metadata ?? [],
+                [
+                    'cancelled_at' => now()->toIso8601String(),
+                    'cancelled_by' => auth()->id(),
+                    'cancellation_source' => 'checkin_staff_action',
+                    'cancellation_reason' => 'Guest will pay manually at reception.',
+                ]
+            ),
+            'meta' => array_merge(
+                $pendingPayment->meta ?? [],
+                [
+                    'cancelled_at' => now()->toIso8601String(),
+                    'cancelled_by' => auth()->id(),
+                ]
+            ),
+        ]);
+
+        ReservationLog::record(
+            $this->record,
+            'checkin_balance_payment_cancelled',
+            'Staff cancelled pending PayMongo Checkout for check-in balance of PHP '.number_format((float) $pendingPayment->amount, 2).'.',
+            [
+                'payment_id' => $pendingPayment->id,
+                'amount' => (float) $pendingPayment->amount,
+                'gateway_payment_id' => $pendingPayment->gateway_payment_id,
+                'checkout_session_id' => $pendingPayment->gateway_source_id,
+                'cancelled_by' => auth()->id(),
+            ]
+        );
+
+        $this->record->refresh();
+
+        Notification::make()
+            ->success()
+            ->title('PayMongo request cancelled.')
+            ->body('Manual payment fields are available again.')
+            ->send();
+    }
+
+    protected function renderOnlinePaymentPanel(): HtmlString
+    {
+        $summary = $this->getOnlinePaymentSummary();
+        $pendingPayment = $this->getPendingCheckInBalancePayment();
+        $checkoutUrl = $pendingPayment ? data_get($pendingPayment->gateway_metadata, 'checkout_url') : null;
+
+        $rows = [
+            ['Prior PayMongo deposit', $summary['deposit_paid']],
+            ['Paid PayMongo balance', $summary['balance_paid']],
+            ['Pending PayMongo balance', $summary['balance_pending']],
+            ['Remaining balance', $summary['remaining_balance']],
+        ];
+
+        $html = '<div class="space-y-4" wire:poll.8s>';
+        $html .= '<div class="grid gap-2 text-sm">';
+        foreach ($rows as [$label, $amount]) {
+            $emphasis = $label === 'Remaining balance' ? 'font-bold text-base' : '';
+            $html .= '<div class="flex items-center justify-between gap-4 '.$emphasis.'">';
+            $html .= '<span>'.e($label).'</span>';
+            $html .= '<span>PHP '.number_format((float) $amount, 2).'</span>';
+            $html .= '</div>';
+        }
+        $html .= '</div>';
+
+        if ($summary['remaining_balance'] <= 0.01) {
+            $html .= '<div class="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">';
+            $html .= '<strong>Remaining balance paid online.</strong> You can complete check-in without collecting another payment.';
+            $html .= '</div>';
+        } elseif ($pendingPayment) {
+            $html .= '<div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">';
+            $html .= '<p class="font-semibold">Waiting for PayMongo confirmation.</p>';
+            $html .= '<p class="mt-1">Check-in remains blocked until PayMongo confirms payment.</p>';
+            if ($checkoutUrl) {
+                $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='.rawurlencode($checkoutUrl);
+                $html .= '<div class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">';
+                $html .= '<img src="'.e($qrUrl).'" alt="PayMongo checkout QR code" class="h-40 w-40 rounded-lg border bg-white p-2">';
+                $html .= '<div class="min-w-0 flex-1">';
+                $html .= '<p class="break-all rounded border bg-white p-2 text-xs text-gray-700">'.e($checkoutUrl).'</p>';
+                $html .= '<div class="mt-3 flex flex-wrap gap-2">';
+                $html .= '<a href="'.e($checkoutUrl).'" target="_blank" rel="noopener" class="inline-flex items-center rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-500">Open checkout</a>';
+                $html .= '<button type="button" x-data="{}" x-on:click="navigator.clipboard.writeText('.e(json_encode($checkoutUrl)).')" class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Copy link</button>';
+                $html .= '</div></div></div>';
+            }
+            $html .= '<div class="mt-4 border-t border-amber-200 pt-3">';
+            $html .= '<button type="button" wire:click="cancelPendingPayMongoBalanceCheckout" wire:confirm="Cancel this pending PayMongo request and allow manual payment instead?" wire:loading.attr="disabled" wire:target="cancelPendingPayMongoBalanceCheckout" class="inline-flex items-center rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-70">';
+            $html .= '<span wire:loading.remove wire:target="cancelPendingPayMongoBalanceCheckout">Cancel PayMongo Request</span>';
+            $html .= '<span wire:loading wire:target="cancelPendingPayMongoBalanceCheckout">Cancelling...</span>';
+            $html .= '</button>';
+            $html .= '<p class="mt-2 text-xs text-amber-800">Use this if the guest decides to pay manually. If they later pay this PayMongo link, the system will still record the real payment for reconciliation.</p>';
+            $html .= '</div>';
+            $html .= '</div>';
+        } elseif ($this->canCreatePayMongoBalanceCheckout()) {
+            $html .= '<button type="button" wire:click="createPayMongoBalanceCheckout" wire:loading.attr="disabled" wire:target="createPayMongoBalanceCheckout" class="inline-flex items-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-500 disabled:opacity-70">';
+            $html .= '<span wire:loading.remove wire:target="createPayMongoBalanceCheckout">Collect Remaining Balance Online</span>';
+            $html .= '<span wire:loading wire:target="createPayMongoBalanceCheckout">Generating checkout...</span>';
+            $html .= '</button>';
+        } else {
+            $html .= '<div class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">';
+            $html .= 'PayMongo balance collection is unavailable for the current form state. Staff may use the manual payment fields below.';
+            $html .= '</div>';
+        }
+
+        $html .= '</div>';
+
+        return new HtmlString($html);
+    }
+
+    protected function getOnlinePaymentSummary(): array
+    {
+        $payments = $this->record->payments()
+            ->where('gateway', 'paymongo')
+            ->get();
+
+        return [
+            'deposit_paid' => (float) $payments
+                ->where('is_deposit', true)
+                ->where('gateway_status', 'paid')
+                ->where('status', 'posted')
+                ->sum('amount'),
+            'balance_paid' => (float) $payments
+                ->where('is_deposit', false)
+                ->where('gateway_status', 'paid')
+                ->where('status', 'posted')
+                ->sum('amount'),
+            'balance_pending' => (float) $payments
+                ->where('is_deposit', false)
+                ->where('gateway_status', 'pending')
+                ->where('status', 'pending')
+                ->sum('amount'),
+            'remaining_balance' => $this->getRemainingBalance(),
+        ];
+    }
+
+    protected function getRemainingBalance(): float
+    {
+        $pricing = ReservationResource::computeCheckInPricing(
+            $this->record,
+            $this->data['reservation_rooms'] ?? [],
+            $this->data['detailed_checkin_datetime'] ?? null,
+            $this->data['detailed_checkout_datetime'] ?? null,
+            $this->data['additional_requests'] ?? [],
+            (bool) ($this->data['is_pwd'] ?? false),
+            (bool) ($this->data['is_senior_citizen'] ?? false),
+            (bool) ($this->data['is_student'] ?? false)
+        );
+
+        $existingPayments = (float) $this->record->payments()
+            ->where('status', 'posted')
+            ->sum('amount');
+
+        return round(max(0, (float) $pricing['grand_total'] - $existingPayments), 2);
+    }
+
+    protected function getPendingCheckInBalancePayment(): ?ReservationPayment
+    {
+        return $this->record->payments()
+            ->where('gateway', 'paymongo')
+            ->where('is_deposit', false)
+            ->where('gateway_status', 'pending')
+            ->where('status', 'pending')
+            ->where('meta->source', 'checkin_balance')
+            ->latest('id')
+            ->first();
+    }
+
+    protected function canCreatePayMongoBalanceCheckout(): bool
+    {
+        return Setting::isOnlinePaymentsEnabled()
+            && in_array($this->record->status, ['approved', 'confirmed'], true)
+            && $this->getRemainingBalance() > 0.01
+            && ! $this->getPendingCheckInBalancePayment();
+    }
+
+    protected function shouldDisableManualPaymentFields(): bool
+    {
+        return $this->getRemainingBalance() <= 0.01 || (bool) $this->getPendingCheckInBalancePayment();
+    }
+
+    protected function absoluteUrl(string $url): string
+    {
+        return Str::startsWith($url, ['http://', 'https://'])
+            ? $url
+            : url($url);
     }
 
     public function submit(): void

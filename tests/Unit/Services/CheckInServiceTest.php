@@ -4,6 +4,7 @@ namespace Tests\Unit\Services;
 
 use App\Models\Floor;
 use App\Models\Reservation;
+use App\Models\ReservationPayment;
 use App\Models\Room;
 use App\Models\RoomType;
 use App\Models\User;
@@ -306,6 +307,49 @@ class CheckInServiceTest extends TestCase
                     ],
                 ],
             ],
+        ]);
+    }
+
+    public function test_complete_onsite_check_in_skips_manual_payment_when_balance_is_fully_paid_online(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+
+        $roomType = $this->createRoomType('private', 'flat_rate');
+        $room = $this->createRoom($roomType, 'available', 2);
+        $reservation = $this->createReservation($roomType);
+
+        ReservationPayment::create([
+            'reservation_id' => $reservation->id,
+            'amount' => 1000,
+            'payment_mode' => 'PayMongo Online',
+            'gateway' => 'paymongo',
+            'gateway_payment_id' => 'pay_full_online',
+            'gateway_status' => 'paid',
+            'is_deposit' => false,
+            'status' => 'posted',
+        ]);
+
+        $result = $this->service->completeOnsiteCheckIn($reservation, [
+            'guest_first_name' => 'John',
+            'guest_last_name' => 'Doe',
+            'guest_gender' => 'Male',
+            'reservation_rooms' => [
+                [
+                    'room_mode' => 'private',
+                    'room_id' => $room->id,
+                    'includes_primary_guest' => true,
+                    'guests' => [],
+                ],
+            ],
+        ]);
+
+        $this->assertTrue($result['all_succeeded']);
+        $this->assertDatabaseHas('reservation_payments', [
+            'reservation_id' => $reservation->id,
+            'amount' => 0,
+            'payment_mode' => 'online',
+            'status' => 'posted',
         ]);
     }
 }

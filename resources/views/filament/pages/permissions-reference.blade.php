@@ -108,7 +108,7 @@
 
                     @php
                     $yes = '<span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-200 text-green-700 dark:bg-green-900/60 dark:text-green-400 shadow"><svg class="w-5 h-5" fill="none" stroke="currentColor" style="color:inherit" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></span>';
-                    $no  = '<span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-200 text-red-700 dark:bg-red-900/60 dark:text-red-400 shadow"><svg class="w-5 h-5" fill="none" stroke="currentColor" style="color:inherit" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg></span>';
+                    $no  = '<span class="inline-flex items-center justify-center w-8 h-8 text-gray-300 dark:text-gray-600 select-none text-xl font-bold">–</span>';
 
                     $matrix = [
                         'Reservations' => [
@@ -156,6 +156,18 @@
                         'Stay Logs' => [
                             'View'   => [true,  true,  true],
                         ],
+                        'Guest Site Settings' => [
+                            'View'   => [true,  true,  false],
+                            'Edit'   => [true,  true,  false],
+                        ],
+                        'Discount Configuration' => [
+                            'View'   => [true,  true,  false],
+                            'Edit'   => [true,  true,  false],
+                        ],
+                        'Online Payments' => [
+                            'View'   => [true,  false, false],
+                            'Edit'   => [true,  false, false],
+                        ],
                     ];
 
                     $rowIndex = 0;
@@ -183,6 +195,67 @@
                         @endforeach
                     @endforeach
 
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {{-- Fixed-Access Pages --}}
+    <div class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">Fixed-Access Pages</h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                These pages have hardcoded access rules and cannot be changed via custom permissions.
+            </p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 dark:bg-gray-800 text-left">
+                        <th class="px-6 py-3 font-semibold text-gray-700 dark:text-gray-300 w-56">Page</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Access Rule</th>
+                        <th class="px-4 py-3 text-center font-semibold text-red-700 dark:text-red-400 w-32">
+                            <div class="flex items-center justify-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
+                                Super Admin
+                            </div>
+                        </th>
+                        <th class="px-4 py-3 text-center font-semibold text-amber-700 dark:text-amber-400 w-32">
+                            <div class="flex items-center justify-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                                Admin
+                            </div>
+                        </th>
+                        <th class="px-4 py-3 text-center font-semibold text-blue-700 dark:text-blue-400 w-32">
+                            <div class="flex items-center justify-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                                Staff
+                            </div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    @php
+                    $fixedYes = '<span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-200 text-green-700 dark:bg-green-900/60 dark:text-green-400 shadow"><svg class="w-5 h-5" fill="none" stroke="currentColor" style="color:inherit" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></span>';
+                    $fixedNo  = '<span class="inline-flex items-center justify-center w-8 h-8 text-gray-300 dark:text-gray-600 select-none text-xl font-bold">–</span>';
+                    $fixedPages = [
+                        ['Virtual Tour Manager',      'All authenticated staff',     true,  true,  true],
+                        ['Room Holds',                'All authenticated staff',     true,  true,  true],
+                        ['Reports',                   'All authenticated staff',     true,  true,  true],
+                        ['Signatories Configuration', 'Admin &amp; above only',      true,  true,  false],
+                        ['Force Deletion Logs',       'Super Admin only',            true,  false, false],
+                        ['Backup &amp; Restore',      'Super Admin only',            true,  false, false],
+                    ];
+                    @endphp
+                    @foreach ($fixedPages as $i => $page)
+                        <tr class="{{ $i % 2 !== 0 ? 'bg-gray-50/60 dark:bg-gray-800/30' : '' }}">
+                            <td class="px-6 py-2.5 font-medium text-gray-800 dark:text-gray-200">{{ $page[0] }}</td>
+                            <td class="px-4 py-2.5 text-gray-500 dark:text-gray-400 text-xs">{!! $page[1] !!}</td>
+                            <td class="px-4 py-2.5 text-center">{!! $page[2] ? $fixedYes : $fixedNo !!}</td>
+                            <td class="px-4 py-2.5 text-center">{!! $page[3] ? $fixedYes : $fixedNo !!}</td>
+                            <td class="px-4 py-2.5 text-center">{!! $page[4] ? $fixedYes : $fixedNo !!}</td>
+                        </tr>
+                    @endforeach
                 </tbody>
             </table>
         </div>
@@ -223,6 +296,14 @@
                 <span><strong class="text-gray-800 dark:text-gray-200">Linked users:</strong>
                     Users linked to existing room assignments or reviewed reservations cannot be deleted
                     to preserve data integrity.</span>
+            </li>
+            <li class="flex gap-2">
+                <svg class="w-4 h-4 mt-0.5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z"/>
+                </svg>
+                <span><strong class="text-gray-800 dark:text-gray-200">Online Payments access:</strong>
+                    The Online Payments page is not enabled for Admin accounts by default. Access must be explicitly granted via
+                    <em>Configuration → Users → Edit User → Custom Permissions</em>.</span>
             </li>
             <li class="flex gap-2">
                 <svg class="w-4 h-4 mt-0.5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

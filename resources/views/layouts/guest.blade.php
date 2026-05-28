@@ -4,14 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     @php
-        $siteTitle    = 'CMU Homestay';
-        $logoSrc      = asset('images/uh_logo.jpg');
-        $themeColor   = '#FFC600';
-        $themeFont    = 'sans';
-        $maintenanceMode    = false;
-        $maintenanceMessage = null;
-        $highContrast = false;
-        $largeText    = false;
+        $guestSite = \App\Support\GuestSiteSettings::all();
+        $siteTitle = $guestSite['guest_site_title'];
+        $institutionName = $guestSite['guest_institution_name'];
+        $brandName = $guestSite['guest_brand_name'];
+        $logoSrc = \App\Support\GuestSiteSettings::logoUrl();
+        $themeColor = $guestSite['guest_primary_accent_color'];
+        $themeFont = $guestSite['guest_theme_font'];
+        $maintenanceMode = $guestSite['guest_maintenance_enabled'];
+        $maintenanceMessage = $guestSite['guest_maintenance_message'];
+        $highContrast = $guestSite['guest_high_contrast'];
+        $largeText = $guestSite['guest_large_text'];
+        $showAnnouncement = $guestSite['guest_announcement_enabled'];
+        $announcementText = $guestSite['guest_announcement_text'];
     @endphp
     <title>{{ trim($__env->yieldContent('title', '')) !== '' ? trim($__env->yieldContent('title')) . ' - ' . $siteTitle : $siteTitle }}</title>
     <link rel="icon" type="image/png" href="{{ $logoSrc }}">
@@ -30,6 +35,10 @@
             --guest-font-body: "Montserrat", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             --guest-font-display: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
         }
+        .bg-\[\#FFC600\] { background-color: var(--cmu-yellow) !important; }
+        .text-\[\#FFC600\] { color: var(--cmu-yellow) !important; }
+        .border-\[\#FFC600\] { border-color: var(--cmu-yellow) !important; }
+        .ring-\[\#FFC600\] { --tw-ring-color: var(--cmu-yellow) !important; }
         body {
             font-family: {{ $themeFont == 'serif' ? 'var(--guest-font-display)' : ($themeFont == 'mono' ? 'Menlo, Monaco, monospace' : 'var(--guest-font-body)') }};
         }
@@ -121,15 +130,11 @@
 </head>
 <body class="min-h-screen bg-gray-50 flex flex-col">
     {{-- Announcement Bar --}}
-    @php
-        $showAnnouncement = false;
-        $announcementText = null;
-    @endphp
-        @if($maintenanceMode && $maintenanceMessage)
-            <div class="w-full bg-red-700 py-2 px-4 text-center font-bold text-base shadow-md" style="color:#FFC600; text-shadow: 0 1px 2px rgba(0,0,0,0.6);">
-                <span class="inline-block align-middle"><i class="fas fa-tools mr-2"></i>{{ $maintenanceMessage }}</span>
-            </div>
-        @endif
+    @if($maintenanceMode && $maintenanceMessage)
+        <div class="w-full bg-red-700 py-2 px-4 text-center font-bold text-base shadow-md" style="color:#FFC600; text-shadow: 0 1px 2px rgba(0,0,0,0.6);">
+            <span class="inline-block align-middle"><i class="fas fa-tools mr-2"></i>{{ $maintenanceMessage }}</span>
+        </div>
+    @endif
     @if($showAnnouncement && $announcementText)
         <div class="w-full py-2 px-4 text-center font-bold text-base shadow-md" style="background-color: var(--cmu-yellow); color: #1a1a1a; text-shadow: 0 1px 1px rgba(255,255,255,0.4);">
             {{ $announcementText }}
@@ -145,24 +150,24 @@
                             <img src="{{ $logoSrc }}" alt="{{ $siteTitle }}" class="h-9 w-9 object-cover rounded" />
                         </div>
                         <div class="hidden sm:flex flex-col leading-tight">
-                            <span class="guest-brand text-white font-semibold text-xs tracking-wide group-hover:text-yellow-100 transition drop-shadow">Central Mindanao University</span>
-                            <span class="guest-brand text-[#FFC600] font-extrabold text-lg tracking-wide group-hover:text-yellow-300 transition drop-shadow">University Homestay</span>
+                            <span class="guest-brand text-white font-semibold text-xs tracking-wide group-hover:text-yellow-100 transition drop-shadow">{{ $institutionName }}</span>
+                            <span class="guest-brand text-[#FFC600] font-extrabold text-lg tracking-wide group-hover:text-yellow-300 transition drop-shadow">{{ $brandName }}</span>
                         </div>
                     </a>
                 </div>
                 <div class="hidden md:flex items-center space-x-8">
-                    <a href="{{ route('guest.home', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.home') ? 'text-[#FFC600]' : '' }}">Home</a>
-                    <a href="{{ route('guest.rooms', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.rooms') ? 'text-[#FFC600]' : '' }}">Rooms</a>
+                    <a href="{{ route('guest.home', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.home') ? 'text-[#FFC600]' : '' }}">{{ $guestSite['guest_nav_home_label'] }}</a>
+                    <a href="{{ route('guest.rooms', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.rooms') ? 'text-[#FFC600]' : '' }}">{{ $guestSite['guest_nav_rooms_label'] }}</a>
                     <a href="{{ route('guest.virtual-tours', [], false) }}" class="flex items-center gap-2 bg-[#FFC600] text-[#00491E] font-bold px-4 py-1.5 rounded-full shadow-[0_0_12px_rgba(255,198,0,0.45)] hover:shadow-[0_0_20px_rgba(255,198,0,0.7)] hover:bg-yellow-400 transition-all duration-200 {{ request()->routeIs('guest.virtual-tours') ? 'ring-2 ring-white' : '' }}">
                         <span class="relative flex items-center justify-center w-2 h-2">
                             <span class="tour-pill-dot absolute inline-flex w-full h-full rounded-full bg-red-600 opacity-60"></span>
                             <span class="relative inline-flex w-2 h-2 rounded-full bg-red-600"></span>
                         </span>
                         <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                        Virtual Tour
+                        {{ $guestSite['guest_nav_tour_label'] }}
                     </a>
-                    <a href="{{ route('guest.reserve', [], false) }}" class="bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold transition-all duration-200 hover:bg-white hover:text-[#00491E] hover:scale-105 active:scale-95 {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">Request Stay</a>
-                    <a href="{{ route('guest.track', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.track') ? 'text-[#FFC600]' : '' }}">Track Status</a>
+                    <a href="{{ route('guest.reserve', [], false) }}" class="bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold transition-all duration-200 hover:bg-white hover:text-[#00491E] hover:scale-105 active:scale-95 {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">{{ $guestSite['guest_nav_reserve_label'] }}</a>
+                    <a href="{{ route('guest.track', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.track') ? 'text-[#FFC600]' : '' }}">{{ $guestSite['guest_nav_track_label'] }}</a>
                 </div>
                 {{-- Mobile menu button --}}
                 <div class="md:hidden flex items-center">
@@ -177,14 +182,14 @@
         {{-- Mobile menu --}}
         <div id="mobile-menu" class="hidden md:hidden bg-[#02681E] border-t border-[#00491E]">
             <div class="px-4 py-3 space-y-2">
-                <a href="{{ route('guest.home', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">Home</a>
-                <a href="{{ route('guest.rooms', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">Rooms</a>
+                <a href="{{ route('guest.home', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">{{ $guestSite['guest_nav_home_label'] }}</a>
+                <a href="{{ route('guest.rooms', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">{{ $guestSite['guest_nav_rooms_label'] }}</a>
                 <a href="{{ route('guest.virtual-tours', [], false) }}" class="flex items-center gap-2 text-[#FFC600] hover:text-yellow-400 py-2 font-medium">
                     <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                    Virtual Tour
+                    {{ $guestSite['guest_nav_tour_label'] }}
                 </a>
-                <a href="{{ route('guest.reserve', [], false) }}" class="block text-[#FFC600] font-bold py-2">Request Stay</a>
-                <a href="{{ route('guest.track', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">Track Status</a>
+                <a href="{{ route('guest.reserve', [], false) }}" class="block text-[#FFC600] font-bold py-2">{{ $guestSite['guest_nav_reserve_label'] }}</a>
+                <a href="{{ route('guest.track', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">{{ $guestSite['guest_nav_track_label'] }}</a>
             </div>
         </div>
     </nav>
@@ -208,27 +213,33 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div>
-                    <h3 class="text-[var(--cmu-yellow)] font-bold text-lg mb-3">Central Mindanao University<br>University Homestay</h3>
-                    <p class="text-gray-300 text-sm">
-                        Central Mindanao University<br>Musuan, Maramag, Bukidnon<br>Philippines
-                    </p>
-                    <p class="text-gray-300 text-sm mt-2">
-                        <span class="font-semibold">Phone:</span> <br>
-                        <span class="font-semibold">Email:</span>
-                    </p>
+                    <h3 class="text-[var(--cmu-yellow)] font-bold text-lg mb-3">{{ $institutionName }}<br>{{ $brandName }}</h3>
+                    @if($guestSite['guest_footer_address'])
+                        <p class="text-gray-300 text-sm">{!! nl2br(e($guestSite['guest_footer_address'])) !!}</p>
+                    @endif
+                    @if($guestSite['guest_footer_phone'] || $guestSite['guest_footer_email'])
+                        <p class="text-gray-300 text-sm mt-2">
+                            @if($guestSite['guest_footer_phone'])
+                                <span class="font-semibold">Phone:</span> {{ $guestSite['guest_footer_phone'] }}<br>
+                            @endif
+                            @if($guestSite['guest_footer_email'])
+                                <span class="font-semibold">Email:</span> {{ $guestSite['guest_footer_email'] }}
+                            @endif
+                        </p>
+                    @endif
                 </div>
                 <div>
                     <h3 class="text-[#FFC600] font-bold text-lg mb-3">Quick Links</h3>
                     <ul class="space-y-2 text-sm">
-                        <li><a href="{{ route('guest.rooms', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Room Catalog</a></li>
-                        <li><a href="{{ route('guest.virtual-tours', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Virtual Tour</a></li>
-                        <li><a href="{{ route('guest.reserve', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Request a Reservation</a></li>
-                        <li><a href="{{ route('guest.track', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Track Reservation</a></li>
+                        <li><a href="{{ route('guest.rooms', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_footer_rooms_label'] }}</a></li>
+                        <li><a href="{{ route('guest.virtual-tours', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_footer_tour_label'] }}</a></li>
+                        <li><a href="{{ route('guest.reserve', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_footer_reserve_label'] }}</a></li>
+                        <li><a href="{{ route('guest.track', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_footer_track_label'] }}</a></li>
                     </ul>
                 </div>
             </div>
             <div class="border-t border-[#02681E] mt-8 pt-6 text-center text-gray-400 text-sm">
-                &copy; {{ date('Y') }} CMU University Homestay Lodging Management System. All rights reserved.
+                &copy; {{ date('Y') }} {{ $guestSite['guest_footer_copyright_name'] }}. All rights reserved.
             </div>
         </div>
     </footer>

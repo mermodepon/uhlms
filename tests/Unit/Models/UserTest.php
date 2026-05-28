@@ -102,6 +102,8 @@ class UserTest extends TestCase
         $this->assertFalse($staff->hasPermission('reservations_delete'));
         $this->assertFalse($staff->hasPermission('users_view'));
         $this->assertFalse($staff->hasPermission('rooms_create'));
+        $this->assertFalse($staff->hasPermission('guest_site_settings_view'));
+        $this->assertFalse($staff->hasPermission('guest_site_settings_edit'));
     }
 
     public function test_admin_default_permissions(): void
@@ -113,6 +115,8 @@ class UserTest extends TestCase
         $this->assertTrue($admin->hasPermission('users_view'));
         $this->assertTrue($admin->hasPermission('users_create'));
         $this->assertTrue($admin->hasPermission('rooms_create'));
+        $this->assertTrue($admin->hasPermission('guest_site_settings_view'));
+        $this->assertTrue($admin->hasPermission('guest_site_settings_edit'));
     }
 
     public function test_custom_permissions_override_role_defaults(): void

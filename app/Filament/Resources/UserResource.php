@@ -94,6 +94,8 @@ class UserResource extends Resource
                                         Forms\Components\Toggle::make('permissions.reservation_discount_settings_edit')->label('Edit Discount Config')->inline(false),
                                         Forms\Components\Toggle::make('permissions.online_payment_settings_view')->label('View Payment Config')->inline(false),
                                         Forms\Components\Toggle::make('permissions.online_payment_settings_edit')->label('Edit Payment Config')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.guest_site_settings_view')->label('View Guest Site Settings')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.guest_site_settings_edit')->label('Edit Guest Site Settings')->inline(false),
                                     ])->columns(4),
 
                                 Forms\Components\Fieldset::make('Rooms')

@@ -43,8 +43,8 @@ class PaymentWebhookController extends Controller
         $webhookData = $request->json()->all();
         $eventType = $webhookData['data']['attributes']['type'] ?? null;
 
-        // Handle both source.chargeable (e-wallets) and payment.paid events
-        if (! in_array($eventType, ['source.chargeable', 'payment.paid'])) {
+        // Handle source payments, direct payment events, and hosted Checkout Session payments.
+        if (! in_array($eventType, ['source.chargeable', 'payment.paid', 'checkout_session.payment.paid'], true)) {
             Log::info('PayMongo webhook event ignored', ['type' => $eventType]);
 
             return response()->json(['message' => 'Event type not handled'], 200);

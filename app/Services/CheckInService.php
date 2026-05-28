@@ -394,7 +394,7 @@ class CheckInService
         // If no payment is required (fully paid online), skip payment validation
         if ($payableAmount <= 0.01) {
             return [
-                'payment_mode' => $paymentData['payment_mode'] ?? 'online',
+                'payment_mode' => 'online',
                 'payment_amount' => 0.00,
                 'payment_or_number' => $paymentData['payment_or_number'] ?? 'N/A',
                 'or_date' => $paymentData['or_date'] ?? now()->toDateString(),

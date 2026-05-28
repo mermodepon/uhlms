@@ -191,6 +191,55 @@ h6 {
     background-color: rgba(255, 255, 255, 0.08) !important;
 }
 
+/* Keep the expanded sidebar scrollable while flyout menus stay above dense dashboard widgets. */
+.fi-sidebar {
+    overflow: visible !important;
+    z-index: 80 !important;
+}
+
+.fi-sidebar-nav {
+    max-height: calc(100vh - 5rem) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    scrollbar-gutter: stable !important;
+}
+
+.fi-sidebar-nav-groups,
+.fi-sidebar-group,
+.fi-sidebar-group-items {
+    min-width: 0 !important;
+}
+
+.fi-sidebar .fi-dropdown-panel,
+.fi-sidebar [class*="fi-dropdown-panel"],
+.fi-sidebar [role="menu"] {
+    z-index: 9999 !important;
+    width: max-content !important;
+    min-width: 18rem !important;
+    max-width: 24rem !important;
+}
+
+.fi-sidebar .fi-dropdown-panel {
+    inline-size: max-content !important;
+}
+
+.fi-sidebar .fi-dropdown-list,
+.fi-sidebar .fi-dropdown-list-item,
+.fi-sidebar .fi-dropdown-list-item-label {
+    min-width: 0 !important;
+}
+
+.fi-sidebar .fi-dropdown-list-item-label {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+}
+
+.fi-sidebar .fi-dropdown-list-item {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
 /* ===== Topbar ===== */
 .fi-topbar > nav {
     background-color: #003615 !important;
