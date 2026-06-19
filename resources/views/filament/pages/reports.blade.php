@@ -192,17 +192,6 @@
         {{-- Filters & Actions --}}
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 no-print">
             <div class="flex flex-wrap items-end gap-3">
-                <div class="min-w-[220px] flex-1">
-                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Report Type</label>
-                    <select wire:model.live="reportType" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-2 focus:ring-primary-500 text-sm">
-                        <option value="monthly_or_report">Monthly Report</option>
-                        <option value="reservation_summary">Reservation Summary</option>
-                        <option value="reservation_list">Reservation List</option>
-                        <option value="occupancy">Occupancy Report</option>
-                        <option value="room_utilization">Room Utilization</option>
-                        <option value="stay_logs">Stay Logs</option>
-                    </select>
-                </div>
                 @if($reportType === 'monthly_or_report')
                     <div class="min-w-[180px] flex-1">
                         <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Month</label>
@@ -226,6 +215,7 @@
                             <option value="">All Statuses</option>
                             <option value="pending">Pending</option>
                             <option value="approved">Approved</option>
+                            <option value="confirmed">Confirmed</option>
                             <option value="checked_in">Checked In</option>
                             <option value="checked_out">Checked Out</option>
                             <option value="cancelled">Cancelled</option>
@@ -239,9 +229,20 @@
                     </svg>
                     Print Report
                     </button>
-                    <button onclick="(function(){ if(window.CMUCharts && window.CMUCharts.refreshAll){ window.CMUCharts.refreshAll(); } else if(window.location){ window.location.reload(); } })()" title="Refresh charts for the selected date range" style="background:#ffffff;color:#00491E;border:1px solid #00491E;border-radius:8px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.06);white-space:nowrap;">
-                        Refresh Charts
-                    </button>
+                    @if($reportType === 'monthly_or_report')
+                        <button type="button" wire:click="downloadMonthlyReportExcel" wire:loading.attr="disabled" wire:target="downloadMonthlyReportExcel" style="background:#ffffff;color:#00491E;border:1px solid #00491E;border-radius:8px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.06);white-space:nowrap;display:inline-flex;align-items:center;gap:8px;">
+                            <svg style="width: 18px; height: 18px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+                            </svg>
+                            <span wire:loading.remove wire:target="downloadMonthlyReportExcel">Export Excel</span>
+                            <span wire:loading wire:target="downloadMonthlyReportExcel">Exporting...</span>
+                        </button>
+                    @endif
+                    @if(in_array($reportType, ['reservation_summary', 'occupancy', 'room_utilization'], true))
+                        <button onclick="(function(){ if(window.CMUCharts && window.CMUCharts.refreshAll){ window.CMUCharts.refreshAll(); } else if(window.location){ window.location.reload(); } })()" title="Refresh charts for the selected date range" style="background:#ffffff;color:#00491E;border:1px solid #00491E;border-radius:8px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.06);white-space:nowrap;">
+                            Refresh Charts
+                        </button>
+                    @endif
                 </div>
             </div>
         </div>
@@ -321,7 +322,7 @@
 
             {{-- Charts Row --}}
             @php
-                $statusColors = ['pending' => '#F59E0B', 'approved' => '#3B82F6', 'confirmed' => '#10B981', 'declined' => '#EF4444', 'cancelled' => '#6B7280', 'checked_in' => '#059669', 'checked_out' => '#6366F1'];
+                $statusColors = ['pending' => '#F59E0B', 'approved' => '#919F02', 'confirmed' => '#10B981', 'declined' => '#EF4444', 'cancelled' => '#6B7280', 'checked_in' => '#059669', 'checked_out' => '#6366F1'];
                 $statusLabels = array_values(array_map(fn($s) => ucwords(str_replace('_', ' ', $s)), array_keys($data['by_status'])));
                 $statusBgColors = array_values(array_map(fn($s) => $statusColors[$s] ?? '#6B7280', array_keys($data['by_status'])));
                 $purposeLabels = array_values(array_map(fn($s) => ucwords($s), array_keys($data['by_purpose'])));
@@ -873,7 +874,8 @@
                     <span class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium
                         @switch($status)
                             @case('pending') text-yellow-800 @break
-                            @case('approved') text-blue-800 @break
+                            @case('approved') text-lime-800 @break
+                            @case('confirmed') text-emerald-800 @break
                             @case('checked_in') text-green-800 @break
                             @case('checked_out') text-gray-800 @break
                             @case('cancelled') text-red-800 @break
@@ -927,7 +929,8 @@
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
                                             @switch($reservation['status'])
                                                 @case('pending') bg-yellow-100 text-yellow-800 @break
-                                                @case('approved') bg-blue-100 text-blue-800 @break
+                                                @case('approved') bg-lime-100 text-lime-800 @break
+                                                @case('confirmed') bg-emerald-100 text-emerald-800 @break
                                                 @case('checked_in') bg-green-100 text-green-800 @break
                                                 @case('checked_out') bg-gray-100 text-gray-800 @break
                                                 @case('cancelled') bg-red-100 text-red-800 @break

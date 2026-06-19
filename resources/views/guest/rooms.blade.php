@@ -47,15 +47,15 @@
                     <form action="{{ route('guest.rooms', [], false) }}" method="GET" class="flex flex-col sm:flex-row gap-3">
                         <div class="flex-1">
                             <label for="check_in_filter" class="block text-xs font-medium text-gray-700 mb-1">Check-in</label>
-                            <input type="date" id="check_in_filter" name="check_in" value="{{ $checkIn?->format('Y-m-d') }}" min="{{ date('Y-m-d') }}" required class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
+                            <input type="date" id="check_in_filter" name="check_in" value="{{ $checkIn?->format('Y-m-d') }}" min="{{ date('Y-m-d') }}" required class="h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
                         </div>
                         <div class="flex-1">
                             <label for="check_out_filter" class="block text-xs font-medium text-gray-700 mb-1">Check-out</label>
-                            <input type="date" id="check_out_filter" name="check_out" value="{{ $checkOut?->format('Y-m-d') }}" min="{{ date('Y-m-d', strtotime('+1 day')) }}" required class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
+                            <input type="date" id="check_out_filter" name="check_out" value="{{ $checkOut?->format('Y-m-d') }}" min="{{ date('Y-m-d', strtotime('+1 day')) }}" required class="h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
                         </div>
                         <div class="flex-shrink-0 sm:w-32">
                             <label for="guests_filter" class="block text-xs font-medium text-gray-700 mb-1">Guests</label>
-                            <select id="guests_filter" name="guests" class="guest-select w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
+                            <select id="guests_filter" name="guests" class="guest-select h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
                                 <option value="">Any</option>
                                 @for($i = 1; $i <= 5; $i++)
                                     <option value="{{ $i }}" @selected($guests == $i)>{{ $i }}</option>
@@ -63,15 +63,16 @@
                                 <option value="6" @selected($guests >= 6)>5+</option>
                             </select>
                         </div>
-                        <div class="flex gap-2 sm:flex-col sm:justify-end sm:pt-5">
-                            <button type="submit" class="flex-1 sm:flex-none bg-[#02681E] text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-[#00491E] hover:shadow-lg active:scale-95 transition-all duration-200 whitespace-nowrap flex items-center justify-center gap-2">
+                        <div class="flex gap-2 sm:flex-col sm:gap-0">
+                            <span class="hidden sm:block text-xs font-medium text-transparent mb-1 select-none" aria-hidden="true">Search</span>
+                            <button type="submit" class="h-11 flex-1 sm:flex-none bg-[#02681E] text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-[#00491E] hover:shadow-lg active:scale-95 transition-all duration-200 whitespace-nowrap flex items-center justify-center gap-2">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                                 </svg>
                                 Update Search
                             </button>
                             @if($checkIn || $checkOut)
-                                <a href="{{ route('guest.rooms', [], false) }}" class="flex-1 sm:flex-none bg-white border-2 border-gray-300 text-gray-700 px-5 py-2.5 rounded-lg font-bold text-sm hover:border-gray-400 hover:bg-gray-50 hover:shadow-md active:scale-95 transition-all duration-200 text-center whitespace-nowrap flex items-center justify-center gap-2">
+                                <a href="{{ route('guest.rooms', [], false) }}" class="h-11 flex-1 sm:mt-2 sm:flex-none bg-white border-2 border-gray-300 text-gray-700 px-5 py-2.5 rounded-lg font-bold text-sm hover:border-gray-400 hover:bg-gray-50 hover:shadow-md active:scale-95 transition-all duration-200 text-center whitespace-nowrap flex items-center justify-center gap-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                                     </svg>

@@ -74,7 +74,7 @@ class EditReservation extends EditRecord
             $data['checkin_payment_mode'] = $latestPayment?->payment_mode ?? $latestAssignment?->payment_mode;
             $data['checkin_payment_mode_other'] = $latestAssignment?->payment_mode_other;
             $data['checkin_payment_amount'] = $latestPayment?->amount ?? $latestAssignment?->payment_amount;
-            $data['checkin_payment_or_number'] = $latestPayment?->reference_no ?? $latestAssignment?->payment_or_number;
+            $data['checkin_payment_or_number'] = $snapshot?->payment_or_number ?? $latestAssignment?->payment_or_number;
             $data['checkin_or_date'] = $latestPayment?->or_date ?? $latestAssignment?->or_date;
             $data['checkin_remarks'] = $snapshot?->remarks ?? $latestAssignment?->remarks;
         }
@@ -365,7 +365,7 @@ class EditReservation extends EditRecord
                     if (array_key_exists('payment_mode', $fields)) {
                         $paymentUpdates['payment_mode'] = $fields['payment_mode'];
                     }
-                    if (array_key_exists('payment_or_number', $fields)) {
+                    if (array_key_exists('payment_or_number', $fields) && $latestPayment->gateway !== 'paymongo') {
                         $paymentUpdates['reference_no'] = $fields['payment_or_number'];
                     }
                     if (array_key_exists('or_date', $fields)) {

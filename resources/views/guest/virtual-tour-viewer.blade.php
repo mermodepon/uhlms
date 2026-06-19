@@ -7,15 +7,18 @@
     /* Tour Viewer Container */
     #tour-viewer {
         width: 100%;
-        max-width: 1200px;
-        height: 75vh;
-        margin: 2rem auto;
+        max-width: 100%;
+        height: calc(100vh - 4rem);
+        margin: 0;
         position: relative;
         background: #000;
-        border-radius: 0.75rem;
+        border-radius: 0;
         overflow: hidden;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        box-shadow: none;
     }
+
+    /* Collapse footer spacing on the tour page */
+    footer { margin-top: 0 !important; }
 
     #tour-viewer:fullscreen,
     #tour-viewer:-webkit-full-screen {
@@ -145,20 +148,40 @@
         padding: 1.5rem;
     }
 
+    .desktop-left-rail {
+        position: absolute;
+        top: 1rem;
+        left: 1rem;
+        width: 320px;
+        height: calc(100% - 2rem);
+        max-height: calc(100% - 2rem);
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        z-index: 46;
+        pointer-events: none;
+    }
+
+    .desktop-left-rail > * {
+        pointer-events: auto;
+    }
+
     /* Mini-map */
     #minimap {
-        position: absolute;
-        bottom: 4rem;
-        right: 1rem;
-        background: white;
+        position: relative;
+        width: 100%;
+        min-height: 0;
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        background: linear-gradient(180deg, rgba(20, 28, 25, 0.9) 0%, rgba(9, 13, 12, 0.88) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 1rem;
+        box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
+        backdrop-filter: blur(12px);
+        overflow: hidden;
         opacity: 1;
-        transition: opacity 0.4s ease-in-out;
-        border-radius: 0.5rem;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        z-index: 40;
-        max-height: 300px;
-        overflow-y: auto;
-        width: 200px;
+        transition: opacity 0.4s ease-in-out, transform 0.2s ease;
     }
 
     #minimap.ui-hidden {
@@ -166,25 +189,162 @@
         pointer-events: none;
     }
 
+    .minimap-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        width: 100%;
+        padding: 0;
+        background: transparent;
+        border: 0;
+        color: #f9fafb;
+        cursor: pointer;
+        text-align: left;
+    }
+
+    .minimap-title-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        min-width: 0;
+    }
+
+    .minimap-title-wrap svg {
+        width: 17px;
+        height: 17px;
+        opacity: 0.9;
+        flex-shrink: 0;
+    }
+
+    .minimap-title-text {
+        min-width: 0;
+    }
+
+    .minimap-title-label {
+        display: block;
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+    }
+
+    .minimap-title-caption {
+        display: block;
+        margin-top: 0.14rem;
+        font-size: 0.72rem;
+        color: rgba(229, 231, 235, 0.74);
+    }
+
+    .minimap-toggle-icon {
+        width: 1.9rem;
+        height: 1.9rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.05);
+        transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+        flex-shrink: 0;
+    }
+
+    .minimap-toggle-icon svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    .minimap-toggle:hover .minimap-toggle-icon {
+        background: rgba(255, 255, 255, 0.09);
+        border-color: rgba(255, 198, 0, 0.3);
+    }
+
+    .minimap-header {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 0;
+        padding: 1rem 1rem 0.85rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%),
+            rgba(0, 0, 0, 0.08);
+    }
+
+    .minimap-body {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+        max-height: none;
+        opacity: 1;
+        margin-top: 0.8rem;
+        transition: max-height 0.24s ease, opacity 0.18s ease, margin-top 0.24s ease;
+    }
+
+    #minimap.is-collapsed .minimap-body {
+        max-height: 0;
+        opacity: 0;
+        margin-top: 0;
+        pointer-events: none;
+    }
+
+    #minimap.is-collapsed {
+        flex: 0 0 auto;
+    }
+
+    #minimap.is-collapsed .minimap-header {
+        flex: 0 0 auto;
+        border-bottom-color: transparent;
+    }
+
+    #minimap.is-collapsed .minimap-toggle-icon {
+        transform: rotate(-90deg);
+    }
+
     .minimap-waypoints {
         display: flex;
+        flex: 1;
         flex-direction: column;
-        gap: 0.25rem;
-        padding: 0.5rem;
+        gap: 0.4rem;
+        min-height: 0;
+        padding: 0.75rem 0.75rem 2rem;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .minimap-waypoints::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .minimap-waypoints::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
     }
 
     .minimap-waypoint-btn {
         text-align: left;
-        transition: all 0.2s;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.04);
+        transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
     }
 
     .minimap-waypoint-btn:hover {
-        background-color: #f3f4f6;
+        transform: translateY(-1px);
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 198, 0, 0.22);
     }
 
-    .minimap-waypoint-btn.bg-blue-500 {
-        background-color: #3b82f6;
-        color: white;
+    .minimap-waypoint-btn.is-active {
+        background: linear-gradient(135deg, rgba(255, 198, 0, 0.28) 0%, rgba(255, 198, 0, 0.12) 100%);
+        border-color: rgba(255, 198, 0, 0.7);
+        color: #fff9df;
+        box-shadow: 0 0 0 1px rgba(255, 198, 0, 0.12) inset, 0 10px 22px rgba(0, 0, 0, 0.18);
+    }
+
+    .minimap-waypoint-btn.is-active .minimap-waypoint-type,
+    .minimap-waypoint-btn.is-active .minimap-waypoint-title {
+        color: inherit;
     }
 
     /* Progress Indicator */
@@ -193,12 +353,14 @@
         top: 1rem;
         left: 50%;
         transform: translateX(-50%);
-        background: rgba(0, 0, 0, 0.7);
+        background: rgba(15, 23, 42, 0.76);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         color: white;
-        padding: 0.5rem 1rem;
+        padding: 0.55rem 1rem;
         border-radius: 9999px;
         font-size: 0.875rem;
         z-index: 40;
+        backdrop-filter: blur(8px);
     }
 
     /* Narration Tooltip */
@@ -286,6 +448,7 @@
         left: 50%;
         transform: translateX(-50%);
         display: flex;
+        align-items: center;
         gap: 1rem;
         z-index: 40;
     }
@@ -310,57 +473,96 @@
         cursor: not-allowed;
     }
 
+    .nav-scene-name {
+        max-width: 18rem;
+        padding: 0.72rem 1.25rem;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.68);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #f9fafb;
+        font-size: 0.92rem;
+        font-weight: 700;
+        line-height: 1.2;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .nav-scene-name-icon {
+        display: none;
+        width: 0.95rem;
+        height: 0.95rem;
+        flex: 0 0 auto;
+    }
+
+    .nav-scene-name-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
     /* Exit Tour Button */
     .top-right-controls {
         position: absolute;
         top: 1rem;
         right: 1rem;
         display: flex;
-        gap: 0.5rem;
+        gap: 0.45rem;
         z-index: 50;
+        align-items: center;
     }
 
     .top-right-controls button,
     .top-right-controls a {
-        background: rgba(0, 0, 0, 0.7);
+        background: rgba(15, 23, 42, 0.62);
         color: white;
-        border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 0 0.9rem;
+        min-height: 40px;
+        border-radius: 0.8rem;
         cursor: pointer;
-        font-size: 0.875rem;
+        font-size: 0.84rem;
+        font-weight: 600;
         display: flex;
         align-items: center;
         gap: 0.4rem;
-        transition: all 0.2s;
+        transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
         text-decoration: none;
+        backdrop-filter: blur(8px);
     }
 
     .top-right-controls button:hover,
     .top-right-controls a:hover {
-        background: rgba(0, 0, 0, 0.9);
+        background: rgba(15, 23, 42, 0.8);
+        border-color: rgba(255, 255, 255, 0.16);
+        transform: translateY(-1px);
     }
 
     .top-right-controls .home-btn {
-        background: rgba(0, 73, 30, 0.9);
+        background: rgba(0, 73, 30, 0.78);
     }
 
     .top-right-controls .home-btn:hover {
-        background: rgba(0, 73, 30, 1);
+        background: rgba(0, 73, 30, 0.94);
     }
 
     .top-right-controls .exit-btn {
-        background: rgba(220, 38, 38, 0.9);
+        background: rgba(220, 38, 38, 0.78);
     }
 
     .top-right-controls .exit-btn:hover {
-        background: rgba(185, 28, 28, 1);
+        background: rgba(185, 28, 28, 0.94);
     }
 
     .top-right-controls .toggle-ui-btn {
-        background: rgba(0, 0, 0, 0.7);
-        width: 36px;
-        height: 36px;
+        background: rgba(15, 23, 42, 0.62);
+        width: 40px;
+        min-width: 40px;
+        height: 40px;
         padding: 0;
         display: flex;
         align-items: center;
@@ -368,7 +570,7 @@
     }
 
     .top-right-controls .toggle-ui-btn:hover {
-        background: rgba(0, 0, 0, 0.9);
+        background: rgba(15, 23, 42, 0.8);
     }
 
     .top-right-controls .toggle-ui-btn svg {
@@ -383,15 +585,20 @@
 
     /* VR Controls */
     .vr-controls {
-        position: absolute;
-        top: 1rem;
-        left: 1rem;
+        position: relative;
         display: flex;
         flex-direction: column;
-        gap: 0.625rem;
-        z-index: 50;
+        gap: 0;
+        flex: 0 0 auto;
+        z-index: 1;
         opacity: 1;
         transition: opacity 0.4s ease-in-out;
+        padding: 0.95rem;
+        border-radius: 1rem;
+        background: linear-gradient(180deg, rgba(20, 28, 25, 0.88) 0%, rgba(9, 13, 12, 0.86) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+        backdrop-filter: blur(12px);
     }
 
     .vr-controls.ui-hidden {
@@ -399,8 +606,99 @@
         pointer-events: none;
     }
 
+    .vr-controls-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        width: 100%;
+        padding: 0.15rem 0 0.1rem;
+        background: transparent;
+        border: 0;
+        color: #f9fafb;
+        cursor: pointer;
+        text-align: left;
+    }
+
+    .vr-controls-heading {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        min-width: 0;
+    }
+
+    .vr-controls-heading svg {
+        width: 17px;
+        height: 17px;
+        opacity: 0.9;
+        flex-shrink: 0;
+    }
+
+    .vr-controls-heading-text {
+        min-width: 0;
+    }
+
+    .vr-controls-heading-label {
+        display: block;
+        font-size: 0.92rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+    }
+
+    .vr-controls-heading-caption {
+        display: block;
+        margin-top: 0.12rem;
+        font-size: 0.72rem;
+        color: rgba(229, 231, 235, 0.74);
+    }
+
+    .vr-controls-toggle-icon {
+        width: 1.9rem;
+        height: 1.9rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.05);
+        transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+        flex-shrink: 0;
+    }
+
+    .vr-controls-toggle-icon svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    .vr-controls-header:hover .vr-controls-toggle-icon {
+        background: rgba(255, 255, 255, 0.09);
+        border-color: rgba(255, 198, 0, 0.3);
+    }
+
+    .vr-controls-body {
+        display: flex;
+        flex-direction: column;
+        gap: 0.625rem;
+        overflow: hidden;
+        max-height: 32rem;
+        opacity: 1;
+        margin-top: 0.85rem;
+        transition: max-height 0.24s ease, opacity 0.18s ease, margin-top 0.24s ease;
+    }
+
+    .vr-controls.is-collapsed .vr-controls-body {
+        max-height: 0;
+        opacity: 0;
+        margin-top: 0;
+        pointer-events: none;
+    }
+
+    .vr-controls.is-collapsed .vr-controls-toggle-icon {
+        transform: rotate(-90deg);
+    }
+
     .vr-btn {
-        background: linear-gradient(180deg, rgba(20, 28, 25, 0.88) 0%, rgba(9, 13, 12, 0.84) 100%);
+        background: rgba(255, 255, 255, 0.04);
         color: white;
         border: 1px solid rgba(255, 255, 255, 0.12);
         padding: 0.7rem 1rem;
@@ -419,7 +717,7 @@
     }
 
     .vr-btn:hover {
-        background: linear-gradient(180deg, rgba(24, 35, 30, 0.94) 0%, rgba(12, 16, 14, 0.9) 100%);
+        background: rgba(255, 255, 255, 0.08);
         border-color: rgba(255, 198, 0, 0.32);
         box-shadow: 0 14px 26px rgba(0, 0, 0, 0.24);
         transform: translateY(-1px);
@@ -471,13 +769,13 @@
     }
 
     #auto-tour-settings {
-        width: 228px;
-        background: linear-gradient(180deg, rgba(20, 28, 25, 0.88) 0%, rgba(9, 13, 12, 0.84) 100%);
+        width: 100%;
+        background: rgba(255, 255, 255, 0.04);
         border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 0.95rem;
         padding: 0.7rem;
-        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
-        backdrop-filter: blur(10px);
+        box-shadow: none;
+        backdrop-filter: none;
     }
 
     #auto-tour-settings label {
@@ -533,9 +831,28 @@
     #auto-tour-btn.active:hover {
         background: rgba(220, 38, 38, 0.95);
     }
+    #minimap-search {
+        width: 100%;
+        padding: 0.72rem 0.82rem;
+        font-size: 0.92rem;
+        line-height: 1.2;
+        color: #111827;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 0.8rem;
+        background: rgba(255, 255, 255, 0.96);
+        transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+        caret-color: #111827;
+    }
+
+    #minimap-search::placeholder {
+        color: #9ca3af;
+    }
+
     #minimap-search:focus {
-        border-color: #3b82f6;
+        border-color: rgba(255, 198, 0, 0.6);
         outline: none;
+        background: #ffffff;
+        box-shadow: 0 0 0 3px rgba(255, 198, 0, 0.14);
     }
 
     .vr-btn svg {
@@ -662,8 +979,81 @@
             width: 100vw;
         }
 
+        .desktop-left-rail {
+            position: static;
+            width: auto;
+            max-height: none;
+            display: block;
+            pointer-events: auto;
+        }
+
         #minimap {
-            display: none;
+            position: absolute;
+            left: 0.75rem;
+            right: 0.75rem;
+            bottom: calc(5.25rem + env(safe-area-inset-bottom));
+            z-index: 58;
+            width: auto;
+            max-height: min(64dvh, calc(100dvh - 8.5rem));
+            flex: none;
+            opacity: 0;
+            transform: translateY(14px);
+            pointer-events: none;
+            border-radius: 1.1rem;
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+
+        #minimap.is-collapsed {
+            flex: none;
+        }
+
+        #minimap.is-collapsed .minimap-header {
+            flex: 1 1 auto;
+            border-bottom-color: rgba(255, 255, 255, 0.08);
+        }
+
+        #minimap.mobile-open {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        #minimap.ui-hidden {
+            opacity: 0 !important;
+            transform: translateY(14px) !important;
+            pointer-events: none !important;
+        }
+
+        .minimap-header {
+            max-height: min(64dvh, calc(100dvh - 8.5rem));
+            padding: 0.85rem;
+        }
+
+        .minimap-toggle,
+        .minimap-body {
+            display: flex;
+        }
+
+        .minimap-title-label {
+            font-size: 0.95rem;
+        }
+
+        .minimap-title-caption {
+            font-size: 0.68rem;
+        }
+
+        .minimap-body {
+            min-height: 0;
+            max-height: none;
+        }
+
+        .minimap-waypoints {
+            max-height: calc(64dvh - 7.25rem);
+            padding: 0.6rem 0.1rem 0.2rem;
+        }
+
+        #minimap-search {
+            min-height: 42px;
         }
 
         .modal-content {
@@ -688,7 +1078,7 @@
             top: 0.75rem;
             left: 0.65rem;
             transform: none;
-            max-width: calc(100vw - 10.25rem);
+            max-width: calc(100vw - 15.75rem);
             padding: 0.4rem 0.65rem;
             font-size: 0.72rem;
             white-space: nowrap;
@@ -795,20 +1185,44 @@
             width: min(238px, calc(100vw - 1.3rem));
             padding: 0.8rem;
             border-radius: 1.2rem;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(232, 235, 232, 0.82) 100%);
-            border: 1px solid rgba(255, 255, 255, 0.55);
+            background: linear-gradient(180deg, rgba(20, 28, 25, 0.94) 0%, rgba(9, 13, 12, 0.92) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             box-shadow: 0 18px 38px rgba(0, 0, 0, 0.24);
             backdrop-filter: blur(14px);
             opacity: 0;
             transform: translateY(-6px);
             pointer-events: none;
             transition: opacity 0.18s ease, transform 0.18s ease;
+            position: absolute;
+        }
+
+        .vr-controls-header {
+            display: none;
+        }
+
+        .vr-controls-body {
+            max-height: none;
+            opacity: 1;
+            margin-top: 0;
+            overflow: visible;
         }
 
         .vr-controls.mobile-open {
             opacity: 1;
             transform: translateY(0);
             pointer-events: auto;
+        }
+
+        #tour-viewer.mobile-map-open .psv-marker,
+        #tour-viewer.mobile-map-open .pv-hotspot-circle,
+        #tour-viewer.mobile-map-open .pv-badge-marker,
+        #tour-viewer.mobile-map-open #gaze-tooltip,
+        #tour-viewer.mobile-settings-open .psv-marker,
+        #tour-viewer.mobile-settings-open .pv-hotspot-circle,
+        #tour-viewer.mobile-settings-open .pv-badge-marker,
+        #tour-viewer.mobile-settings-open #gaze-tooltip {
+            opacity: 0 !important;
+            pointer-events: none !important;
         }
 
         .vr-controls.ui-hidden {
@@ -844,16 +1258,27 @@
 
         #auto-tour-settings {
             padding: 0.8rem;
+            background: rgba(255, 255, 255, 0.045);
+            border-color: rgba(255, 255, 255, 0.12);
         }
 
         #auto-tour-settings label {
             font-size: 0.76rem;
             margin-bottom: 0.65rem;
+            color: rgba(255, 248, 214, 0.96);
         }
 
         .auto-tour-speed-btn {
             min-height: 42px;
             font-size: 0.74rem;
+        }
+
+        .auto-tour-speed-btn.active,
+        .auto-tour-speed-btn[aria-pressed="true"] {
+            background: #FFC600;
+            border-color: #ffe27a;
+            color: #14351f;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28) inset, 0 8px 18px rgba(0, 0, 0, 0.24);
         }
 
         .nav-controls {
@@ -864,6 +1289,44 @@
             justify-content: space-between;
             padding: 0 1rem;
             pointer-events: none;
+        }
+
+        .nav-scene-name {
+            max-width: calc(100vw - 8.75rem);
+            padding: 0.58rem 0.85rem;
+            font-size: 0.78rem;
+            line-height: 1.15;
+            background: rgba(17, 24, 39, 0.74);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.38rem;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        }
+
+        .nav-scene-name:hover {
+            background: rgba(17, 24, 39, 0.88);
+        }
+
+        .nav-scene-name:active {
+            transform: scale(0.97);
+        }
+
+        .nav-scene-name:focus-visible {
+            outline: 2px solid #FFC600;
+            outline-offset: 3px;
+        }
+
+        .nav-scene-name[aria-expanded="true"] {
+            background: rgba(0, 73, 30, 0.92);
+            border-color: rgba(255, 198, 0, 0.72);
+            box-shadow: 0 0 0 1px rgba(255, 198, 0, 0.16) inset, 0 10px 24px rgba(0, 0, 0, 0.24);
+        }
+
+        .nav-scene-name-icon {
+            display: block;
         }
 
         .nav-btn {
@@ -881,8 +1344,15 @@
         }
 
         .nav-btn .mobile-glyph {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
             font-size: 1.4rem;
             font-weight: 700;
+            line-height: 1;
+            transform: none;
+            font-family: Arial, Helvetica, sans-serif;
         }
 
         #narration-tooltip {
@@ -890,6 +1360,18 @@
             width: calc(100vw - 2rem);
             padding: 0.75rem 1rem;
             font-size: 0.82rem;
+        }
+    }
+
+    @media (min-width: 769px) {
+        #progress-indicator {
+            max-width: 12rem;
+        }
+    }
+
+    @media (min-width: 769px) and (max-width: 1100px) {
+        .desktop-left-rail {
+            width: 280px;
         }
     }
 
@@ -909,6 +1391,11 @@
         background: rgba(0, 73, 30, 1) !important;
     }
     #help-btn.ui-hidden {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    #mobile-settings-btn.ui-hidden {
         opacity: 0;
         pointer-events: none;
     }
@@ -1162,6 +1649,12 @@
             <span class="mobile-glyph" aria-hidden="true">&larr;</span>
             <span class="nav-label">Previous</span>
         </button>
+        <button id="nav-scene-name" class="nav-scene-name" type="button" title="Open Tour Map" aria-label="Open Tour Map" aria-controls="minimap" aria-expanded="false">
+            <svg class="nav-scene-name-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 18l-6 3V6l6-3m0 15l6 3m-6-3V3m6 18l6-3V3l-6 3m0 15V6"/>
+            </svg>
+            <span id="nav-scene-name-text" class="nav-scene-name-text" aria-live="polite" aria-atomic="true">Current scene</span>
+        </button>
         <button id="nav-next" class="nav-btn" onclick="tourEngine.navigateNext()">
             <span class="nav-label">Next</span>
             <span class="mobile-glyph" aria-hidden="true">&rarr;</span>
@@ -1170,7 +1663,7 @@
 
     <!-- Top-right controls -->
     <div class="top-right-controls">
-        <button id="mobile-settings-btn" onclick="toggleMobileTourSettings(event)" title="Tour settings" aria-label="Tour settings" style="display:none">
+        <button id="mobile-settings-btn" type="button" title="Tour settings" aria-label="Tour settings" style="display:none">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1 .6 1.65 1.65 0 00-.4 1.08V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-.6-1 1.65 1.65 0 00-1.08-.4H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-.6 1.65 1.65 0 00.4-1.08V3a2 2 0 014 0v.09A1.65 1.65 0 0015 4.6a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 00.6 1 1.65 1.65 0 001.08.4H21a2 2 0 010 4h-.09A1.65 1.65 0 0019.4 15z"/>
@@ -1223,70 +1716,108 @@
         </button>
     </div>
 
-    <!-- Tour Controls -->
-    <div class="vr-controls">
-        <button type="button" class="vr-btn mobile-drawer-action" onclick="openTourHelp();document.querySelector('.vr-controls')?.classList.remove('mobile-open')" title="How to navigate this tour" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/>
-                <line x1="12" y1="17" x2="12.01" y2="17" stroke-width="3"/>
-            </svg>
-            <span>Help</span>
-        </button>
-        <button type="button" class="vr-btn mobile-drawer-action" onclick="toggleFullscreen();document.querySelector('.vr-controls')?.classList.remove('mobile-open')" title="Toggle fullscreen" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
-            </svg>
-            <span>Fullscreen</span>
-        </button>
-        <button id="webxr-test-btn" class="vr-btn" onclick="startWebXRTestMode()" title="Enter immersive VR mode">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 8h12a3 3 0 013 3v4a3 3 0 01-3 3h-3.5l-1.1-2.2a1.5 1.5 0 00-2.8 0L9.5 18H6a3 3 0 01-3-3v-4a3 3 0 013-3z"/>
-                <circle cx="8" cy="13" r="1.5"/>
-                <circle cx="16" cy="13" r="1.5"/>
-            </svg>
-            <span>VR Mode</span>
-        </button>
-        <button id="gyro-btn" class="vr-btn" onclick="toggleGyro()" title="Use phone motion to look around">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-                <line x1="12" y1="18" x2="12.01" y2="18"/>
-            </svg>
-            <span id="gyro-btn-text">Motion Look</span>
-        </button>
-        <button id="auto-tour-btn" class="vr-btn" onclick="tourEngine.toggleAutoTour()" title="Auto-advance with gentle panning and a visible countdown">
-            <svg id="auto-tour-play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            <svg id="auto-tour-stop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
-                <rect x="6" y="6" width="12" height="12" rx="1" ry="1"/>
-            </svg>
-            <span id="auto-tour-btn-text">Auto Tour</span>
-        </button>
-        <div id="auto-tour-settings">
-            <label id="auto-tour-speed-label">Tour Speed</label>
-            <div class="auto-tour-speed-options" role="group" aria-labelledby="auto-tour-speed-label" aria-label="Auto tour speed">
-                <button type="button" class="auto-tour-speed-btn" data-profile="fast" aria-pressed="false">Fast</button>
-                <button type="button" class="auto-tour-speed-btn" data-profile="normal" aria-pressed="true">Normal</button>
-                <button type="button" class="auto-tour-speed-btn" data-profile="slow" aria-pressed="false">Slow</button>
+    <div class="desktop-left-rail">
+        <!-- Mini-map -->
+        <div id="minimap" class="hidden">
+            <div class="minimap-header">
+                <button type="button" class="minimap-toggle" aria-expanded="true" aria-controls="minimap-body">
+                    <span class="minimap-title-wrap">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 18l-6 3V6l6-3m0 15l6 3m-6-3V3m6 18l6-3V3l-6 3m0 15V6"/>
+                        </svg>
+                        <span class="minimap-title-text">
+                            <span class="minimap-title-label">Tour Map</span>
+                            <span class="minimap-title-caption">Scenes, search, and quick jumps</span>
+                        </span>
+                    </span>
+                    <span class="minimap-toggle-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                    </span>
+                </button>
+                <div id="minimap-body" class="minimap-body">
+                    <input id="minimap-search" type="text" placeholder="Search scenes..." oninput="filterMinimapScenes(this.value)">
+                    <div class="minimap-waypoints"></div>
+                </div>
             </div>
         </div>
-        <div id="auto-tour-hud" class="hidden" aria-live="polite" aria-atomic="true">
-            <div id="auto-tour-countdown">Auto Tour idle</div>
-            <div id="auto-tour-progress" role="progressbar" aria-label="Time before next scene">
-                <div id="auto-tour-progress-fill"></div>
-            </div>
-        </div>
-    </div>
 
-    <!-- Mini-map -->
-    <div id="minimap" class="hidden">
-        <div class="p-3 border-b border-gray-200">
-            <h3 class="font-bold text-sm text-gray-900" style="margin-bottom:6px">Tour Map</h3>
-            <input id="minimap-search" type="text" placeholder="Search scenes…" oninput="filterMinimapScenes(this.value)"
-                   style="width:100%;padding:4px 8px;font-size:11px;border:1px solid #e5e7eb;border-radius:5px;background:#f9fafb;">
+        <!-- Tour Controls -->
+        <div class="vr-controls is-collapsed" data-viewing-modes>
+            <button type="button" class="vr-controls-header" aria-expanded="false" aria-controls="vr-controls-body">
+                <span class="vr-controls-heading">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6 8h12a3 3 0 013 3v4a3 3 0 01-3 3h-3.5l-1.1-2.2a1.5 1.5 0 00-2.8 0L9.5 18H6a3 3 0 01-3-3v-4a3 3 0 013-3z"/>
+                        <circle cx="8" cy="13" r="1.5"/>
+                        <circle cx="16" cy="13" r="1.5"/>
+                    </svg>
+                    <span class="vr-controls-heading-text">
+                        <span class="vr-controls-heading-label">Viewing Modes</span>
+                        <span class="vr-controls-heading-caption">VR, motion, auto tour, and speed</span>
+                    </span>
+                </span>
+                <span class="vr-controls-toggle-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                </span>
+            </button>
+            <div id="vr-controls-body" class="vr-controls-body">
+                <button type="button" class="vr-btn mobile-drawer-action" onclick="openTourHelp();closeMobileTourSettings()" title="How to navigate this tour" style="display:none">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17" stroke-width="3"/>
+                    </svg>
+                    <span>Help</span>
+                </button>
+                <button type="button" class="vr-btn mobile-drawer-action" onclick="toggleFullscreen();closeMobileTourSettings()" title="Toggle fullscreen" style="display:none">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                    </svg>
+                    <span>Fullscreen</span>
+                </button>
+                <button id="webxr-test-btn" class="vr-btn" onclick="startWebXRTestMode()" title="Enter immersive VR mode">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6 8h12a3 3 0 013 3v4a3 3 0 01-3 3h-3.5l-1.1-2.2a1.5 1.5 0 00-2.8 0L9.5 18H6a3 3 0 01-3-3v-4a3 3 0 013-3z"/>
+                        <circle cx="8" cy="13" r="1.5"/>
+                        <circle cx="16" cy="13" r="1.5"/>
+                    </svg>
+                    <span>VR Mode</span>
+                </button>
+                <button id="gyro-btn" class="vr-btn" onclick="toggleGyro()" title="Use phone motion to look around">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                        <line x1="12" y1="18" x2="12.01" y2="18"/>
+                    </svg>
+                    <span id="gyro-btn-text">Motion Look</span>
+                </button>
+                <button id="auto-tour-btn" class="vr-btn" onclick="tourEngine.toggleAutoTour()" title="Auto-advance with gentle panning and a visible countdown">
+                    <svg id="auto-tour-play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    <svg id="auto-tour-stop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                        <rect x="6" y="6" width="12" height="12" rx="1" ry="1"/>
+                    </svg>
+                    <span id="auto-tour-btn-text">Auto Tour</span>
+                </button>
+                <div id="auto-tour-settings">
+                    <label id="auto-tour-speed-label">Tour Speed</label>
+                    <div class="auto-tour-speed-options" role="group" aria-labelledby="auto-tour-speed-label" aria-label="Auto tour speed">
+                        <button type="button" class="auto-tour-speed-btn" data-profile="fast" aria-pressed="false">Fast</button>
+                        <button type="button" class="auto-tour-speed-btn" data-profile="normal" aria-pressed="true">Normal</button>
+                        <button type="button" class="auto-tour-speed-btn" data-profile="slow" aria-pressed="false">Slow</button>
+                    </div>
+                </div>
+                <div id="auto-tour-hud" class="hidden" aria-live="polite" aria-atomic="true">
+                    <div id="auto-tour-countdown">Auto Tour idle</div>
+                    <div id="auto-tour-progress" role="progressbar" aria-label="Time before next scene">
+                        <div id="auto-tour-progress-fill"></div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="minimap-waypoints"></div>
     </div>
 
     <!-- Narration Tooltip -->
@@ -1490,7 +2021,7 @@
                         </li>
                         <li>
                             <span class="help-icon">VR</span>
-                            <div><strong>VR Mode</strong><br>Enter an immersive WebXR session on supported VR browsers and headsets. Reservation actions will first exit VR, then open the booking flow</div>
+                            <div><strong>VR Mode</strong><br>Enter an immersive WebXR session on supported VR browsers and headsets. Reservation actions exit VR and open the booking flow; external links and videos exit VR and open the destination in your browser.</div>
                         </li>
                     </ul>
                 </div>
@@ -1512,7 +2043,7 @@
                         </li>
                         <li>
                             <span class="help-icon">🗺️</span>
-                            <div><strong>Tour Map</strong><br>View all locations and jump instantly to any scene. Use the search bar to filter by name (bottom-right corner)</div>
+                            <div><strong>Tour Map</strong><br>View all locations and jump instantly to any scene. Use the search bar to filter by name from the left-side panel</div>
                         </li>
                         <li>
                             <span class="help-icon">▶️</span>
@@ -1595,7 +2126,7 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         tourEngine = new VirtualTourEngine('panorama-container', {
-            startWaypoint: '{{ $startWaypoint }}',
+            startWaypoint: @json($startWaypoint),
             apiBase: '/api/tour',
             onRoomDoorReached: function(waypoint) {
                 console.log('Reached room door:', waypoint.name);
@@ -1626,6 +2157,8 @@
         }
 
         syncGyroButtonState();
+        restoreTourMapPanelState();
+        restoreViewingModesPanelState();
     });
 
     // Fullscreen toggle
@@ -1640,6 +2173,144 @@
         }
     }
 
+    const TOUR_MAP_STORAGE_KEY = 'tour_map_expanded';
+    const VIEWING_MODES_STORAGE_KEY = 'tour_viewing_modes_expanded';
+
+    function setTourMapPanelExpanded(expanded, { persist = true } = {}) {
+        const panel = document.getElementById('minimap');
+        const toggle = panel?.querySelector('.minimap-toggle');
+        if (!panel || !toggle) return;
+
+        const desktopMode = window.matchMedia('(min-width: 769px)').matches;
+        const shouldExpand = desktopMode ? !!expanded : true;
+
+        panel.classList.toggle('is-collapsed', !shouldExpand);
+        toggle.setAttribute('aria-expanded', shouldExpand ? 'true' : 'false');
+
+        if (persist && desktopMode) {
+            localStorage.setItem(TOUR_MAP_STORAGE_KEY, shouldExpand ? '1' : '0');
+        }
+    }
+
+    function restoreTourMapPanelState() {
+        const desktopMode = window.matchMedia('(min-width: 769px)').matches;
+        if (!desktopMode) {
+            setTourMapPanelExpanded(true, { persist: false });
+            return;
+        }
+
+        const saved = localStorage.getItem(TOUR_MAP_STORAGE_KEY);
+        const shouldExpand = saved !== '0';
+        setTourMapPanelExpanded(shouldExpand, { persist: false });
+    }
+
+    function toggleTourMapPanel(event) {
+        event?.preventDefault();
+        event?.stopPropagation();
+        if (!window.matchMedia('(min-width: 769px)').matches) {
+            closeMobileTourMap();
+            return;
+        }
+
+        const panel = document.getElementById('minimap');
+        if (!panel) return;
+
+        setTourMapPanelExpanded(panel.classList.contains('is-collapsed'));
+    }
+
+    function syncMobileTourMapState() {
+        const panel = document.getElementById('minimap');
+        const button = document.getElementById('nav-scene-name');
+        const viewer = document.getElementById('tour-viewer');
+        const isOpen = !!panel?.classList.contains('mobile-open');
+
+        button?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        viewer?.classList.toggle('mobile-map-open', isOpen);
+    }
+
+    function syncMobileTourMapTrigger() {
+        const button = document.getElementById('nav-scene-name');
+        if (!button) return;
+
+        const mobileMode = window.matchMedia('(max-width: 768px)').matches;
+        button.tabIndex = mobileMode ? 0 : -1;
+        button.toggleAttribute('aria-disabled', !mobileMode);
+        button.setAttribute('title', mobileMode ? 'Open Tour Map' : 'Current tour location');
+        button.setAttribute('aria-label', mobileMode ? 'Open Tour Map' : 'Current tour location');
+
+        if (!mobileMode) {
+            button.setAttribute('aria-expanded', 'false');
+        }
+    }
+
+    function toggleMobileTourMap(event) {
+        event?.preventDefault();
+        event?.stopPropagation();
+        if (!window.matchMedia('(max-width: 768px)').matches) return;
+
+        const panel = document.getElementById('minimap');
+        if (!panel) return;
+
+        tourEngine?._showUI?.();
+        if (tourEngine) {
+            tourEngine._uiManuallyHidden = false;
+            tourEngine._syncToggleUIBtn?.(false);
+            tourEngine._resetUIIdleTimer?.();
+        }
+
+        closeMobileTourSettings();
+        panel.classList.remove('ui-hidden');
+        panel.classList.toggle('mobile-open');
+        syncMobileTourMapState();
+
+        if (panel.classList.contains('mobile-open')) {
+            tourEngine?._hideGazeTooltip?.();
+        }
+    }
+
+    function closeMobileTourMap() {
+        document.getElementById('minimap')?.classList.remove('mobile-open');
+        syncMobileTourMapState();
+    }
+
+    function setViewingModesPanelExpanded(expanded, { persist = true } = {}) {
+        const panel = document.querySelector('[data-viewing-modes]');
+        const toggle = panel?.querySelector('.vr-controls-header');
+        if (!panel || !toggle) return;
+
+        const desktopMode = window.matchMedia('(min-width: 769px)').matches;
+        const shouldExpand = desktopMode ? !!expanded : true;
+
+        panel.classList.toggle('is-collapsed', !shouldExpand);
+        toggle.setAttribute('aria-expanded', shouldExpand ? 'true' : 'false');
+
+        if (persist && desktopMode) {
+            localStorage.setItem(VIEWING_MODES_STORAGE_KEY, shouldExpand ? '1' : '0');
+        }
+    }
+
+    function restoreViewingModesPanelState() {
+        const desktopMode = window.matchMedia('(min-width: 769px)').matches;
+        if (!desktopMode) {
+            setViewingModesPanelExpanded(true, { persist: false });
+            return;
+        }
+
+        const saved = localStorage.getItem(VIEWING_MODES_STORAGE_KEY);
+        setViewingModesPanelExpanded(saved === '1', { persist: false });
+    }
+
+    function toggleViewingModesPanel(event) {
+        event?.preventDefault();
+        event?.stopPropagation();
+        if (!window.matchMedia('(min-width: 769px)').matches) return;
+
+        const panel = document.querySelector('[data-viewing-modes]');
+        if (!panel) return;
+
+        setViewingModesPanelExpanded(panel.classList.contains('is-collapsed'));
+    }
+
     function toggleMobileTourSettings(event) {
         event?.preventDefault();
         event?.stopPropagation();
@@ -1651,8 +2322,50 @@
             tourEngine._syncToggleUIBtn?.(false);
             tourEngine._resetUIIdleTimer?.();
         }
+        closeMobileTourMap();
         panel.classList.remove('ui-hidden');
         panel.classList.toggle('mobile-open');
+        syncMobileTourSettingsState();
+        if (panel.classList.contains('mobile-open')) {
+            tourEngine?._hideGazeTooltip?.();
+        }
+    }
+
+    function syncMobileTourSettingsState() {
+        const panel = document.querySelector('.vr-controls');
+        const viewer = document.getElementById('tour-viewer');
+        viewer?.classList.toggle('mobile-settings-open', !!panel?.classList.contains('mobile-open'));
+    }
+
+    function closeMobileTourSettings() {
+        document.querySelector('.vr-controls')?.classList.remove('mobile-open');
+        syncMobileTourSettingsState();
+    }
+
+    window.toggleMobileTourSettings = toggleMobileTourSettings;
+    window.closeMobileTourSettings = closeMobileTourSettings;
+    window.toggleMobileTourMap = toggleMobileTourMap;
+    window.closeMobileTourMap = closeMobileTourMap;
+    window.toggleTourMapPanel = toggleTourMapPanel;
+    window.toggleViewingModesPanel = toggleViewingModesPanel;
+
+    document.querySelector('#minimap .minimap-toggle')?.addEventListener('click', toggleTourMapPanel);
+    document.querySelector('.vr-controls-header')?.addEventListener('click', toggleViewingModesPanel);
+    document.getElementById('nav-scene-name')?.addEventListener('click', toggleMobileTourMap);
+    document.getElementById('nav-scene-name')?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        toggleMobileTourMap(event);
+    });
+    document.getElementById('mobile-settings-btn')?.addEventListener('click', toggleMobileTourSettings);
+    syncMobileTourMapTrigger();
+
+    const mobileTourSettingsPanel = document.querySelector('.vr-controls');
+    if (mobileTourSettingsPanel) {
+        new MutationObserver(syncMobileTourSettingsState).observe(mobileTourSettingsPanel, {
+            attributes: true,
+            attributeFilter: ['class'],
+        });
     }
 
     document.addEventListener('click', (event) => {
@@ -1660,7 +2373,47 @@
         const button = document.getElementById('mobile-settings-btn');
         if (!panel || !button || !panel.classList.contains('mobile-open')) return;
         if (panel.contains(event.target) || button.contains(event.target)) return;
-        panel.classList.remove('mobile-open');
+        closeMobileTourSettings();
+    });
+
+    document.addEventListener('click', (event) => {
+        const panel = document.getElementById('minimap');
+        const button = document.getElementById('nav-scene-name');
+        if (!panel || !button || !panel.classList.contains('mobile-open')) return;
+        if (panel.contains(event.target) || button.contains(event.target)) return;
+        closeMobileTourMap();
+    });
+
+    document.addEventListener('pointerdown', (event) => {
+        if (!window.matchMedia('(max-width: 768px)').matches) return;
+        const panel = document.querySelector('.vr-controls');
+        const button = document.getElementById('mobile-settings-btn');
+        if (!panel || !button || !panel.classList.contains('mobile-open')) return;
+        if (panel.contains(event.target) || button.contains(event.target)) return;
+        closeMobileTourSettings();
+    }, true);
+
+    document.addEventListener('pointerdown', (event) => {
+        if (!window.matchMedia('(max-width: 768px)').matches) return;
+        const panel = document.getElementById('minimap');
+        const button = document.getElementById('nav-scene-name');
+        if (!panel || !button || !panel.classList.contains('mobile-open')) return;
+        if (panel.contains(event.target) || button.contains(event.target)) return;
+        closeMobileTourMap();
+    }, true);
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        closeMobileTourMap();
+    });
+
+    window.addEventListener('resize', () => {
+        if (!window.matchMedia('(max-width: 768px)').matches) {
+            closeMobileTourMap();
+        }
+        syncMobileTourMapTrigger();
+        restoreTourMapPanelState();
+        restoreViewingModesPanelState();
     });
 
     // Elements that must remain visible inside any fullscreen context
@@ -1668,7 +2421,7 @@
     const _fsOverlayHome = document.getElementById('tour-viewer');
 
     function _syncOverlaysToFullscreen() {
-        document.querySelector('.vr-controls')?.classList.remove('mobile-open');
+        closeMobileTourSettings();
         const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
         if (fsEl && fsEl !== _fsOverlayHome && !fsEl.contains(_fsOverlays[0])) {
             // Viewer (or another element) went fullscreen — move overlays inside it so they remain visible
@@ -1684,7 +2437,7 @@
     // Update fullscreen button icon on change
     document.addEventListener('fullscreenchange', () => {
         const isFs = !!document.fullscreenElement;
-        document.querySelector('.vr-controls')?.classList.remove('mobile-open');
+        closeMobileTourSettings();
         if (!isFs) {
             tourEngine?._showUI?.();
             tourEngine && (tourEngine._uiManuallyHidden = false);
@@ -1699,13 +2452,13 @@
 
     // Safari / iOS WebKit prefix
     document.addEventListener('webkitfullscreenchange', () => {
-        document.querySelector('.vr-controls')?.classList.remove('mobile-open');
+        closeMobileTourSettings();
         
         _syncOverlaysToFullscreen();
     });
     async function startWebXRTestMode() {
         if (!tourEngine) return;
-        document.querySelector('.vr-controls')?.classList.remove('mobile-open');
+        closeMobileTourSettings();
         try {
             await tourEngine.startWebXRTest();
         } catch (error) {
@@ -1739,7 +2492,7 @@
             }
         } catch (error) {
             console.error('Motion Look error:', error);
-            document.querySelector('.vr-controls')?.classList.remove('mobile-open');
+            closeMobileTourSettings();
             
             let errorMessage = 'Motion Look is not available on this device';
             

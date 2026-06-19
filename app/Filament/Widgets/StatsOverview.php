@@ -7,8 +7,10 @@ use App\Filament\Resources\RoomResource;
 use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomAssignment;
+use Filament\Support\Colors\Color;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -23,6 +25,9 @@ class StatsOverview extends BaseWidget
     {
         // Cache dashboard stats for 60 seconds — avoids 7+ queries on every page load/poll
         $stats = Cache::remember('dashboard.stats_overview', 60, function () {
+            $today = Carbon::today();
+            $tomorrow = $today->copy()->addDay();
+
             // Consolidate room stats into a single query
             $roomStats = Room::where('is_active', true)
                 ->select(DB::raw('COUNT(*) as total'))
@@ -31,15 +36,25 @@ class StatsOverview extends BaseWidget
             $totalRooms = $roomStats->total ?? 0;
 
             // Consolidate reservation stats into a single query (down from 4 queries)
-            $reservationStats = Reservation::select(
-                DB::raw("SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending"),
-                DB::raw("SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as active"),
-                DB::raw("SUM(CASE WHEN status = 'approved' AND check_in_date = CURDATE() THEN 1 ELSE 0 END) as today_checkins"),
-                DB::raw("SUM(CASE WHEN status = 'checked_in' AND check_out_date = CURDATE() THEN 1 ELSE 0 END) as today_checkouts"),
-                DB::raw("SUM(CASE WHEN status = 'checked_in' AND check_out_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
-                             THEN 1 ELSE 0 END) as near_due"),
-                DB::raw("SUM(CASE WHEN status = 'checked_in' AND check_out_date < CURDATE() THEN 1 ELSE 0 END) as overdue")
-            )
+            $reservationStats = Reservation::query()
+                ->selectRaw(
+                    "SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                    SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
+                    SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) as confirmed,
+                    SUM(CASE WHEN status = 'approved' AND DATE(check_in_date) = ? THEN 1 ELSE 0 END) as approved_today_checkins,
+                    SUM(CASE WHEN status = 'confirmed' AND DATE(check_in_date) = ? THEN 1 ELSE 0 END) as confirmed_today_checkins,
+                    SUM(CASE WHEN status = 'checked_in' AND DATE(check_out_date) = ? THEN 1 ELSE 0 END) as today_checkouts,
+                    SUM(CASE WHEN status = 'checked_in' AND DATE(check_out_date) BETWEEN ? AND ? THEN 1 ELSE 0 END) as near_due,
+                    SUM(CASE WHEN status = 'checked_in' AND DATE(check_out_date) < ? THEN 1 ELSE 0 END) as overdue",
+                    [
+                        $today->toDateString(),
+                        $today->toDateString(),
+                        $today->toDateString(),
+                        $today->toDateString(),
+                        $tomorrow->toDateString(),
+                        $today->toDateString(),
+                    ],
+                )
                 ->first();
 
             // Active (checked-in) assignments in one query – only count active rooms
@@ -63,11 +78,12 @@ class StatsOverview extends BaseWidget
                 'pendingReservations' => (int) ($reservationStats->pending ?? 0),
                 'nearDueReservations' => (int) ($reservationStats->near_due ?? 0),
                 'overdueReservations' => (int) ($reservationStats->overdue ?? 0),
-                'activeReservations' => (int) ($reservationStats->active ?? 0),
-                'todayCheckIns' => (int) ($reservationStats->today_checkins ?? 0),
+                'approvedReservations' => (int) ($reservationStats->approved ?? 0),
+                'confirmedReservations' => (int) ($reservationStats->confirmed ?? 0),
+                'approvedTodayCheckIns' => (int) ($reservationStats->approved_today_checkins ?? 0),
+                'confirmedTodayCheckIns' => (int) ($reservationStats->confirmed_today_checkins ?? 0),
                 'todayCheckOuts' => (int) ($reservationStats->today_checkouts ?? 0),
                 'currentlyCheckedIn' => (int) ($stayStats->checked_in ?? 0),
-                'overdueReservations' => (int) ($reservationStats->overdue ?? 0),
             ];
         });
 
@@ -76,7 +92,8 @@ class StatsOverview extends BaseWidget
 
         $pendingUrl = $resourceIndex.'?status=pending';
         $nearDueUrl = $resourceIndex.'?near_due=1';
-        $activeUrl = $resourceIndex.'?status=approved';
+        $approvedUrl = $resourceIndex.'?status=approved';
+        $confirmedUrl = $resourceIndex.'?status=confirmed';
         $checkedInUrl = $resourceIndex.'?status=checked_in';
         $overdueUrl = $resourceIndex.'?overdue=1';
 
@@ -97,7 +114,7 @@ class StatsOverview extends BaseWidget
             Stat::make('Pending Reservations', $stats['pendingReservations'])
                 ->description('Awaiting review')
                 ->descriptionIcon('heroicon-m-clock')
-                ->color('warning')
+                ->color(Color::hex('#fbbf24'))
                 ->url($pendingUrl),
 
             // Row 2: Situational awareness
@@ -111,14 +128,20 @@ class StatsOverview extends BaseWidget
             Stat::make('Currently Checked In', $stats['currentlyCheckedIn'])
                 ->description('Guests currently staying')
                 ->descriptionIcon('heroicon-m-user-group')
-                ->color('success')
+                ->color(Color::hex('#16a34a'))
                 ->url($checkedInUrl),
 
-            Stat::make('Approved (Awaiting Arrival)', $stats['activeReservations'])
-                ->description("{$stats['todayCheckIns']} expected check-ins today")
+            Stat::make('Approved', $stats['approvedReservations'])
+                ->description('Awaiting payment or confirmation')
+                ->descriptionIcon('heroicon-m-clipboard-document-check')
+                ->color(Color::hex('#919F02'))
+                ->url($approvedUrl),
+
+            Stat::make('Confirmed (Awaiting Arrival)', $stats['confirmedReservations'])
+                ->description("{$stats['confirmedTodayCheckIns']} expected check-ins today")
                 ->descriptionIcon('heroicon-m-calendar-days')
-                ->color('info')
-                ->url($activeUrl),
+                ->color(Color::hex('#10B981'))
+                ->url($confirmedUrl),
         ];
     }
 }

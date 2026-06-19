@@ -357,6 +357,38 @@ h6 {
     position: relative !important;
     z-index: 40 !important;
     pointer-events: auto !important;
+    opacity: 1 !important;
+    color: #374151 !important;
+    background-color: rgba(0, 0, 0, 0.06) !important;
+    border-radius: 0.5rem !important;
+}
+
+.fi-modal-close-btn svg,
+.fi-modal-close-btn .fi-icon-btn-icon {
+    opacity: 1 !important;
+    color: #374151 !important;
+    stroke: #374151 !important;
+}
+
+.fi-modal-close-btn:hover {
+    color: #111827 !important;
+    background-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+.dark .fi-modal-close-btn {
+    color: #d1d5db !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .fi-modal-close-btn svg,
+.dark .fi-modal-close-btn .fi-icon-btn-icon {
+    color: #d1d5db !important;
+    stroke: #d1d5db !important;
+}
+
+.dark .fi-modal-close-btn:hover {
+    color: #f9fafb !important;
+    background-color: rgba(255, 255, 255, 0.16) !important;
 }
 
 /* ===== Dark Mode Overrides ===== */
@@ -597,7 +629,38 @@ h6 {
     opacity: 0.6;
     pointer-events: none;
 }
+
+/* ===== Notification Panel — dismiss (X) button ===== */
+/* Hide the square background by default; show only on hover */
+.fi-no-notification .fi-icon-btn {
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.fi-no-notification .fi-icon-btn:hover {
+    background-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.dark .fi-no-notification .fi-icon-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ===== Notification Slide-over — panel close (X) button ===== */
+/* Override the global fi-modal-close-btn background for the slide-over only */
+.fi-modal-slide-over-window .fi-modal-close-btn {
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.fi-modal-slide-over-window .fi-modal-close-btn:hover {
+    background-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.dark .fi-modal-slide-over-window .fi-modal-close-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
 </style>
+
 
 {{-- Chart.js CDN --}}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>

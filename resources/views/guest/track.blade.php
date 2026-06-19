@@ -237,7 +237,7 @@
                                 @if($gatewayPayment->is_deposit)
                                     Deposit Payment Received
                                 @else
-                                    ✓ Full Payment Received
+                                    Full Payment Received
                                 @endif
                             </h3>
                             <p class="text-gray-600 text-sm mb-4">
@@ -309,7 +309,7 @@
                                 <div class="inline-block">
                                     <div class="bg-gradient-to-br from-[#00491E] to-[#02681E] p-6 rounded-2xl shadow-lg">
                                         <div class="bg-white p-4 rounded-xl">
-                                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={{ urlencode($reservation->generatePaymentLink(false)) }}"
+                                            <img src="{{ route('guest.payment.qr', ['token' => $reservation->payment_link_token], false) }}"
                                                  alt="Payment QR Code"
                                                  class="w-64 h-64 mx-auto">
                                         </div>

@@ -8,8 +8,8 @@
         <div class="flex flex-wrap items-center gap-x-1 gap-y-2 mb-4 px-1">
             @foreach([
                 ['key' => 'pending', 'color' => '#fbbf24', 'label' => 'Pending'],
-                ['key' => 'approved', 'color' => '#3b82f6', 'label' => 'Approved'],
-
+                ['key' => 'approved', 'color' => '#919F02', 'label' => 'Approved'],
+                ['key' => 'confirmed', 'color' => '#10B981', 'label' => 'Confirmed'],
                 ['key' => 'checked_in', 'color' => '#16a34a', 'label' => 'Checked In'],
                 ['key' => 'checked_out', 'color' => '#94a3b8', 'label' => 'Checked Out'],
             ] as $item)
@@ -28,6 +28,23 @@
                 </button>
             @endforeach
         </div>
+
+        {{-- Today highlight override: FullCalendar's default blends with status colors --}}
+        <style>
+            .fc .fc-day-today {
+                background-color: #bfdbfe !important;
+            }
+            .dark .fc .fc-day-today {
+                background-color: #1e3a5f !important;
+            }
+            .fc .fc-day-today .fc-daygrid-day-number {
+                font-weight: 700;
+                color: #1d4ed8;
+            }
+            .dark .fc .fc-day-today .fc-daygrid-day-number {
+                color: #93c5fd;
+            }
+        </style>
 
         {{-- FullCalendar --}}
         <div class="filament-fullcalendar" wire:ignore x-load

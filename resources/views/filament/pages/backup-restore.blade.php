@@ -193,6 +193,23 @@
                                    shadow-sm text-sm px-3 py-2
                                    focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
                         />
+                        @error('confirmPhrase') <span class="text-sm mt-1" style="color: #dc2626;">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Confirm your password:
+                        </label>
+                        <input
+                            type="password"
+                            wire:model.defer="restorePassword"
+                            autocomplete="current-password"
+                            class="fi-input block w-full rounded-lg border-gray-300 dark:border-gray-600
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   shadow-sm text-sm px-3 py-2
+                                   focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
+                        />
+                        @error('restorePassword') <span class="text-sm mt-1" style="color: #dc2626;">{{ $message }}</span> @enderror
                     </div>
 
                     <div class="flex justify-end gap-3">

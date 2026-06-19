@@ -269,6 +269,9 @@ class ProcessPaymentWebhook implements ShouldQueue
                     'status' => 'posted',
                     'payment_mode' => $paymentMethod,
                     'is_deposit' => $isDeposit,  // Preserve payment type
+                    'reference_no' => $existingPayment->reference_no ?: "PM-{$paymentId}",
+                    'or_date' => $existingPayment->or_date ?: now()->toDateString(),
+                    'received_at' => $existingPayment->received_at ?: now(),
                     'gateway_metadata' => array_merge(
                         $existingPayment->gateway_metadata ?? [],
                         [

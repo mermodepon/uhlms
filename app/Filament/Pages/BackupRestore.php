@@ -7,7 +7,6 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BackupRestore extends Page
@@ -25,6 +24,8 @@ class BackupRestore extends Page
     protected static string $view = 'filament.pages.backup-restore';
 
     public string $confirmPhrase = '';
+
+    public string $restorePassword = '';
 
     public bool $showRestoreModal = false;
 
@@ -248,11 +249,16 @@ class BackupRestore extends Page
             abort(404);
         }
 
+        Log::info('Database backup downloaded', [
+            'filename' => $filename,
+            'user' => auth()->user()?->name,
+        ]);
+
         return response()->streamDownload(function () use ($filepath) {
             readfile($filepath);
         }, $filename, [
             'Content-Type' => 'application/sql',
-        ]);
+        ])->deleteFileAfterSend(false);
     }
 
     /**
@@ -286,6 +292,7 @@ class BackupRestore extends Page
     {
         $this->showRestoreModal = false;
         $this->confirmPhrase = '';
+        $this->restorePassword = '';
         $this->restoreExistingFilename = '';
     }
 
@@ -309,11 +316,22 @@ class BackupRestore extends Page
 
         $this->restoreExistingFilename = $filename;
         $this->confirmPhrase = '';
+        $this->restorePassword = '';
         $this->showRestoreModal = true;
+
+        Log::info('Database restore confirmation opened', [
+            'filename' => $filename,
+            'user' => auth()->user()?->name,
+        ]);
     }
 
     public function executeRestoreExisting(): void
     {
+        $this->validate([
+            'confirmPhrase' => ['required', 'in:RESTORE'],
+            'restorePassword' => ['required', 'current_password'],
+        ]);
+
         if (strtoupper(trim($this->confirmPhrase)) !== 'RESTORE') {
             Notification::make()
                 ->title('Confirmation Failed')
@@ -361,6 +379,7 @@ class BackupRestore extends Page
 
         $this->showRestoreModal       = false;
         $this->confirmPhrase          = '';
+        $this->restorePassword        = '';
         $this->restoreExistingFilename = '';
         $this->restoreInProgress      = true;
 

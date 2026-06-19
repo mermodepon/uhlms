@@ -30,6 +30,7 @@ class ReservationPayment extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'or_date' => 'date',
             'received_at' => 'datetime',
             'meta' => 'array',
             'gateway_metadata' => 'array',

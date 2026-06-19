@@ -11,6 +11,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 
 class VirtualTourResource extends Resource
@@ -61,12 +62,8 @@ class VirtualTourResource extends Resource
                             ->required()
                             ->default('entrance')
                             ->columnSpan(2),
-                        Forms\Components\TextInput::make('position_order')
-                            ->label('Order')
-                            ->required()
-                            ->numeric()
-                            ->default(fn (): int => ((int) TourWaypoint::max('position_order')) + 1)
-                            ->helperText('Lower numbers appear first'),
+                        Forms\Components\Hidden::make('position_order')
+                            ->default(fn (): int => ((int) TourWaypoint::max('position_order')) + 1),
                         Forms\Components\Toggle::make('is_active')
                             ->label('Active')
                             ->default(true),
@@ -81,21 +78,36 @@ class VirtualTourResource extends Resource
                             ->disk(config('media.disk'))
                             ->directory('virtual-tour/panoramas')
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
-                            ->maxSize(10240)
+                            ->maxSize(25600)
                             ->required()
-                            ->helperText('Upload equirectangular 360° panorama (max 10MB)'),
+                            ->helperText('Upload equirectangular 360° panorama (max 25MB)'),
+                        Forms\Components\Placeholder::make('panorama_preview')
+                            ->label('Panorama Preview')
+                            ->content(function (?TourWaypoint $record): HtmlString|string {
+                                $url = MediaUrl::url($record?->panorama_image);
+
+                                if (! $url) {
+                                    return 'No panorama image uploaded.';
+                                }
+
+                                return new HtmlString(
+                                    '<img src="'.e($url).'" alt="'.e($record->name).' panorama preview" style="width:100%;max-height:20rem;object-fit:contain;border:1px solid rgb(229 231 235);border-radius:0.5rem;background:#f9fafb;" loading="lazy">'
+                                );
+                            })
+                            ->visible(fn (?TourWaypoint $record): bool => filled($record?->panorama_image))
+                            ->columnSpanFull(),
                         Forms\Components\FileUpload::make('thumbnail_image')
                             ->label('Thumbnail')
                             ->image()
                             ->disk(config('media.disk'))
                             ->directory('virtual-tour/thumbnails')
                             ->acceptedFileTypes(['image/jpeg', 'image/png'])
-                            ->maxSize(2048)
-                            ->helperText('Small image for mini-map (optional)'),
+                            ->maxSize(5120)
+                            ->helperText('Small image for mini-map (optional, max 5MB)'),
                     ]),
 
                 Forms\Components\Section::make('Room Linking')
-                    ->description('Associate this waypoint with a room type or specific room. If both are set, the specific room takes priority.')
+                    ->description('Associate this scene with a room type. Guests see room type information and general availability only.')
                     ->schema([
                         Forms\Components\Select::make('linked_room_type_id')
                             ->label('Link to Room Type')
@@ -103,28 +115,7 @@ class VirtualTourResource extends Resource
                             ->searchable()
                             ->preload()
                             ->nullable()
-                            ->live()
-                            ->afterStateUpdated(fn ($set) => $set('linked_room_id', null))
                             ->helperText('Select a room type to show room information during the tour'),
-                        Forms\Components\Select::make('linked_room_id')
-                            ->label('Specific Room (Optional)')
-                            ->relationship('room', 'room_number')
-                            ->searchable()
-                            ->preload()
-                            ->nullable()
-                            ->visible(fn ($get) => filled($get('linked_room_type_id')))
-                            ->options(function ($get) {
-                                $roomTypeId = $get('linked_room_type_id');
-                                if (!$roomTypeId) {
-                                    return [];
-                                }
-                                return \App\Models\Room::where('room_type_id', $roomTypeId)
-                                    ->where('is_active', true)
-                                    ->orderBy('room_number')
-                                    ->pluck('room_number', 'id')
-                                    ->toArray();
-                            })
-                            ->helperText('🔒 Link to a specific room for internal tracking. Guests see the room type name and general availability only (room numbers are hidden for security).'),
                     ]),
 
                 Forms\Components\Section::make('Description & Narration')
@@ -166,10 +157,7 @@ class VirtualTourResource extends Resource
                         'common-area' => '🛋️ Common Area',
                         default => $state,
                     }),
-                Tables\Columns\TextColumn::make('position_order')
-                    ->label('Order')
-                    ->sortable()
-                    ->alignCenter(),
+
                 Tables\Columns\TextColumn::make('roomType.name')
                     ->label('Room Type')
                     ->placeholder('—')
@@ -204,8 +192,9 @@ class VirtualTourResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\ViewAction::make(),
+                Tables\Actions\DeleteAction::make(),
             ])
+            ->recordUrl(fn (TourWaypoint $record): string => Pages\ManageTourHotspots::getUrl(['record' => $record]))
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\BulkAction::make('activate')

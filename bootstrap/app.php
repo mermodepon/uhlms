@@ -11,8 +11,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Trusted proxies for load balancers / reverse proxies
-        $middleware->trustProxies(at: '*');
+        $trustedProxies = trim((string) env('TRUSTED_PROXIES', ''));
+        $trustedProxies = $trustedProxies === '*'
+            ? '*'
+            : array_values(array_filter(array_map('trim', explode(',', $trustedProxies))));
+
+        // Trust localhost by default for local servers and Cloudflare Tunnel clients.
+        $middleware->trustProxies(at: $trustedProxies ?: ['127.0.0.1', '::1']);
 
         // Exclude PayMongo webhook from CSRF protection
         $middleware->validateCsrfTokens(except: [

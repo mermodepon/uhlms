@@ -16,6 +16,7 @@ use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Filament\Support\Enums\MaxWidth;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 
@@ -815,15 +816,34 @@ class CheckInGuest extends Page
         $html .= '</div>';
 
         if ($summary['remaining_balance'] <= 0.01) {
+            $paidBalancePayment = $this->getPaidCheckInBalancePayment();
+            $onlineReference = $paidBalancePayment?->reference_no
+                ?: ($paidBalancePayment?->gateway_payment_id ? 'PM-'.$paidBalancePayment->gateway_payment_id : null);
+            $paymentDate = $paidBalancePayment?->or_date
+                ? $paidBalancePayment->or_date->format('M d, Y')
+                : $paidBalancePayment?->received_at?->format('M d, Y');
+            $officialOrNumber = $this->getOfficialReceiptNumber();
+
             $html .= '<div class="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">';
             $html .= '<strong>Remaining balance paid online.</strong> You can complete check-in without collecting another payment.';
             $html .= '</div>';
+            if ($paidBalancePayment) {
+                $html .= '<div class="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-800">';
+                $html .= '<div class="grid gap-2 sm:grid-cols-2">';
+                $html .= '<div><span class="font-semibold">Payment Method:</span> '.e($paidBalancePayment->payment_mode ?: 'PayMongo Online').'</div>';
+                $html .= '<div><span class="font-semibold">Paid Amount:</span> PHP '.number_format((float) $paidBalancePayment->amount, 2).'</div>';
+                $html .= '<div><span class="font-semibold">Online Payment Reference:</span> '.e($onlineReference ?: 'Not available').'</div>';
+                $html .= '<div><span class="font-semibold">Payment Date:</span> '.e($paymentDate ?: 'Not available').'</div>';
+                $html .= '<div><span class="font-semibold">Official OR Number:</span> '.e($officialOrNumber ?: 'Not yet encoded').'</div>';
+                $html .= '</div>';
+                $html .= '</div>';
+            }
         } elseif ($pendingPayment) {
             $html .= '<div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">';
             $html .= '<p class="font-semibold">Waiting for PayMongo confirmation.</p>';
             $html .= '<p class="mt-1">Check-in remains blocked until PayMongo confirms payment.</p>';
             if ($checkoutUrl) {
-                $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='.rawurlencode($checkoutUrl);
+                $qrUrl = route('admin.qr-code', ['payload' => Crypt::encryptString($checkoutUrl)]);
                 $html .= '<div class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">';
                 $html .= '<img src="'.e($qrUrl).'" alt="PayMongo checkout QR code" class="h-40 w-40 rounded-lg border bg-white p-2">';
                 $html .= '<div class="min-w-0 flex-1">';
@@ -913,6 +933,39 @@ class CheckInGuest extends Page
             ->where('meta->source', 'checkin_balance')
             ->latest('id')
             ->first();
+    }
+
+    protected function getPaidCheckInBalancePayment(): ?ReservationPayment
+    {
+        return $this->record->payments()
+            ->where('gateway', 'paymongo')
+            ->where('is_deposit', false)
+            ->where('gateway_status', 'paid')
+            ->where('status', 'posted')
+            ->where('meta->source', 'checkin_balance')
+            ->latest('id')
+            ->first()
+            ?? $this->record->payments()
+                ->where('gateway', 'paymongo')
+                ->where('is_deposit', false)
+                ->where('gateway_status', 'paid')
+                ->where('status', 'posted')
+                ->latest('id')
+                ->first();
+    }
+
+    protected function getOfficialReceiptNumber(): ?string
+    {
+        $orNumber = $this->record->roomAssignments()
+            ->whereNotNull('payment_or_number')
+            ->latest('id')
+            ->value('payment_or_number');
+
+        if (blank($orNumber) || strtoupper(trim((string) $orNumber)) === 'N/A') {
+            return null;
+        }
+
+        return trim((string) $orNumber);
     }
 
     protected function canCreatePayMongoBalanceCheckout(): bool

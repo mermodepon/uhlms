@@ -6,15 +6,30 @@ use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
+use App\Models\Setting;
 use Filament\Pages\Page;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class Reports extends Page
 {
+    protected const REPORT_TYPE = 'monthly_or_report';
+
     protected static ?string $navigationIcon = 'heroicon-o-document-chart-bar';
 
     protected static ?string $navigationGroup = 'Reports';
+
+    protected static ?string $navigationLabel = 'Monthly Report';
 
     protected static ?int $navigationSort = 1;
 
@@ -52,10 +67,16 @@ class Reports extends Page
 
     public function mount(): void
     {
+        $this->reportType = static::REPORT_TYPE;
         $this->dateFrom = Carbon::today()->subDays(30)->format('Y-m-d');
         $this->dateTo = Carbon::today()->format('Y-m-d');
         $this->reservationStatus = null; // All statuses
         $this->monthPeriod = Carbon::today()->format('Y-m');
+    }
+
+    public function getTitle(): string
+    {
+        return static::$navigationLabel ?? 'Reports';
     }
 
     public function updatedMonthPeriod(?string $value): void
@@ -154,6 +175,251 @@ class Reports extends Page
         $this->stayLogsPage++;
     }
 
+    public function downloadMonthlyReportExcel(): StreamedResponse
+    {
+        $data = $this->getMonthlyOrReport();
+        $month = $this->monthPeriod
+            ? Carbon::createFromFormat('Y-m', $this->monthPeriod)
+            : Carbon::today();
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Monthly Report');
+
+        $logoPath = public_path('images/cmu_logo.png');
+        if (is_file($logoPath)) {
+            $logo = new Drawing();
+            $logo->setName('CMU Logo');
+            $logo->setPath($logoPath);
+            $logo->setCoordinates('A1');
+            $logo->setHeight(58);
+            $logo->setOffsetX(8);
+            $logo->setOffsetY(4);
+            $logo->setWorksheet($sheet);
+        }
+
+        $sheet->mergeCells('B1:K1');
+        $sheet->setCellValue('B1', 'Republic of the Philippines');
+        $sheet->mergeCells('B2:K2');
+        $sheet->setCellValue('B2', 'CENTRAL MINDANAO UNIVERSITY');
+        $sheet->mergeCells('B3:K3');
+        $sheet->setCellValue('B3', 'Musuan, Maramag, Bukidnon');
+        $sheet->mergeCells('A4:K4');
+        $sheet->getStyle('A4:K4')->getBorders()->getBottom()->setBorderStyle(Border::BORDER_MEDIUM);
+
+        $sheet->mergeCells('A6:K6');
+        $sheet->setCellValue('A6', 'UNIVERSITY HOMESTAY');
+        $sheet->mergeCells('A7:K7');
+        $sheet->setCellValue('A7', 'LODGING MONTHLY REPORT');
+        $sheet->mergeCells('A8:K8');
+        $sheet->setCellValue('A8', 'FOR THE MONTH OF '.strtoupper($data['month_label']));
+
+        $sheet->getStyle('B1:B3')->getFont()->setSize(10);
+        $sheet->getStyle('B2')->getFont()->setBold(true)->setSize(13);
+        $sheet->getStyle('A6:A8')->getFont()->setBold(true)->setSize(12);
+        $sheet->getStyle('A6:A8')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getRowDimension(1)->setRowHeight(18);
+        $sheet->getRowDimension(2)->setRowHeight(22);
+        $sheet->getRowDimension(3)->setRowHeight(18);
+        $sheet->getRowDimension(4)->setRowHeight(8);
+
+        $headers = [
+            'Date',
+            'Guest Names',
+            'No. of Nights / Qty',
+            'Room No. / Particulars',
+            'Rates',
+            'No. of Pax (M/F)',
+            'R.F. Number',
+            'Amount',
+            'O.R. Number',
+            'O.R. Date',
+            'Total',
+        ];
+
+        $headerRow = 10;
+        foreach ($headers as $index => $header) {
+            $sheet->setCellValue(Coordinate::stringFromColumnIndex($index + 1).$headerRow, $header);
+        }
+
+        $sheet->getStyle("A{$headerRow}:K{$headerRow}")->applyFromArray([
+            'font' => ['bold' => true],
+            'borders' => [
+                'bottom' => ['borderStyle' => Border::BORDER_MEDIUM],
+            ],
+        ]);
+        $sheet->getStyle("A{$headerRow}:K{$headerRow}")->getAlignment()->setWrapText(true);
+
+        $rowNumber = $headerRow + 1;
+        foreach ($data['rows_by_date'] ?? [] as $dateGroup) {
+            $firstRowForDate = $rowNumber;
+            $dateGroupRowCount = count($dateGroup['rows']);
+
+            foreach ($dateGroup['rows'] as $row) {
+                $sheet->setCellValue("A{$rowNumber}", $rowNumber === $firstRowForDate ? $dateGroup['date'] : '');
+                $guestName = $row['guest_name'];
+                if (! empty($row['guest_id_number'])) {
+                    $guestName .= "\nID: ".$row['guest_id_number'];
+                }
+                $sheet->setCellValue("B{$rowNumber}", $guestName);
+                $sheet->setCellValue("C{$rowNumber}", $row['nights']);
+                $sheet->setCellValue("D{$rowNumber}", $row['room_particulars']);
+                if ($row['rate'] === '-') {
+                    $sheet->setCellValue("E{$rowNumber}", '-');
+                } else {
+                    $sheet->setCellValue("E{$rowNumber}", (float) str_replace(',', '', $row['rate']));
+                }
+                $sheet->setCellValue("F{$rowNumber}", $row['male_count'] !== null ? "{$row['male_count']}/{$row['female_count']}" : '');
+                $sheet->setCellValueExplicit("G{$rowNumber}", (string) $row['rf_number'], DataType::TYPE_STRING);
+                $sheet->setCellValue("H{$rowNumber}", (float) $row['amount']);
+                $sheet->setCellValueExplicit("I{$rowNumber}", (string) $row['or_number'], DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("J{$rowNumber}", (string) $row['or_date'], DataType::TYPE_STRING);
+                if ($row['show_total']) {
+                    $sheet->setCellValue("K{$rowNumber}", (float) $row['total']);
+                } else {
+                    $sheet->setCellValue("K{$rowNumber}", '**');
+                }
+                $rowNumber++;
+            }
+
+            if ($dateGroupRowCount > 1) {
+                $sheet->mergeCells('A'.$firstRowForDate.':A'.($rowNumber - 1));
+                $sheet->getStyle('A'.$firstRowForDate.':A'.($rowNumber - 1))->getAlignment()
+                    ->setVertical(Alignment::VERTICAL_CENTER);
+            }
+
+            $sheet->setCellValue("A{$rowNumber}", '');
+            $sheet->setCellValue("B{$rowNumber}", '');
+            $sheet->setCellValue("C{$rowNumber}", '');
+            $sheet->setCellValue("D{$rowNumber}", '');
+            $sheet->setCellValue("E{$rowNumber}", 'Total Pax:');
+            $sheet->setCellValue("F{$rowNumber}", "{$dateGroup['total_male']}/{$dateGroup['total_female']}");
+            $sheet->setCellValue("G{$rowNumber}", 'Total Amount:');
+            $sheet->setCellValue("H{$rowNumber}", (float) $dateGroup['total_amount']);
+            $sheet->mergeCells("H{$rowNumber}:K{$rowNumber}");
+            $sheet->getStyle("A{$rowNumber}:K{$rowNumber}")->applyFromArray([
+                'font' => ['bold' => true],
+                'fill' => [
+                    'fillType' => Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => 'F3F4F6'],
+                ],
+            ]);
+            $rowNumber++;
+        }
+
+        if (empty($data['rows_by_date'])) {
+            $sheet->mergeCells("A{$rowNumber}:K{$rowNumber}");
+            $sheet->setCellValue("A{$rowNumber}", 'No entries found for this month.');
+            $sheet->getStyle("A{$rowNumber}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $rowNumber++;
+        }
+
+        $summaryStartRow = $rowNumber + 1;
+        $sheet->setCellValue("A{$summaryStartRow}", 'Total Pax Accommodated for the month of '.$data['month_label'].':');
+        $sheet->mergeCells("A{$summaryStartRow}:E{$summaryStartRow}");
+        $sheet->setCellValue("F{$summaryStartRow}", (int) $data['total_pax']);
+        $sheet->setCellValue("I{$summaryStartRow}", 'Grand Total');
+        $sheet->setCellValue("K{$summaryStartRow}", (float) $data['grand_total']);
+        $sheet->getStyle("A{$summaryStartRow}:K{$summaryStartRow}")->getFont()->setBold(true);
+
+        $summaryRows = [
+            ['*Domestic Male', $data['total_domestic_male']],
+            ['*Domestic Female', $data['total_domestic_female']],
+            ['*International Male', $data['total_international_male']],
+            ['*International Female', $data['total_international_female']],
+        ];
+
+        foreach ($summaryRows as $index => [$label, $value]) {
+            $summaryRow = $summaryStartRow + $index + 1;
+            $sheet->setCellValue("E{$summaryRow}", $label);
+            $sheet->setCellValue("F{$summaryRow}", (int) $value);
+            $sheet->getStyle("E{$summaryRow}:F{$summaryRow}")->getFont()->setBold(true);
+        }
+
+        $signatoryRow = $summaryStartRow + count($summaryRows) + 3;
+        $sheet->setCellValue("A{$signatoryRow}", 'Prepared by:');
+        $sheet->setCellValue("I{$signatoryRow}", 'Approved by:');
+        $sheet->setCellValue('A'.($signatoryRow + 2), Setting::get('signatory_prepared_name', 'GENELYN ABARQUEZ - ENSOMO'));
+        $sheet->setCellValue('A'.($signatoryRow + 3), Setting::get('signatory_prepared_title', 'LODGING SUPERVISOR'));
+        $sheet->setCellValue('I'.($signatoryRow + 2), Setting::get('signatory_approved_name', 'RUBIE ANDOY - ARROYO'));
+        $sheet->setCellValue('I'.($signatoryRow + 3), Setting::get('signatory_approved_title', 'Director, University Homestay'));
+        $sheet->getStyle('A'.($signatoryRow + 2).':K'.($signatoryRow + 2))->getFont()->setBold(true);
+
+        $metadataRow = $signatoryRow + 6;
+        $sheet->setCellValue("A{$metadataRow}", 'CMU-F-5-OUH-028');
+        $sheet->mergeCells("A{$metadataRow}:C{$metadataRow}");
+        $sheet->setCellValue("E{$metadataRow}", '17-Nov-21');
+        $sheet->mergeCells("E{$metadataRow}:G{$metadataRow}");
+        $sheet->setCellValue("K{$metadataRow}", 'Rev. 0');
+        $sheet->getStyle("A{$metadataRow}:K{$metadataRow}")->applyFromArray([
+            'font' => ['size' => 8],
+            'borders' => [
+                'top' => ['borderStyle' => Border::BORDER_THIN],
+            ],
+        ]);
+        $sheet->getStyle("E{$metadataRow}:G{$metadataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("K{$metadataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+
+        $lastDataRow = max($headerRow, $rowNumber - 1);
+        $sheet->getStyle("A{$headerRow}:K{$lastDataRow}")->applyFromArray([
+            'borders' => [
+                'allBorders' => ['borderStyle' => Border::BORDER_HAIR],
+            ],
+        ]);
+        $sheet->getStyle("E".($headerRow + 1).":E{$lastDataRow}")->getNumberFormat()->setFormatCode('"₱"#,##0.00');
+        $sheet->getStyle("H".($headerRow + 1).":H{$lastDataRow}")->getNumberFormat()->setFormatCode('"₱"#,##0.00');
+        $sheet->getStyle("K".($headerRow + 1).":K{$lastDataRow}")->getNumberFormat()->setFormatCode('"₱"#,##0.00');
+        $sheet->getStyle("K{$summaryStartRow}")->getNumberFormat()->setFormatCode('"₱"#,##0.00');
+        $sheet->getStyle('A1:K'.$metadataRow)->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+        $sheet->getStyle("A{$headerRow}:K{$lastDataRow}")->getAlignment()->setWrapText(true);
+        $sheet->getStyle("C".($headerRow + 1).":C{$lastDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("F".($headerRow + 1).":F{$lastDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("E".($headerRow + 1).":E{$lastDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $sheet->getStyle("H".($headerRow + 1).":H{$lastDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $sheet->getStyle("K".($headerRow + 1).":K{$lastDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $sheet->getStyle('A1:K'.$metadataRow)->getFont()->setName('Arial')->setSize(10);
+
+        $columnWidths = [
+            'A' => 12,
+            'B' => 24,
+            'C' => 14,
+            'D' => 32,
+            'E' => 12,
+            'F' => 14,
+            'G' => 18,
+            'H' => 14,
+            'I' => 20,
+            'J' => 12,
+            'K' => 14,
+        ];
+
+        foreach ($columnWidths as $column => $width) {
+            $sheet->getColumnDimension($column)->setWidth($width);
+        }
+
+        $sheet->freezePane('A'.($headerRow + 1));
+        $sheet->getPageSetup()
+            ->setOrientation(PageSetup::ORIENTATION_LANDSCAPE)
+            ->setPaperSize(PageSetup::PAPERSIZE_LEGAL)
+            ->setFitToWidth(1)
+            ->setFitToHeight(0);
+        $sheet->getPageMargins()
+            ->setTop(0.4)
+            ->setRight(0.55)
+            ->setBottom(0.4)
+            ->setLeft(0.55);
+
+        $writer = new Xlsx($spreadsheet);
+        $filename = 'monthly-report-'.$month->format('Y-m').'.xlsx';
+
+        return response()->streamDownload(function () use ($writer, $spreadsheet): void {
+            $writer->save('php://output');
+            $spreadsheet->disconnectWorksheets();
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
     public function getReportDataProperty(): array
     {
         return match ($this->reportType) {
@@ -223,9 +489,23 @@ class Reports extends Page
             }
 
             $firstAssignment = $assignments->first();
+            $postedPayments = $reservation->payments
+                ->where('status', 'posted')
+                ->values();
+            $onlinePayment = $postedPayments
+                ->where('gateway', 'paymongo')
+                ->sortByDesc('id')
+                ->first();
+            $officialOrNumber = $this->cleanOfficialReceiptNumber($firstAssignment->payment_or_number ?? null);
+            $onlineReference = $onlinePayment?->reference_no
+                ?: ($onlinePayment?->gateway_payment_id ? 'PM-'.$onlinePayment->gateway_payment_id : null);
             $orDate = $firstAssignment->or_date
                 ? Carbon::parse($firstAssignment->or_date)
-                : Carbon::parse($firstAssignment->checked_in_at);
+                : ($onlinePayment?->or_date
+                    ? Carbon::parse($onlinePayment->or_date)
+                    : ($onlinePayment?->received_at
+                        ? Carbon::parse($onlinePayment->received_at)
+                        : Carbon::parse($firstAssignment->checked_in_at)));
 
             $dateKey = $orDate->toDateString();
 
@@ -248,8 +528,10 @@ class Reports extends Page
             $hasDiscount = $discountCharge !== null;
             $guestIdNumber = $hasDiscount ? ($snapshot?->id_number ?? '') : '';
 
-            // Common OR info for all lines of this reservation
-            $orNumber = $firstAssignment->payment_or_number ?? '-';
+            // Common payment reference for all lines of this reservation.
+            // Official OR remains preferred; PayMongo IDs are shown as online references.
+            $orNumber = $officialOrNumber
+                ?: ($onlineReference ? 'Online Ref: '.$onlineReference : '-');
             $orDateFormatted = $orDate->format('m/d/Y');
             $rfNumber = $reservation->reference_number ?? '-';
 
@@ -279,8 +561,11 @@ class Reports extends Page
             $maleCount = $domesticMale + $internationalMale;
             $femaleCount = $domesticFemale + $internationalFemale;
 
-            // Amount actually paid (OR total for this reservation)
-            $amountPaid = (float) ($firstAssignment->payment_amount ?? 0);
+            // Amount actually paid. For fully online balance payments, the assignment
+            // has no manual collection amount, so use posted payment records.
+            $assignmentPaymentAmount = (float) ($firstAssignment->payment_amount ?? 0);
+            $postedPaymentTotal = (float) $postedPayments->sum(fn ($payment) => (float) $payment->amount);
+            $amountPaid = $assignmentPaymentAmount > 0 ? $assignmentPaymentAmount : $postedPaymentTotal;
             $grandTotal += $amountPaid;
 
             // ---- Build per-line sub-rows ----
@@ -423,6 +708,17 @@ class Reports extends Page
             'total_female' => $totalDomesticFemale + $totalInternationalFemale,
             'total_pax' => $totalPax,
         ];
+    }
+
+    protected function cleanOfficialReceiptNumber(?string $orNumber): ?string
+    {
+        $orNumber = trim((string) $orNumber);
+
+        if ($orNumber === '' || strtoupper($orNumber) === 'N/A') {
+            return null;
+        }
+
+        return $orNumber;
     }
 
     protected function getReservationSummary(): array

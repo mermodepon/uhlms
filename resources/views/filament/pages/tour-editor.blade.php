@@ -21,7 +21,7 @@
 
         /* ── Layout ─────────────────────────────────── */
         .tour-editor { display:flex; height:calc(100vh - 64px); gap:0; border:none; border-radius:0; overflow:hidden; background:#111; width:100%; position:relative; top:0; }
-        .tour-editor .te-sidebar { width:220px; min-width:220px; background:#1a1a2e; color:#e5e7eb; overflow-y:auto; border-right:1px solid #333; display:flex; flex-direction:column; }
+        .tour-editor .te-sidebar { width:220px; min-width:220px; background:#1a1a2e; color:#e5e7eb; overflow:hidden; border-right:1px solid #333; display:flex; flex-direction:column; }
         .tour-editor .te-viewer { flex:1; position:relative; min-width:0; }
         .tour-editor .te-properties { width:300px; min-width:300px; background:#fff; border-left:1px solid #e5e7eb; overflow-y:auto; }
 
@@ -30,10 +30,16 @@
         .te-sidebar-return { display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid rgba(255,255,255,.08); color:#e5e7eb; font-size:12px; font-weight:700; text-decoration:none; transition:background .15s,color .15s; }
         .te-sidebar-return:hover { background:rgba(255,255,255,.08); color:#fff; }
         .te-sidebar-return-icon { width:22px; height:22px; border-radius:999px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.1); color:#cbd5e1; font-size:14px; line-height:1; }
-        .te-scene-item { display:flex; align-items:center; gap:10px; padding:8px 14px; cursor:pointer; transition:background .15s; border-bottom:1px solid rgba(255,255,255,.05); }
+        .te-scene-list { flex:1; overflow-y:auto; overscroll-behavior:contain; contain:layout paint; }
+        .te-scene-item { display:flex; align-items:center; gap:10px; padding:8px 14px; cursor:pointer; transition:background .15s; border-bottom:1px solid rgba(255,255,255,.05); contain:layout paint; }
         .te-scene-item:hover { background:rgba(255,255,255,.08); }
         .te-scene-item.active { background:rgba(59,130,246,.25); border-left:3px solid #3b82f6; }
+        .te-scene-item.drag-over { background:rgba(59,130,246,.18); outline:1px solid rgba(147,197,253,.75); outline-offset:-1px; }
+        .te-scene-order-handle { width:16px; color:#94a3b8; cursor:grab; font-size:14px; line-height:1; flex-shrink:0; user-select:none; text-align:center; }
+        .te-scene-order-handle:active { cursor:grabbing; }
         .te-scene-thumb { width:48px; height:36px; border-radius:4px; object-fit:cover; background:#333; flex-shrink:0; }
+        .te-scene-thumb-placeholder { width:48px; height:36px; border-radius:4px; flex-shrink:0; background:linear-gradient(135deg, rgba(148,163,184,.18), rgba(148,163,184,.08)); border:1px solid rgba(148,163,184,.18); position:relative; }
+        .te-scene-thumb-placeholder::after { content:''; position:absolute; inset:10px 15px; border-radius:3px; border:1px solid rgba(203,213,225,.35); }
         .te-scene-info { min-width:0; }
         .te-scene-name { font-size:12px; font-weight:600; color:#f1f5f9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .te-scene-meta { font-size:10px; color:#94a3b8; }
@@ -122,15 +128,33 @@
                 Scenes
                 <span x-text="waypoints.length" style="float:right;opacity:.6"></span>
             </div>
-            <div style="flex:1;overflow-y:auto">
+            <div class="te-scene-list">
                 <template x-for="wp in waypoints" :key="wp.id">
                     <div class="te-scene-item"
-                         :class="{ active: activeWaypointId === wp.id }"
+                         :class="{ active: activeWaypointId === wp.id, 'drag-over': dragOverSceneId === wp.id }"
+                         @dragover.prevent="dragOverSceneId = wp.id"
+                         @dragleave="if (dragOverSceneId === wp.id) dragOverSceneId = null"
+                         @drop.prevent="dropScene(wp.id)"
                          @click="selectScene(wp.id)">
-                        <img class="te-scene-thumb"
-                             :src="wp.thumbnail_url || wp.panorama_url"
-                             :alt="wp.name"
-                             onerror="this.style.display='none'">
+                        <div class="te-scene-order-handle"
+                             draggable="true"
+                             title="Drag to reorder scene"
+                             @dragstart.stop="draggedSceneId = wp.id; $event.dataTransfer.effectAllowed = 'move'"
+                             @dragend="draggedSceneId = null; dragOverSceneId = null"
+                             @click.stop>&#8942;</div>
+                        <template x-if="wp.thumbnail_url">
+                            <img class="te-scene-thumb"
+                                 :src="wp.thumbnail_url"
+                                 :alt="wp.name"
+                                 width="48"
+                                 height="36"
+                                 loading="lazy"
+                                 decoding="async"
+                                 onerror="this.style.display='none'">
+                        </template>
+                        <template x-if="!wp.thumbnail_url">
+                            <div class="te-scene-thumb-placeholder" aria-hidden="true"></div>
+                        </template>
                         <div class="te-scene-info">
                             <div class="te-scene-name" x-text="wp.name"></div>
                             <div class="te-scene-meta">
@@ -273,8 +297,9 @@
                         <h4>Action</h4>
                         <div class="te-field">
                             <label>Type</label>
-                            <select x-model="editingHotspot.action_type" @change="clearValidationError('action_type'); clearValidationError('action_target')">
+                            <select x-model="editingHotspot.action_type" @change="handleActionTypeChanged()">
                                 <option value="navigate">🔗 Navigate to Scene</option>
+                                <option value="previous-scene">↩ Exit to Previous Scene</option>
                                 <option value="info">ℹ️ Show Info</option>
                                 <option value="bookmark">🔖 Bookmark</option>
                                 <option value="external-link">🌐 External Link</option>
@@ -285,7 +310,7 @@
                             <select x-model="editingHotspot.action_target" @change="clearValidationError('action_target')">
                                 <option value="">— Select scene —</option>
                                 <template x-for="wp in waypoints" :key="'target-'+wp.id">
-                                    <option :value="wp.slug" x-text="wp.name" :disabled="wp.id === activeWaypointId"></option>
+                                    <option :value="String(wp.slug)" x-text="wp.name" :disabled="wp.id === activeWaypointId"></option>
                                 </template>
                             </select>
                             <div class="te-field-error" x-show="validationErrors.action_target" x-text="validationErrors.action_target"></div>
@@ -580,6 +605,8 @@
                 repositioning: false,
                 draggedHotspotId: null,
                 dragOverIdx: null,
+                draggedSceneId: null,
+                dragOverSceneId: null,
                 icons: [
                     'chevron-up', 'chevron-down', 'chevron-left', 'chevron-right',
                     'chevron-up-right', 'chevron-down-right', 'chevron-down-left', 'chevron-up-left',
@@ -654,10 +681,7 @@
                                     this.pendingHotspot.pitch = data.pitch;
                                 }
                             },
-                            onHotspotSelected: (h) => {
-                                this.validationErrors = {};
-                                this.editingHotspot = { ...h, media_type: this.normalizeMediaType(h.media_type) };
-                            },
+                            onHotspotSelected: (h) => this.editHotspot(h),
                             onHotspotDeselected: () => {
                                 this.validationErrors = {};
                                 this.editingHotspot = null;
@@ -789,7 +813,7 @@
 
                 selectHotspot(h) {
                     this.validationErrors = {};
-                    this.editingHotspot = { ...h, media_type: this.normalizeMediaType(h.media_type) };
+                    this.editingHotspot = this.normalizeHotspotForEditing(h);
                     if (this.editor) {
                         this.editor.selectedHotspotId = h.id;
                         this.editor._highlightMarker(h.id);
@@ -871,6 +895,49 @@
                     if (!this.validationErrors[field] && !this.validationErrors.form) return;
                     const { [field]: removed, form, ...remaining } = this.validationErrors;
                     this.validationErrors = remaining;
+                },
+
+                handleActionTypeChanged() {
+                    this.clearValidationError('action_type');
+                    this.clearValidationError('action_target');
+                    if (['previous-scene', 'info', 'bookmark'].includes(this.editingHotspot?.action_type)) {
+                        this.editingHotspot.action_target = '';
+                    }
+                },
+
+                editHotspot(h) {
+                    this.validationErrors = {};
+                    this.editingHotspot = this.normalizeHotspotForEditing(h);
+                },
+
+                normalizeHotspotForEditing(h) {
+                    const actionType = h?.action_type || 'info';
+                    const actionTarget = actionType === 'navigate'
+                        ? this.normalizeTargetSceneValue(h?.action_target)
+                        : (h?.action_target ? String(h.action_target) : '');
+
+                    return {
+                        ...h,
+                        action_type: actionType,
+                        action_target: actionTarget,
+                        media_type: this.normalizeMediaType(h?.media_type),
+                        media_url: h?.media_url || '',
+                        description: h?.description || '',
+                        icon: h?.icon || 'chevron-up',
+                        size: h?.size || 3,
+                        is_active: h?.is_active !== false,
+                    };
+                },
+
+                normalizeTargetSceneValue(value) {
+                    const target = String(value || '').trim();
+                    if (!target) return '';
+
+                    const waypoint = this.waypoints.find(wp =>
+                        String(wp.slug) === target || String(wp.id) === target
+                    );
+
+                    return waypoint ? String(waypoint.slug) : target;
                 },
 
                 isValidUrl(value) {
@@ -1004,11 +1071,11 @@
                 },
 
                 actionColor(type) {
-                    return { navigate:'#dbeafe', info:'#fef3c7', bookmark:'#ede9fe', 'external-link':'#d1fae5' }[type] || '#f1f5f9';
+                    return { navigate:'#dbeafe', 'previous-scene':'#fee2e2', info:'#fef3c7', bookmark:'#ede9fe', 'external-link':'#d1fae5' }[type] || '#f1f5f9';
                 },
 
                 actionLabel(type) {
-                    return { navigate:'Navigate', info:'Info', bookmark:'Bookmark', 'external-link':'Link' }[type] || type;
+                    return { navigate:'Navigate', 'previous-scene':'Exit to Previous Scene', info:'Info', bookmark:'Bookmark', 'external-link':'Link' }[type] || type;
                 },
 
                 normalizeMediaType(type) {
@@ -1058,7 +1125,9 @@
                         pitch: Math.max(-85, Math.min(85, parseFloat(h.pitch) + 3)),
                         yaw: parseFloat(h.yaw) + 3,
                         action_type: h.action_type,
-                        action_target: h.action_target,
+                        action_target: h.action_type === 'navigate'
+                            ? this.normalizeTargetSceneValue(h.action_target)
+                            : (h.action_target || ''),
                         sort_order: this.hotspots.length,
                         is_active: h.is_active,
                         media_type: this.normalizeMediaType(h.media_type),
@@ -1080,6 +1149,28 @@
                     this.hotspots.forEach((h, i) => { h.sort_order = i; });
                     this.editor?.refreshMarkers(this.hotspots);
                     await this.$wire.reorderHotspots(this.hotspots.map(h => h.id));
+                },
+
+                async dropScene(targetId) {
+                    const fromId = this.draggedSceneId;
+                    this.draggedSceneId = null;
+                    this.dragOverSceneId = null;
+                    if (!fromId || fromId === targetId) return;
+
+                    const fromIdx = this.waypoints.findIndex(w => w.id === fromId);
+                    const toIdx = this.waypoints.findIndex(w => w.id === targetId);
+                    if (fromIdx < 0 || toIdx < 0) return;
+
+                    const [item] = this.waypoints.splice(fromIdx, 1);
+                    this.waypoints.splice(toIdx, 0, item);
+                    this.waypoints.forEach((wp, i) => { wp.position_order = i; });
+
+                    this.editor?.setAllWaypoints?.(this.waypoints);
+                    await this.$wire.reorderScenes(this.waypoints.map(w => w.id));
+                    this.statusText = 'Scene order saved';
+                    setTimeout(() => {
+                        if (this.statusText === 'Scene order saved') this.statusText = '';
+                    }, 1800);
                 },
 
                 iconSvg(id, size = 16, color = 'currentColor') {

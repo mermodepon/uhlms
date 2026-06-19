@@ -39,12 +39,30 @@ class RoomHoldService
             ];
         }
 
-        $totalBedsCount = $rooms->sum(fn (Room $room) => max(0, (int) ($room->capacity ?? 0)));
-        $availableBedsCount = $rooms->sum(fn (Room $room) => $room->isAvailable() ? $room->availableSlots() : 0);
-        $availableRoomsCount = $rooms->filter(fn (Room $room) => $room->isAvailable() && $room->availableSlots() > 0)->count();
+        $today = Carbon::today();
+        $tomorrow = $today->copy()->addDay();
+        $roomAvailability = $rooms->map(function (Room $room) use ($today, $tomorrow) {
+            $capacity = max(0, (int) ($room->capacity ?? 0));
+            $reservedSlots = $this->getReservedSlotsForDates($room, $today, $tomorrow);
+
+            return [
+                'room' => $room,
+                'available_slots' => max(0, $capacity - $reservedSlots),
+                'capacity' => $capacity,
+            ];
+        });
+
+        $availableRooms = $roomAvailability
+            ->filter(fn (array $entry) => $entry['available_slots'] > 0)
+            ->map(fn (array $entry) => $entry['room'])
+            ->values();
+
+        $totalBedsCount = $roomAvailability->sum('capacity');
+        $availableBedsCount = $roomAvailability->sum('available_slots');
+        $availableRoomsCount = $availableRooms->count();
 
         return [
-            'available_rooms' => $rooms->filter(fn (Room $room) => $room->isAvailable() && $room->availableSlots() > 0)->values(),
+            'available_rooms' => $availableRooms,
             'available_rooms_count' => $availableRoomsCount,
             'available_beds_count' => $availableBedsCount,
             'total_rooms_count' => $rooms->count(),

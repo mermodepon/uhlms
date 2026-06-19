@@ -4,6 +4,7 @@ use App\Http\Controllers\BackupUploadController;
 use App\Http\Controllers\GuestController;
 use App\Http\Controllers\GuestPaymentController;
 use App\Http\Controllers\PaymentWebhookController;
+use App\Http\Controllers\QrCodeController;
 use App\Http\Controllers\TourController;
 use Illuminate\Support\Facades\Route;
 
@@ -44,6 +45,7 @@ Route::prefix('reserve/pay')->middleware(['throttle:10,1'])->group(function () {
 });
 Route::get('/reserve/payment-success', [GuestPaymentController::class, 'paymentSuccess'])->name('guest.payment.success');
 Route::get('/reserve/payment-failed', [GuestPaymentController::class, 'paymentFailed'])->name('guest.payment.failed');
+Route::get('/reserve/payment-qr/{token}', [QrCodeController::class, 'payment'])->name('guest.payment.qr');
 
 // PayMongo webhook endpoint (TESTING - must be excluded from CSRF)
 Route::post('/api/webhooks/paymongo', [PaymentWebhookController::class, 'handle'])
@@ -54,3 +56,6 @@ Route::post('/api/webhooks/paymongo', [PaymentWebhookController::class, 'handle'
 Route::post('/admin/backup-upload', [BackupUploadController::class, 'upload'])
     ->middleware(['web', 'auth'])
     ->name('backup.upload');
+Route::get('/admin/qr-code', [QrCodeController::class, 'encrypted'])
+    ->middleware(['web', 'auth'])
+    ->name('admin.qr-code');

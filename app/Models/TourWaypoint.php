@@ -50,7 +50,6 @@ class TourWaypoint extends Model
             }
         });
 
-        // Automatically set linked_room_type_id from linked_room if not set
         static::saving(function (TourWaypoint $waypoint) {
             if ($waypoint->linked_room_id && !$waypoint->linked_room_type_id) {
                 $room = \App\Models\Room::find($waypoint->linked_room_id);
@@ -58,6 +57,8 @@ class TourWaypoint extends Model
                     $waypoint->linked_room_type_id = $room->room_type_id;
                 }
             }
+
+            $waypoint->linked_room_id = null;
         });
 
         static::updating(function (TourWaypoint $waypoint) {

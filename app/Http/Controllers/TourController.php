@@ -20,7 +20,7 @@ class TourController extends Controller
      */
     public function viewer(?string $slug = null)
     {
-        $startWaypoint = $slug ?: 'entrance';
+        $startWaypoint = $slug;
         $waypointCount = TourWaypoint::query()->active()->count();
         $hasWaypoints = $waypointCount > 0;
 

@@ -396,7 +396,9 @@ class CheckInService
             return [
                 'payment_mode' => 'online',
                 'payment_amount' => 0.00,
-                'payment_or_number' => $paymentData['payment_or_number'] ?? 'N/A',
+                'payment_or_number' => filled($paymentData['payment_or_number'] ?? null)
+                    ? trim((string) $paymentData['payment_or_number'])
+                    : null,
                 'or_date' => $paymentData['or_date'] ?? now()->toDateString(),
                 'remarks' => $paymentData['remarks'] ?? null,
             ];
@@ -685,18 +687,20 @@ class CheckInService
             ]);
         }
 
-        ReservationPayment::create([
-            'reservation_id' => $reservation->id,
-            'amount' => $paymentAmount,
-            'payment_mode' => $payload['payment_mode'] ?? null,
-            'reference_no' => $payload['payment_or_number'] ?? null,
-            'or_date' => $payload['or_date'] ?? null,
-            'status' => 'posted',
-            'received_by' => auth()->id(),
-            'received_at' => now(),
-            'remarks' => $payload['remarks'] ?? null,
-            'meta' => ['source' => 'checkin_finalize'],
-        ]);
+        if ($paymentAmount > 0.01) {
+            ReservationPayment::create([
+                'reservation_id' => $reservation->id,
+                'amount' => $paymentAmount,
+                'payment_mode' => $payload['payment_mode'] ?? null,
+                'reference_no' => $payload['payment_or_number'] ?? null,
+                'or_date' => $payload['or_date'] ?? null,
+                'status' => 'posted',
+                'received_by' => auth()->id(),
+                'received_at' => now(),
+                'remarks' => $payload['remarks'] ?? null,
+                'meta' => ['source' => 'checkin_finalize'],
+            ]);
+        }
 
         $reservation->refreshFinancialSummary();
     }

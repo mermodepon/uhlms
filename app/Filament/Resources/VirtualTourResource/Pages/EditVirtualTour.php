@@ -25,4 +25,11 @@ class EditVirtualTour extends EditRecord
     {
         return $this->getResource()::getUrl('index');
     }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        $data['linked_room_id'] = null;
+
+        return $data;
+    }
 }

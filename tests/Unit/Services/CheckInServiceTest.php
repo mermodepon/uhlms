@@ -345,11 +345,16 @@ class CheckInServiceTest extends TestCase
         ]);
 
         $this->assertTrue($result['all_succeeded']);
-        $this->assertDatabaseHas('reservation_payments', [
+        $this->assertDatabaseMissing('reservation_payments', [
             'reservation_id' => $reservation->id,
             'amount' => 0,
             'payment_mode' => 'online',
             'status' => 'posted',
+        ]);
+        $this->assertDatabaseHas('room_assignments', [
+            'reservation_id' => $reservation->id,
+            'payment_amount' => 0,
+            'payment_or_number' => null,
         ]);
     }
 }

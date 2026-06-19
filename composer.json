@@ -7,9 +7,11 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "endroid/qr-code": "5.1",
         "filament/filament": "^3.2",
         "laravel/framework": "^11.31",
         "laravel/tinker": "^2.9",
+        "phpoffice/phpspreadsheet": "^5.8",
         "saade/filament-fullcalendar": "^3.2",
         "spatie/laravel-honeypot": "^4.6"
     },
@@ -90,13 +92,5 @@
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
-    "repositories": [
-        {
-            "type": "composer",
-            "url": "https://mirrors.aliyun.com/composer/"
-        },
-        {
-            "packagist.org": false
-        }
-    ]
+    "repositories": []
 }

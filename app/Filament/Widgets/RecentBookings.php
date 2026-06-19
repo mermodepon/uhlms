@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Reservation;
+use Filament\Support\Colors\Color;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
@@ -44,20 +45,20 @@ class RecentBookings extends BaseWidget
                     ->badge()
                     ->formatStateUsing(fn ($state, $record) => match ($state) {
                         'approved' => 'Approved',
-
+                        'confirmed' => 'Confirmed',
                         'checked_out' => 'Checked Out',
                         'checked_in' => 'Checked In',
                         default => ucfirst(str_replace('_', ' ', $state)),
                     })
-                    ->color(fn ($state, $record): string => match (true) {
-                        $state === 'pending' => 'warning',
-                        $state === 'approved' => 'primary',
-
-                        $state === 'declined' => 'danger',
-                        $state === 'cancelled' => 'gray',
-                        $state === 'checked_in' => 'success',
-                        $state === 'checked_out' => 'gray',
-                        default => 'gray',
+                    ->color(fn ($state): array => match ((string) $state) {
+                        'pending' => Color::hex('#fbbf24'),
+                        'approved' => Color::hex('#919F02'),
+                        'confirmed' => Color::hex('#10B981'),
+                        'declined' => Color::hex('#EF4444'),
+                        'cancelled' => Color::hex('#6B7280'),
+                        'checked_in' => Color::hex('#16a34a'),
+                        'checked_out' => Color::hex('#94a3b8'),
+                        default => Color::hex('#6B7280'),
                     }),
             ])
             ->paginated(false);

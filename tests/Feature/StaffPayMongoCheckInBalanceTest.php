@@ -135,6 +135,8 @@ class StaffPayMongoCheckInBalanceTest extends TestCase
         $this->assertSame('PayMongo Online', $payment->payment_mode);
         $this->assertSame('pay_checkin_balance', $payment->gateway_payment_id);
         $this->assertSame('src_checkin_balance', $payment->gateway_source_id);
+        $this->assertSame('PM-pay_checkin_balance', $payment->reference_no);
+        $this->assertNotNull($payment->or_date);
 
         $reservation->refresh();
         $this->assertEquals('1500.00', (string) $reservation->payments_total);

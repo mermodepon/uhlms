@@ -72,4 +72,11 @@ return [
 
     // Enable strict webhook signature verification (recommended: true)
     'strict_webhook_verification' => env('PAYMONGO_STRICT_WEBHOOK_VERIFICATION', true),
+
+    // Optional CA bundle path for Windows/PHP runtimes without curl.cainfo configured.
+    'ca_bundle' => env('PAYMONGO_CA_BUNDLE'),
+
+    // Local-only escape hatch for development machines with broken CA bundles.
+    // Keep false for Cloudflare/public runtime targets.
+    'allow_insecure_tls' => env('PAYMONGO_ALLOW_INSECURE_TLS', false),
 ];

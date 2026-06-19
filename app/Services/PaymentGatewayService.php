@@ -83,9 +83,13 @@ class PaymentGatewayService
         $client = Http::withBasicAuth($this->secretKey, '')
             ->timeout(30);
 
-        // Disable SSL verification for local development only
-        // WARNING: Never use this in production!
-        if (app()->environment('local')) {
+        $caBundle = config('paymongo.ca_bundle');
+        if (is_string($caBundle) && $caBundle !== '' && is_file($caBundle)) {
+            $client = $client->withOptions(['verify' => $caBundle]);
+        }
+
+        // Only allow insecure TLS when a developer explicitly opts in for local troubleshooting.
+        if (app()->environment('local') && config('paymongo.allow_insecure_tls', false)) {
             $client = $client->withOptions(['verify' => false]);
         }
 
@@ -447,9 +451,31 @@ class PaymentGatewayService
             return false;
         }
 
-        $expectedSignature = hash_hmac('sha256', $payload, $this->webhookSecret);
+        // PayMongo-Signature header format: "t=<timestamp>,te=<test_hmac>,v1=<live_hmac>"
+        // The signed message is "<timestamp>.<raw_payload>" hashed with the webhook secret.
+        $parts = [];
+        foreach (explode(',', $signature) as $part) {
+            [$k, $v] = array_pad(explode('=', $part, 2), 2, '');
+            $parts[trim($k)] = trim($v);
+        }
 
-        return hash_equals($expectedSignature, $signature);
+        $timestamp = $parts['t'] ?? '';
+        if (empty($timestamp)) {
+            Log::warning('PayMongo webhook signature missing timestamp component');
+            return false;
+        }
+
+        $signedMessage  = $timestamp . '.' . $payload;
+        $expectedHmac   = hash_hmac('sha256', $signedMessage, $this->webhookSecret);
+
+        // Accept either test-mode (te) or live-mode (v1) signature component.
+        $testSig = $parts['te'] ?? '';
+        $liveSig = $parts['v1'] ?? '';
+
+        $validTest = $testSig !== '' && hash_equals($expectedHmac, $testSig);
+        $validLive = $liveSig !== '' && hash_equals($expectedHmac, $liveSig);
+
+        return $validTest || $validLive;
     }
 
     /**

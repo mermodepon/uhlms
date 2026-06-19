@@ -48,12 +48,13 @@
                 @if($roomType->images && count($roomType->images))
                     <div x-data="{ activeImage: 0 }" class="space-y-3">
                         {{-- Main Image --}}
-                        <div class="rounded-xl overflow-hidden shadow-md">
+                        <div class="rounded-xl overflow-hidden shadow-md bg-gray-100">
                             @foreach($roomType->images as $index => $image)
                                 <img x-show="activeImage === {{ $index }}"
                                      src="{{ \App\Support\MediaUrl::url($image) }}"
                                      alt="{{ $roomType->name }} - Image {{ $index + 1 }}"
-                                     class="w-full h-80 object-cover">
+                                     class="w-full"
+                                     style="height: clamp(26rem, 52vw, 32rem); object-fit: contain;">
                             @endforeach
                         </div>
                         {{-- Thumbnails --}}

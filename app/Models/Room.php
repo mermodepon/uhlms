@@ -124,20 +124,22 @@ class Room extends Model
             return;
         }
 
-        // Check if this room has an active advance hold — preserve 'reserved' status
+        $this->loadMissing('roomType');
+
+        // Private rooms are exclusive, so an active hold reserves the whole room.
+        // Public dorms keep selling remaining beds; holds are counted as slots.
         $hasAdvanceHold = $this->roomHolds()
             ->advance()
             ->where('hold_from', '<=', now()->toDateString())
             ->where('hold_to', '>', now()->toDateString())
             ->exists();
 
-        if ($hasAdvanceHold && $this->status !== 'reserved') {
+        if (($this->roomType?->isPrivate() ?? false) && $hasAdvanceHold && $this->status !== 'reserved') {
             $this->update(['status' => 'reserved']);
 
             return;
         }
 
-        $this->loadMissing('roomType');
         $checkedInCount = $this->roomAssignments()->where('status', 'checked_in')->count();
 
         if ($this->roomType?->isPrivate()) {

@@ -20,6 +20,7 @@ use Filament\Infolists;
 use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Support\Colors\Color;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -136,6 +137,7 @@ class ReservationResource extends Resource
                             ->options([
                                 'pending' => 'Pending',
                                 'approved' => 'Approved',
+                                'confirmed' => 'Confirmed',
                                 'declined' => 'Declined',
                                 'cancelled' => 'Cancelled',
                                 'checked_in' => 'Checked In',
@@ -573,8 +575,13 @@ class ReservationResource extends Resource
                                             ->label('Official Receipt Number')
                                             ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['or_number'] ?? '-')
                                             ->copyable(),
+                                        Infolists\Components\TextEntry::make('billing_online_reference')
+                                            ->label('Online Payment Reference')
+                                            ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['online_reference'] ?? '-')
+                                            ->copyable()
+                                            ->visible(fn (Reservation $record) => filled(self::resolveBillingSnapshot($record)['online_reference'] ?? null)),
                                         Infolists\Components\TextEntry::make('billing_or_date')
-                                            ->label('OR Date')
+                                            ->label('Payment / OR Date')
                                             ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['or_date']
                                                 ? \Carbon\Carbon::parse(self::resolveBillingSnapshot($record)['or_date'])->format('M d, Y')
                                                 : '-'),
@@ -766,8 +773,7 @@ class ReservationResource extends Resource
                                             ->color(fn (?string $state) => $state && \Carbon\Carbon::parse($state)->isPast() ? 'danger' : 'warning'),
                                         Infolists\Components\ImageEntry::make('payment_qr_code')
                                             ->label('QR Code')
-                                            ->default(fn (Reservation $record) => 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='.urlencode($record->generatePaymentLink())
-                                            )
+                                            ->default(fn (Reservation $record) => route('guest.payment.qr', ['token' => $record->payment_link_token]))
                                             ->height(200)
                                             ->extraAttributes(['style' => 'border: 2px solid #e5e7eb; border-radius: 8px; padding: 8px;'])
                                             ->visible(fn (Reservation $record) => $record->isPaymentLinkValid()),
@@ -956,17 +962,15 @@ class ReservationResource extends Resource
                     ->sortable()
                     ->width('120px')
                     ->formatStateUsing(fn ($state) => str_replace('_', ' ', ucfirst($state)))
-                    ->color(fn ($state, $record): string => match (true) {
-                        $state === 'pending' => 'warning',
-                        $state === 'approved' && $record->roomAssignments->isEmpty() => 'info',
-                        $state === 'approved' => 'primary',
-                        $state === 'confirmed' => 'primary',
-
-                        $state === 'declined' => 'danger',
-                        $state === 'cancelled' => 'gray',
-                        $state === 'checked_in' => 'success',
-                        $state === 'checked_out' => 'gray',
-                        default => 'gray',
+                    ->color(fn ($state): array => match ((string) $state) {
+                        'pending' => Color::hex('#fbbf24'),
+                        'approved' => Color::hex('#919F02'),
+                        'confirmed' => Color::hex('#10B981'),
+                        'declined' => Color::hex('#EF4444'),
+                        'cancelled' => Color::hex('#6B7280'),
+                        'checked_in' => Color::hex('#16a34a'),
+                        'checked_out' => Color::hex('#94a3b8'),
+                        default => Color::hex('#6B7280'),
                     }),
                 Tables\Columns\TextColumn::make('payment_gateway_status')
                     ->label('Payment')
@@ -1004,6 +1008,7 @@ class ReservationResource extends Resource
                     ->options([
                         'pending' => 'Pending',
                         'approved' => 'Approved',
+                        'confirmed' => 'Confirmed',
                         'declined' => 'Declined',
                         'cancelled' => 'Cancelled',
                         'checked_in' => 'Checked In',
@@ -1386,7 +1391,7 @@ class ReservationResource extends Resource
                                         ->label('')
                                         ->content(fn (Reservation $record) => new HtmlString(
                                             '<div style="text-align:center;padding:20px;background:#f9fafb;border-radius:8px;">'
-                                            .'<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='.urlencode($record->generatePaymentLink()).'" '
+                                            .'<img src="'.e(route('guest.payment.qr', ['token' => $record->payment_link_token])).'" '
                                             .'alt="Payment QR Code" '
                                             .'style="max-width:300px;border:3px solid #00491E;border-radius:12px;padding:15px;background:white;box-shadow:0 4px 6px rgba(0,0,0,0.1);" />'
                                             .'<p style="margin-top:15px;color:#6b7280;font-size:14px;">Scan to pay with GCash, Maya, or Card</p>'
@@ -1514,6 +1519,74 @@ class ReservationResource extends Resource
                                 ->title("{$count} reservation(s) cancelled")
                                 ->success()
                                 ->send();
+                        }),
+
+                    // Bulk Force Checkout (super_admin only + password)
+                    Tables\Actions\BulkAction::make('bulk_force_checkout')
+                        ->label('Force checkout selected')
+                        ->icon('heroicon-o-arrow-left-on-rectangle')
+                        ->color('warning')
+                        ->visible(fn () => auth()->user()->isSuperAdmin())
+                        ->requiresConfirmation()
+                        ->modalHeading('Force checkout selected reservations')
+                        ->modalDescription('Only checked-in reservations will be checked out. This is intended for emergency or maintenance use. Enter your password and reason to confirm.')
+                        ->modalSubmitActionLabel('Force checkout')
+                        ->deselectRecordsAfterCompletion()
+                        ->form([
+                            Forms\Components\TextInput::make('password')
+                                ->label('Confirm your password')
+                                ->password()
+                                ->revealable()
+                                ->required()
+                                ->rule('current_password'),
+                            Forms\Components\Textarea::make('reason')
+                                ->label('Reason for force checkout')
+                                ->placeholder('Example: Emergency maintenance, room closure, evacuation, or administrative correction...')
+                                ->required()
+                                ->rows(3),
+                        ])
+                        ->action(function (Collection $records, array $data) {
+                            $checkedOut = 0;
+                            $skipped = 0;
+                            $failed = 0;
+                            $remarks = 'Bulk force checkout: '.trim((string) ($data['reason'] ?? ''));
+
+                            foreach ($records as $record) {
+                                if ($record->status !== 'checked_in') {
+                                    $skipped++;
+
+                                    continue;
+                                }
+
+                                try {
+                                    app(ReservationWorkflowService::class)->checkOut($record, now(), $remarks);
+                                    $checkedOut++;
+                                } catch (\Throwable $exception) {
+                                    $failed++;
+
+                                    Log::warning('Bulk force checkout failed for reservation '.$record->id, [
+                                        'reservation_id' => $record->id,
+                                        'reference_number' => $record->reference_number,
+                                        'error' => $exception->getMessage(),
+                                    ]);
+                                }
+                            }
+
+                            $message = "{$checkedOut} reservation(s) force checked out";
+                            if ($skipped > 0) {
+                                $message .= ". {$skipped} non-checked-in reservation(s) skipped.";
+                            }
+                            if ($failed > 0) {
+                                $message .= " {$failed} reservation(s) failed; check logs for details.";
+                            }
+
+                            $notification = Notification::make()->title($message);
+                            if ($failed > 0) {
+                                $notification->warning();
+                            } else {
+                                $notification->success();
+                            }
+                            $notification->send();
                         }),
 
                     // Bulk Delete (super_admin only + password)
@@ -1782,7 +1855,7 @@ class ReservationResource extends Resource
 
 
     /**
-     * @return array{guest_name:string,payment_mode:string,payment_amount:float,or_number:?string,or_date:mixed,addons_label:string,discount_applied:bool,discount_label:string,discount_amount:float}
+     * @return array{guest_name:string,payment_mode:string,payment_amount:float,or_number:?string,online_reference:?string,or_date:mixed,addons_label:string,discount_applied:bool,discount_label:string,discount_amount:float}
      */
     protected static function resolveBillingSnapshot(Reservation $record): array
     {
@@ -1854,6 +1927,14 @@ class ReservationResource extends Resource
 
         $discountApplied = $discountTotal > 0 || $discountTypes->isNotEmpty();
 
+        $officialOrNumber = $paidAssignment?->payment_or_number;
+        $officialOrNumber = filled($officialOrNumber) && strtoupper(trim((string) $officialOrNumber)) !== 'N/A'
+            ? trim((string) $officialOrNumber)
+            : null;
+        $onlineReference = $latestPayment?->gateway === 'paymongo'
+            ? ($latestPayment->reference_no ?: ($latestPayment->gateway_payment_id ? 'PM-'.$latestPayment->gateway_payment_id : null))
+            : null;
+
         return [
             'guest_name' => $billingGuestName !== ''
                 ? $billingGuestName
@@ -1862,8 +1943,8 @@ class ReservationResource extends Resource
                     : (string) $record->guest_name),
             'payment_mode' => $paymentMode,
             'payment_amount' => $paymentAmount,
-            'or_number' => $latestPayment?->reference_no
-                ?? $paidAssignment?->payment_or_number,
+            'or_number' => $officialOrNumber,
+            'online_reference' => $onlineReference,
             'or_date' => $latestPayment?->or_date
                 ?? $paidAssignment?->or_date,
             'discount_applied' => $discountApplied,

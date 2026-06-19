@@ -182,7 +182,12 @@ class RoomTypeResource extends Resource
                     ->tooltip(fn (RoomType $record) => $record->rooms()->exists()
                             ? 'This room type cannot be deleted because it is linked to rooms.'
                             : null
-                    ),
+                    )
+                    ->before(function (RoomType $record) {
+                        // Nullify preferred_room_type_id on any reservations that reference
+                        // this room type, so the FK constraint does not block deletion.
+                        $record->reservations()->update(['preferred_room_type_id' => null]);
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

@@ -265,6 +265,37 @@ class ManageTourHotspots extends Page
         }
     }
 
+    /**
+     * Persist the scene sequence used by the guest tour and editor sidebar.
+     */
+    public function reorderScenes(array $orderedIds): void
+    {
+        $ids = collect($orderedIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        $existingIds = TourWaypoint::query()
+            ->whereIn('id', $ids)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id);
+
+        if ($ids->count() !== $existingIds->count()) {
+            Notification::make()
+                ->title('Scene order was not saved')
+                ->body('Refresh the editor and try reordering again.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        foreach ($ids as $order => $id) {
+            TourWaypoint::whereKey($id)->update(['position_order' => $order]);
+        }
+    }
+
     protected function validateHotspotPayload(array $payload): ?array
     {
         $payload['title'] = trim((string) ($payload['title'] ?? ''));
@@ -274,6 +305,10 @@ class ManageTourHotspots extends Page
         $payload['media_type'] = $this->normalizeNullableString($payload['media_type'] ?? null);
         $payload['media_url'] = $this->normalizeNullableString($payload['media_url'] ?? null);
 
+        if (in_array($payload['action_type'] ?? null, ['previous-scene', 'info', 'bookmark'], true)) {
+            $payload['action_target'] = null;
+        }
+
         $validator = Validator::make($payload, [
             'waypoint_id' => ['required', 'integer', 'exists:tour_waypoints,id'],
             'title' => ['required', 'string', 'max:255'],
@@ -281,7 +316,7 @@ class ManageTourHotspots extends Page
             'icon' => ['required', 'string', 'max:100'],
             'pitch' => ['required', 'numeric', 'between:-90,90'],
             'yaw' => ['required', 'numeric', 'between:-360,360'],
-            'action_type' => ['required', 'in:navigate,info,bookmark,external-link,audio,video'],
+            'action_type' => ['required', 'in:navigate,previous-scene,info,bookmark,external-link,audio,video'],
             'action_target' => ['nullable', 'string', 'max:2048'],
             'sort_order' => ['required', 'integer', 'min:0'],
             'is_active' => ['required', 'boolean'],
@@ -421,6 +456,7 @@ class ManageTourHotspots extends Page
     {
         $waypoints = TourWaypoint::withCount('hotspots')
             ->orderBy('position_order')
+            ->orderBy('id')
             ->get()
             ->map(fn(TourWaypoint $wp) => [
                 'id' => $wp->id,

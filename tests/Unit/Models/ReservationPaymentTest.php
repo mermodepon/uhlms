@@ -29,6 +29,7 @@ class ReservationPaymentTest extends TestCase
         $casts = $payment->getCasts();
 
         $this->assertEquals('decimal:2', $casts['amount']);
+        $this->assertEquals('date', $casts['or_date']);
         $this->assertEquals('datetime', $casts['received_at']);
         $this->assertEquals('array', $casts['meta']);
     }

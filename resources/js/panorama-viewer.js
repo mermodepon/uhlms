@@ -346,8 +346,8 @@ class PanoramaViewer {
         const hasImageMedia = !!(safeGallery.length || safeMediaUrl);
         const hasExpandedMediaCard = hasYouTubeVideo || hasImageMedia;
         const cardWidth = hasYouTubeVideo
-            ? 'min(560px,calc(100vw - 32px))'
-            : (hasImageMedia ? 'min(520px,calc(100vw - 32px))' : 'min(380px,calc(100vw - 32px))');
+            ? 'min(620px,calc(100vw - 32px))'
+            : (hasImageMedia ? 'min(760px,calc(100vw - 32px))' : 'min(380px,calc(100vw - 32px))');
         const videoMediaPaddingTop = hasYouTubeVideo ? '62.5%' : '56.25%';
         const cardMaxHeight = hasYouTubeVideo
             ? 'min(94vh,860px)'
@@ -363,7 +363,7 @@ class PanoramaViewer {
         } else if (safeGallery.length > 0) {
             const imgs = safeGallery.map(url =>
                 `<div style="min-width:${hasExpandedMediaCard ? 'calc(100% - 8px)' : '220px'};scroll-snap-align:center;scroll-snap-stop:always;flex:0 0 auto">`
-                + `<img src="${url}" style="width:100%;height:${hasExpandedMediaCard ? '240px' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                + `<img class="pv-info-gallery-img" src="${url}" style="width:100%;height:${hasExpandedMediaCard ? 'min(52vh,420px)' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.parentElement.style.display='none'" loading="lazy">`
                 + `</div>`
             ).join('');
             mediaHtml = `<div style="background:#f9fafb;padding:12px 14px 10px">`
@@ -372,7 +372,7 @@ class PanoramaViewer {
                 + `</div>`;
         } else if (safeMediaUrl) {
             mediaHtml = `<div style="flex-shrink:0;overflow:hidden">`
-                + `<img src="${safeMediaUrl}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? '360px' : '240px'};object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                + `<img class="pv-info-media-img" src="${safeMediaUrl}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? 'min(56vh,520px)' : '240px'};object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
                 + `</div>`;
         }
 
@@ -390,7 +390,7 @@ class PanoramaViewer {
 
         const interactionShield = `onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onpointerdown="event.stopPropagation()" onwheel="event.stopPropagation()" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()"`;
 
-        return `<div ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:var(--guest-font-body);display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight};pointer-events:auto;touch-action:pan-y">`
+        return `<div class="pv-info-card" ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:var(--guest-font-body);display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight};pointer-events:auto;touch-action:pan-y">`
             + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 16px;position:relative;flex-shrink:0">`
             + closeBtn
             + `<h2 style="font-size:16px;font-weight:700;margin:0 32px 0 0">${title}</h2>`
@@ -745,6 +745,18 @@ class PanoramaViewer {
             }
             .pv-hotspot-circle:hover { transform: scale(1.2); animation: none !important; }
             .pv-badge-marker:hover { transform: scale(1.1); }
+            @media (max-width: 640px) {
+                .pv-info-card {
+                    width: min(420px, calc(100vw - 24px)) !important;
+                    max-height: min(82vh, calc(100dvh - 96px)) !important;
+                }
+                .pv-info-gallery-img {
+                    height: min(34vh, 260px) !important;
+                }
+                .pv-info-media-img {
+                    max-height: min(38vh, 300px) !important;
+                }
+            }
         `;
         document.head.appendChild(sheet);
     }

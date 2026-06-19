@@ -25,8 +25,8 @@ class ReservationCalendar extends FullCalendarWidget
      */
     protected static array $statusColors = [
         'pending'         => '#fbbf24', // amber
-        'approved'        => '#3b82f6', // blue
-
+        'approved'        => '#919F02', // olive
+        'confirmed'       => '#10B981', // emerald
         'checked_in'      => '#16a34a', // green
         'checked_out'     => '#94a3b8', // slate-gray
     ];

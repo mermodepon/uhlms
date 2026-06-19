@@ -184,6 +184,10 @@ class TourEditor {
         });
     }
 
+    setAllWaypoints(waypoints) {
+        this.allWaypoints = waypoints || [];
+    }
+
     /**
      * Start placement mode.
      */
@@ -423,7 +427,7 @@ class TourEditor {
      * Also injects a read-only system marker when the scene is room-linked.
      */
     _buildMarkers() {
-        const editorColors = { navigate: '#3b82f6', info: '#f59e0b', bookmark: '#8b5cf6', 'external-link': '#10b981' };
+        const editorColors = { navigate: '#3b82f6', 'previous-scene': '#ef4444', info: '#f59e0b', bookmark: '#8b5cf6', 'external-link': '#10b981' };
         const markers = this.hotspots.map(h => ({
             id: `hotspot-${h.id}`,
             position: {
@@ -431,7 +435,7 @@ class TourEditor {
                 pitch: `${h.pitch}deg`,
             },
             tooltip: {
-                content: h.title + (h.action_type === 'navigate' ? ' → ' + (h.action_target || '') : ''),
+                content: h.title + (h.action_type === 'navigate' ? ' → ' + this._waypointName(h.action_target) : ''),
                 position: 'top center',
             },
             data: { hotspot: h },
@@ -468,10 +472,17 @@ class TourEditor {
         return markers;
     }
 
+    _waypointName(slug) {
+        if (!slug) return '';
+
+        return this.allWaypoints.find(w => w.slug === slug)?.name || slug;
+    }
+
     _markerHtml(hotspot) {
-        const iconId = hotspot.icon || 'chevron-up';
+        const iconId = hotspot.icon || (hotspot.action_type === 'previous-scene' ? 'chevron-left' : 'chevron-up');
         const colors = {
             navigate: '#3b82f6',
+            'previous-scene': '#ef4444',
             info: '#f59e0b',
             bookmark: '#8b5cf6',
             'external-link': '#10b981',

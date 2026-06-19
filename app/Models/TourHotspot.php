@@ -46,18 +46,19 @@ class TourHotspot extends Model
             'navigate'      => 'Navigate to Location',
             'bookmark'      => 'Bookmark Location',
             'external-link' => 'External Link',
+            'previous-scene' => 'Exit to Previous Scene',
             default         => ucfirst(str_replace('-', ' ', $this->action_type)),
         };
     }
 
     public function isNavigationHotspot(): bool
     {
-        return $this->action_type === 'navigate';
+        return in_array($this->action_type, ['navigate', 'previous-scene'], true);
     }
 
     public function getTargetWaypoint(): ?TourWaypoint
     {
-        if (!$this->isNavigationHotspot() || !$this->action_target) {
+        if ($this->action_type !== 'navigate' || !$this->action_target) {
             return null;
         }
         return TourWaypoint::where('slug', $this->action_target)->first();

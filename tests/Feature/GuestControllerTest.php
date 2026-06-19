@@ -245,6 +245,60 @@ class GuestControllerTest extends TestCase
         });
     }
 
+    public function test_current_shared_room_availability_counts_open_beds_in_reserved_dorms(): void
+    {
+        $user = $this->createStaffUser();
+        $this->actingAs($user);
+
+        $roomType = $this->createRoomType([
+            'name' => 'Dormitory',
+            'room_sharing_type' => 'public',
+        ]);
+
+        $reservedDorm = $this->createRoom($roomType);
+        $reservedDorm->update([
+            'capacity' => 20,
+            'status' => 'reserved',
+        ]);
+
+        $openDorm = $this->createRoom($roomType);
+        $openDorm->update([
+            'capacity' => 20,
+            'status' => 'available',
+        ]);
+
+        $reservation = $this->createReservationForRoomType($roomType, [
+            'number_of_occupants' => 5,
+        ]);
+
+        foreach (range(1, 4) as $index) {
+            RoomAssignment::create([
+                'reservation_id' => $reservation->id,
+                'room_id' => $reservedDorm->id,
+                'status' => 'checked_in',
+                'checked_in_at' => now(),
+                'assigned_by' => $user->id,
+            ]);
+        }
+
+        RoomAssignment::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $openDorm->id,
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+            'assigned_by' => $user->id,
+        ]);
+
+        $response = $this->get(route('guest.room-detail', $roomType));
+
+        $response->assertStatus(200);
+        $response->assertViewHas('roomType', function (RoomType $dormitory): bool {
+            return $dormitory->available_beds_count === 35
+                && $dormitory->total_beds_count === 40
+                && $dormitory->available_rooms_count === 2;
+        });
+    }
+
     public function test_rooms_page_marks_shared_room_type_unavailable_when_requested_guests_exceed_remaining_beds(): void
     {
         $user = $this->createStaffUser();

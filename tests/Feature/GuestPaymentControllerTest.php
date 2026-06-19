@@ -87,6 +87,45 @@ class GuestPaymentControllerTest extends TestCase
         $response->assertSee('Complete Your Payment');
     }
 
+    public function test_tracking_page_uses_local_payment_qr_code(): void
+    {
+        $reservation = $this->createReservation('approved');
+        $reservation->update(['approved_at' => now()]);
+
+        $response = $this->get(route('guest.track', [
+            'reference' => $reservation->reference_number,
+            'guest_email' => $reservation->guest_email,
+        ]));
+
+        $response->assertOk();
+        $response->assertSee(route('guest.payment.qr', ['token' => $reservation->payment_link_token], false), false);
+        $response->assertDontSee('api.qrserver.com');
+    }
+
+    public function test_local_payment_qr_code_renders_svg_for_valid_payment_link(): void
+    {
+        $reservation = $this->createReservation('approved');
+        $reservation->update(['approved_at' => now()]);
+
+        $response = $this->get(route('guest.payment.qr', ['token' => $reservation->payment_link_token]));
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'image/svg+xml');
+        $response->assertSee('<svg', false);
+    }
+
+    public function test_local_payment_qr_code_rejects_expired_payment_link(): void
+    {
+        $reservation = $this->createReservation('approved');
+        $reservation->update([
+            'approved_at' => now(),
+            'payment_link_expires_at' => now()->subMinute(),
+        ]);
+
+        $this->get(route('guest.payment.qr', ['token' => $reservation->payment_link_token]))
+            ->assertNotFound();
+    }
+
     public function test_approval_rotates_stale_payment_token_before_guest_payment_opens(): void
     {
         $reservation = $this->createReservation('pending');

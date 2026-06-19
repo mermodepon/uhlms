@@ -7,15 +7,16 @@ import * as THREE from 'three';
 
 const HOTSPOT_COLORS = {
     navigate:        '#3b82f6',
+    'previous-scene': '#ef4444',
     info:            '#f59e0b',
     bookmark:        '#8b5cf6',
     'external-link': '#10b981',
 };
 
 const AUTO_TOUR_PROFILES = {
-    fast: { cycleMs: 6000, panMs: 4200, label: 'Fast' },
-    normal: { cycleMs: 8000, panMs: 6000, label: 'Normal' },
-    slow: { cycleMs: 10000, panMs: 7600, label: 'Slow' },
+    fast: { cycleMs: 12000, panMs: 10000, label: 'Fast' },
+    normal: { cycleMs: 16000, panMs: 14000, label: 'Normal' },
+    slow: { cycleMs: 22000, panMs: 19000, label: 'Slow' },
 };
 
 class VirtualTourEngine {
@@ -25,6 +26,7 @@ class VirtualTourEngine {
 
         this.waypoints           = [];
         this.currentWaypoint     = null;
+        this._sceneHistory       = [];
         this.startWaypoint       = options.startWaypoint || '';
         this.apiBase             = options.apiBase || '/api/tour';
         this.currentRoomType     = null;
@@ -52,9 +54,8 @@ class VirtualTourEngine {
         this._reducedMotion      = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
         this.previewMode         = options.previewMode || window.location.search.includes('preview');
 
-        // Auto-hide UI state
+        // Manual UI visibility state
         this._uiIdleTimer        = null;
-        this._uiIdleDelayMs      = 4000;  // 4 seconds
         this._uiHidden           = false;
         this._uiManuallyHidden   = false;  // Manual override via toggle button
 
@@ -74,6 +75,7 @@ class VirtualTourEngine {
         this.narrationTooltip  = document.getElementById('narration-tooltip');
         this.gazeTooltip       = document.getElementById('gaze-tooltip');
         this.progressIndicator = document.getElementById('progress-indicator');
+        this.navSceneName      = document.getElementById('nav-scene-name-text');
         this.roomInfoBtn       = document.getElementById('room-info-btn');
         this.autoTourHud       = document.getElementById('auto-tour-hud');
         this.autoTourCountdown = document.getElementById('auto-tour-countdown');
@@ -144,6 +146,7 @@ class VirtualTourEngine {
                 await this.navigateToWaypoint(start, {
                     historyMode: 'replace',
                     suppressInvalidSceneToast: !urlSlug,
+                    allowFallback: true,
                 });
             }
         } catch (error) {
@@ -163,6 +166,7 @@ class VirtualTourEngine {
                 this.navigateToWaypoint(nextScene, {
                     historyMode: 'replace',
                     suppressInvalidSceneToast: !slug,
+                    allowFallback: true,
                 });
             }
         });
@@ -202,17 +206,24 @@ class VirtualTourEngine {
     }
 
     _getDefaultWaypoint() {
-        return this.waypoints.find(w => w.type === 'entrance')
-            || this._findWaypointBySlug(this.startWaypoint)
+        return this._findWaypointBySlug(this.startWaypoint)
             || this.waypoints[0]
             || null;
     }
 
-    _resolveWaypointRequest(slug) {
+    _resolveWaypointRequest(slug, { allowFallback = false } = {}) {
         const requested = this._findWaypointBySlug(slug);
         if (requested) {
             return {
                 waypoint: requested,
+                requestedSlug: slug,
+                usedFallback: false,
+            };
+        }
+
+        if (!allowFallback) {
+            return {
+                waypoint: null,
                 requestedSlug: slug,
                 usedFallback: false,
             };
@@ -342,6 +353,10 @@ class VirtualTourEngine {
                     subtitle = targetWaypoint ? `→ ${targetWaypoint.name}` : '→ Navigate';
                 }
                 break;
+
+            case 'previous-scene':
+                subtitle = '↩ Exit to previous scene';
+                break;
                 
             case 'info':
                 subtitle = 'ℹ️ View information';
@@ -362,6 +377,21 @@ class VirtualTourEngine {
                 
             case 'video':
                 subtitle = '🎥 Play video';
+                break;
+            case 'tour-map-toggle':
+                subtitle = 'Open Tour Map';
+                break;
+
+            case 'tour-map-page':
+                subtitle = 'Change Tour Map page';
+                break;
+
+            case 'tour-map-scene':
+                subtitle = 'Go to this scene';
+                break;
+
+            case 'close-panel':
+                subtitle = 'Close panel';
                 break;
         }
         return { title, subtitle };
@@ -412,7 +442,7 @@ class VirtualTourEngine {
 
         this._setPanoramaGazeFocus(options.vr === true ? null : hotspot);
 
-        const activationEnabled = this._isGazeActivationModeEnabled();
+        const activationEnabled = options.forceActivation === true || this._isGazeActivationModeEnabled();
         const now = performance.now();
 
         if (this._gazeDwellHotspotId !== hotspot.id) {
@@ -434,15 +464,26 @@ class VirtualTourEngine {
                 : `Hold gaze ${remainingSeconds.toFixed(1)}s to activate`;
         }
 
-        this._showGazeTooltip(hotspot, {
-            status,
-            progress,
-            vr: options.vr === true,
-        });
+        if (options.suppressTooltip === true) {
+            this._hideGazeTooltip();
+        } else {
+            this._showGazeTooltip(hotspot, {
+                status,
+                progress,
+                vr: options.vr === true,
+            });
+        }
 
         if (activationEnabled && progress >= 1 && !this._gazeActivationInFlight) {
             this._gazeActivationInFlight = true;
-            this._activateGazeHotspot(hotspot);
+            if (typeof options.onActivate === 'function') {
+                this._showToast(`Activated: ${hotspot.title || this._getDefaultHotspotLabel(hotspot.action_type)}`, 'info');
+                this._resetGazeDwellState();
+                this._pauseGazeDetection(1500);
+                options.onActivate(hotspot);
+            } else {
+                this._activateGazeHotspot(hotspot);
+            }
         }
     }
 
@@ -459,9 +500,17 @@ class VirtualTourEngine {
 
         this._gazeHotspot = hotspot;
         const { status = '', progress = 0 } = options;
-        const { title, subtitle } = this._getGazeTooltipContent(hotspot);
+        let { title, subtitle } = this._getGazeTooltipContent(hotspot);
 
         if (this._webXRTest?.showVRGazeTooltip) {
+            // Room Info badge is self-labelled in VR; suppress the overlay to avoid distraction
+            if (options.vr === true && hotspot.action_type === 'room-info') {
+                this._webXRTest.hideVRGazeTooltip();
+                return;
+            }
+            if (options.vr === true && hotspot.action_type === 'external-link') {
+                subtitle = 'Exit VR and open link in browser';
+            }
             this._webXRTest.showVRGazeTooltip(title, subtitle, status);
             return;
         }
@@ -488,6 +537,7 @@ class VirtualTourEngine {
     _getDefaultHotspotLabel(actionType) {
         const labels = {
             'navigate': 'Navigate',
+            'previous-scene': 'Exit to Previous Scene',
             'info': 'Information',
             'bookmark': 'Bookmark',
             'external-link': 'External Link',
@@ -543,44 +593,38 @@ class VirtualTourEngine {
         this._webXRTest?.clearVRGazeFocus?.();
     }
 
-    // ── Auto-hide UI ──────────────────────────────────────────────────────────
+    // ── Manual UI visibility ─────────────────────────────────────────────────
 
     _setupAutoHideUI() {
-        // Elements to auto-hide
+        const isMobileViewport = window.matchMedia('(max-width: 768px)').matches;
+
+        // Elements hidden only when the user manually toggles controls off.
         this._hidableElements = [
             document.querySelector('.vr-controls'),
-            document.getElementById('minimap'),
+            ...(isMobileViewport ? [document.getElementById('minimap')] : []),
             document.getElementById('help-btn'),
             document.getElementById('room-info-btn'),
             document.getElementById('mobile-settings-btn'),
         ].filter(Boolean);
 
-        // Show UI on any user interaction
+        // Restore controls on interaction only if they were hidden programmatically.
         const interactions = ['mousemove', 'mousedown', 'touchstart', 'touchmove', 'keydown', 'wheel'];
         interactions.forEach(evt => {
             this.container.addEventListener(evt, () => this._onUserActivity(), { passive: true });
         });
 
-        // Start the idle timer immediately
-        this._resetUIIdleTimer();
     }
 
     _onUserActivity() {
-        // Show UI if hidden (but only if not manually overridden)
+        // Show UI if hidden (but only if not manually overridden).
         if (this._uiHidden && !this._uiManuallyHidden) {
             this._showUI();
-        }
-        // Reset the idle timer (unless manually hidden)
-        if (!this._uiManuallyHidden) {
-            this._resetUIIdleTimer();
         }
     }
 
     _resetUIIdleTimer() {
         clearTimeout(this._uiIdleTimer);
-        // Don't hide UI when Auto Tour countdown is visible or manually overridden
-        if (this._autoTourActive || this._uiManuallyHidden) return;
-        this._uiIdleTimer = setTimeout(() => this._hideUI(), this._uiIdleDelayMs);
+        this._uiIdleTimer = null;
     }
 
     _showUI() {
@@ -591,6 +635,7 @@ class VirtualTourEngine {
     _hideUI() {
         this._uiHidden = true;
         this._hidableElements.forEach(el => el?.classList.add('ui-hidden'));
+        window.closeMobileTourMap?.();
         document.querySelector('.vr-controls')?.classList.remove('mobile-open');
     }
 
@@ -599,13 +644,13 @@ class VirtualTourEngine {
             // Show UI
             this._showUI();
             this._uiManuallyHidden = false;
-            this._resetUIIdleTimer();  // Resume auto-hide
+            this._resetUIIdleTimer();
             this._syncToggleUIBtn(false);
         } else {
             // Hide UI
             this._hideUI();
             this._uiManuallyHidden = true;
-            clearTimeout(this._uiIdleTimer);  // Prevent auto-show
+            this._resetUIIdleTimer();
             this._syncToggleUIBtn(true);
         }
     }
@@ -637,14 +682,25 @@ class VirtualTourEngine {
         const {
             historyMode = 'push',
             suppressInvalidSceneToast = false,
+            trackSceneHistory = true,
+            restoreView = null,
+            allowFallback = false,
         } = options;
         const navigationSequence = ++this._navigationSequence;
-        const resolution = this._resolveWaypointRequest(slug);
+        const resolution = this._resolveWaypointRequest(slug, { allowFallback });
         const wp = resolution.waypoint;
         if (!wp) {
+            if (!suppressInvalidSceneToast && slug) {
+                this._showToast('This hotspot is not configured yet.', 'info');
+            }
             this.hideLoading();
             return false;
         }
+        const sceneHistoryEntry = trackSceneHistory
+            ? this._createSceneHistoryEntry(wp.slug)
+            : null;
+        const restoredView = this._normalizeSceneView(restoreView);
+        const targetZoom = restoredView?.zoom ?? wp.default_zoom;
 
         // Pause gaze detection when navigating
         this._pauseGazeDetection();
@@ -661,14 +717,18 @@ class VirtualTourEngine {
             await this.viewer.setPanorama(wp.panorama_image, {
                 transition: { effect: 'fade', duration: 400 },
                 position: {
-                    yaw:   `${wp.default_yaw   || 0}deg`,
-                    pitch: `${wp.default_pitch || 0}deg`,
+                    yaw:   restoredView?.yaw   ?? `${wp.default_yaw   || 0}deg`,
+                    pitch: restoredView?.pitch ?? `${wp.default_pitch || 0}deg`,
                 },
-                ...(wp.default_zoom != null ? { zoom: wp.default_zoom } : {}),
+                ...(targetZoom != null ? { zoom: targetZoom } : {}),
             });
 
             if (navigationSequence !== this._navigationSequence) {
                 return false;
+            }
+
+            if (sceneHistoryEntry) {
+                this._pushSceneHistoryEntry(sceneHistoryEntry);
             }
 
             this.currentWaypoint = wp;
@@ -713,6 +773,129 @@ class VirtualTourEngine {
                 this.hideLoading();
             }
         }
+    }
+
+    _normalizeSceneView(view) {
+        if (!view || typeof view !== 'object') return null;
+
+        const normalized = {};
+        ['yaw', 'pitch', 'zoom'].forEach((key) => {
+            const value = Number(view[key]);
+            if (Number.isFinite(value)) {
+                normalized[key] = value;
+            }
+        });
+
+        return Object.keys(normalized).length ? normalized : null;
+    }
+
+    _createSceneHistoryEntry(nextSlug, viewOverride = null) {
+        const currentSlug = this.currentWaypoint?.slug;
+        if (!currentSlug || currentSlug === nextSlug) return null;
+
+        const restoredView = this._normalizeSceneView(viewOverride);
+        const currentView = restoredView || this._captureCurrentSceneView();
+        if (!currentView) {
+            return { slug: currentSlug };
+        }
+
+        return {
+            slug: currentSlug,
+            ...currentView,
+        };
+    }
+
+    _captureCurrentSceneView() {
+        if (!this.viewer) return null;
+
+        const position = this.viewer.getPosition?.();
+        const view = {
+            yaw: position?.yaw,
+            pitch: position?.pitch,
+            zoom: this.viewer.getZoomLevel?.(),
+        };
+
+        return this._normalizeSceneView(view);
+    }
+
+    _pushSceneHistoryEntry(entry) {
+        if (!entry?.slug) return;
+
+        const lastEntry = this._sceneHistory[this._sceneHistory.length - 1];
+        if (lastEntry?.slug === entry.slug) {
+            this._sceneHistory[this._sceneHistory.length - 1] = entry;
+        } else {
+            this._sceneHistory.push(entry);
+        }
+
+        if (this._sceneHistory.length > 50) {
+            this._sceneHistory.splice(0, this._sceneHistory.length - 50);
+        }
+    }
+
+    _getPreviousSceneTarget() {
+        const currentSlug = this.currentWaypoint?.slug;
+
+        while (this._sceneHistory.length) {
+            const entry = this._sceneHistory.pop();
+            const slug = typeof entry === 'string' ? entry : entry?.slug;
+            if (slug && slug !== currentSlug && this._findWaypointBySlug(slug)) {
+                return {
+                    slug,
+                    restoreView: typeof entry === 'string'
+                        ? null
+                        : this._normalizeSceneView(entry),
+                };
+            }
+        }
+
+        const inboundScene = this._getInboundSceneFallback(currentSlug);
+        if (inboundScene) {
+            return { slug: inboundScene.slug, restoreView: null };
+        }
+
+        const idx = this.waypoints.findIndex(w => w.slug === currentSlug);
+        if (idx > 0) {
+            return { slug: this.waypoints[idx - 1].slug, restoreView: null };
+        }
+
+        return null;
+    }
+
+    _getInboundSceneFallback(currentSlug) {
+        if (!currentSlug || !this.currentWaypoint?.is_room_related) return null;
+
+        const currentOrder = Number(this.currentWaypoint.position_order ?? 0);
+        const inboundScenes = this.waypoints.filter((wp) => {
+            if (!wp || wp.slug === currentSlug) return false;
+            return (wp.hotspots || []).some(h =>
+                h.is_active !== false
+                && h.action_type === 'navigate'
+                && h.action_target === currentSlug
+            );
+        });
+
+        if (!inboundScenes.length) return null;
+
+        return inboundScenes
+            .map(wp => ({
+                wp,
+                distance: Math.abs(Number(wp.position_order ?? 0) - currentOrder),
+            }))
+            .sort((a, b) => a.distance - b.distance || Number(a.wp.position_order ?? 0) - Number(b.wp.position_order ?? 0))[0]?.wp || null;
+    }
+
+    async navigateToPreviousScene() {
+        const target = this._getPreviousSceneTarget();
+        if (!target?.slug) {
+            this._showToast('No previous scene available.', 'info');
+            return false;
+        }
+
+        return this.navigateToWaypoint(target.slug, {
+            trackSceneHistory: false,
+            restoreView: target.restoreView,
+        });
     }
 
     // ── Preloading ────────────────────────────────────────────────────────────
@@ -775,7 +958,7 @@ class VirtualTourEngine {
                 data:     { hotspot: h },
                 sprite: {
                     style:   'circle',
-                    icon:    h.icon || 'chevron-up',
+                    icon:    h.icon || (h.action_type === 'previous-scene' ? 'chevron-left' : 'chevron-up'),
                     bgColor: HOTSPOT_COLORS[h.action_type] || '#6b7280',
                     opacity: 1,
                     size:    h.size || 3,  // Apply size from hotspot (1-5 scale)
@@ -831,7 +1014,14 @@ class VirtualTourEngine {
         
         switch (hs.action_type) {
             case 'navigate':
-                if (hs.action_target) this.navigateToWaypoint(hs.action_target);
+                if (hs.action_target) {
+                    this.navigateToWaypoint(hs.action_target);
+                } else {
+                    this._showToast('This hotspot is not configured yet.', 'info');
+                }
+                break;
+            case 'previous-scene':
+                this.navigateToPreviousScene();
                 break;
             case 'external-link':
                 if (hs.action_target) this._openSafeExternalUrl(hs.action_target);
@@ -923,8 +1113,8 @@ class VirtualTourEngine {
         const hasImageMedia = imageUrls.length > 0;
         const hasExpandedMediaCard = hasYouTubeVideo || hasImageMedia;
         const cardWidth = hasYouTubeVideo
-            ? 'min(560px,calc(100vw - 32px))'
-            : (hasImageMedia ? 'min(520px,calc(100vw - 32px))' : '340px');
+            ? 'min(620px,calc(100vw - 32px))'
+            : (hasImageMedia ? 'min(760px,calc(100vw - 32px))' : '340px');
         const videoMediaPaddingTop = hasYouTubeVideo ? '62.5%' : '56.25%';
         const cardMaxHeight = hasYouTubeVideo
             ? 'min(94vh,860px)'
@@ -942,12 +1132,12 @@ class VirtualTourEngine {
                 }
             } else if (imageUrls.length === 1) {
                 mediaHtml = `<div style="flex-shrink:0;overflow:hidden">`
-                    + `<img src="${imageUrls[0]}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? '360px' : '240px'};object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                    + `<img class="pv-info-media-img" src="${imageUrls[0]}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? 'min(56vh,520px)' : '240px'};object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
                     + `</div>`;
             } else if (imageUrls.length > 1) {
                 const imgs = imageUrls.map(url =>
                     `<div style="min-width:${hasExpandedMediaCard ? 'calc(100% - 8px)' : '220px'};scroll-snap-align:center;scroll-snap-stop:always;flex:0 0 auto">`
-                    + `<img src="${url}" style="width:100%;height:${hasExpandedMediaCard ? '240px' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                    + `<img class="pv-info-gallery-img" src="${url}" style="width:100%;height:${hasExpandedMediaCard ? 'min(52vh,420px)' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.parentElement.style.display='none'" loading="lazy">`
                     + `</div>`
                 ).join('');
                 mediaHtml = `<div style="background:#f9fafb;padding:12px 14px 10px">`
@@ -964,7 +1154,7 @@ class VirtualTourEngine {
         const hasBody = bodyParts.length > 0;
         const interactionShield = `onclick="event.stopPropagation()" onmousedown="tourEngine._cancelViewerPointerState();event.stopPropagation()" onpointerdown="tourEngine._cancelViewerPointerState();event.stopPropagation()" onpointerup="event.stopPropagation()" onmouseup="event.stopPropagation()" onwheel="event.stopPropagation()" ontouchstart="tourEngine._cancelViewerPointerState();event.stopPropagation()" ontouchmove="event.stopPropagation()"`;
 
-        return `<div ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:var(--guest-font-body);display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight};pointer-events:auto;touch-action:pan-y">`
+        return `<div class="pv-info-card" ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:var(--guest-font-body);display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight};pointer-events:auto;touch-action:pan-y">`
             + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 16px;position:relative;flex-shrink:0">`
             + `<button onclick="tourEngine._closeInfoCard();event.stopPropagation()" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);border:none;color:white;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:14px;line-height:26px;text-align:center">✕</button>`
             + `<h2 style="font-size:16px;font-weight:700;margin:0 32px 0 0">${this._escapeHtml(hs.title || '')}</h2>`
@@ -1416,8 +1606,22 @@ class VirtualTourEngine {
         const textTextures = new Set();
         const XR_RADIUS = 9;
         const XR_ROOM_SCALE = { x: 2.8, y: 0.82 };
+        const XR_MAP_PAGE_SIZE = 5;
+        const XR_GAZE_UI_ACTIONS = new Set([
+            'tour-map-toggle',
+            'tour-map-page',
+            'tour-map-scene',
+            'close-panel',
+            'info-image',
+            'open-url',
+            'reservation',
+            'reserve-page',
+            'room-info',
+        ]);
         let hoveredObject = null;
         let infoPanelAnchor = null;
+        let tourMapPage = 0;
+        let tourMapFrame = null;
         const roundRect = (ctx, x, y, width, height, radius) => {
             const r = Math.min(radius, width / 2, height / 2);
             ctx.beginPath();
@@ -1449,10 +1653,39 @@ class VirtualTourEngine {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.font = options.font || 'bold 42px sans-serif';
-            const rows = Array.isArray(lines) ? lines : [lines];
+            const rawRows = Array.isArray(lines) ? lines : [lines];
+            const padding = options.padding ?? 36;
+            const maxTextWidth = options.maxTextWidth || Math.max(1, width - padding * 2);
+            const wrapRow = (value) => {
+                const text = String(value || '').trim();
+                if (!options.wrap || !text) return [text];
+                const words = text.split(/\s+/);
+                const wrapped = [];
+                let line = '';
+                words.forEach((word) => {
+                    const next = line ? `${line} ${word}` : word;
+                    if (ctx.measureText(next).width <= maxTextWidth || !line) {
+                        line = next;
+                    } else {
+                        wrapped.push(line);
+                        line = word;
+                    }
+                });
+                if (line) wrapped.push(line);
+                return wrapped;
+            };
+            let rows = rawRows.flatMap(wrapRow).filter(Boolean);
+            if (options.maxLines && rows.length > options.maxLines) {
+                rows = rows.slice(0, options.maxLines);
+                const lastIndex = rows.length - 1;
+                rows[lastIndex] = rows[lastIndex].replace(/[.…\s]+$/, '') + '...';
+                while (ctx.measureText(rows[lastIndex]).width > maxTextWidth && rows[lastIndex].length > 4) {
+                    rows[lastIndex] = rows[lastIndex].slice(0, -4).replace(/\s+\S*$/, '') + '...';
+                }
+            }
             const lineHeight = options.lineHeight || 46;
             const startY = height / 2 - ((rows.length - 1) * lineHeight) / 2;
-            rows.forEach((line, index) => ctx.fillText(String(line), width / 2, startY + index * lineHeight));
+            rows.forEach((line, index) => ctx.fillText(String(line), width / 2, startY + index * lineHeight, maxTextWidth));
             const tex = new THREE.CanvasTexture(canvas);
             tex.colorSpace = THREE.SRGBColorSpace;
             textTextures.add(tex);
@@ -1618,12 +1851,13 @@ class VirtualTourEngine {
             }
         };
 
-        const closePanel = (resetInfoAnchor = true) => {
+        const closePanel = (resetInfoAnchor = true, keepTourMapFrame = false) => {
             clearGroup(panelGroup);
             for (let i = interactive.length - 1; i >= 0; i--) {
                 if (interactive[i].userData?.panel) interactive.splice(i, 1);
             }
             if (resetInfoAnchor) infoPanelAnchor = null;
+            if (!keepTourMapFrame) tourMapFrame = null;
             
             // Resume gaze detection when panel is closed
             this._resumeGazeDetection();
@@ -1680,8 +1914,8 @@ class VirtualTourEngine {
                 ? Math.max(0, Math.min(imageUrls.length - 1, imageIndex))
                 : 0;
             const lines = [
-                truncateXRText(hs.title || 'Information', 42),
-                truncateXRText(hs.description || '', 70),
+                truncateXRText(hs.title || 'Information', 56),
+                hasImage ? '' : String(hs.description || '').replace(/\s+/g, ' ').trim(),
                 videoId ? 'Preview only in VR. Exit to watch on YouTube.' : (hasVideo ? 'Exit VR to open this video.' : ''),
                 hasImage ? `Image ${currentImageIndex + 1} of ${imageUrls.length}` : '',
             ].filter(Boolean);
@@ -1705,14 +1939,17 @@ class VirtualTourEngine {
             const { center, right } = infoPanelAnchor;
             const panelPosition = (x = 0, y = 0) => center.clone().add(right.clone().multiplyScalar(x)).add(up.clone().multiplyScalar(y));
             const panel = makePlane(makeTextTexture(lines, {
-                width: 820,
-                height: hasPreviewMedia ? 230 : 340,
+                width: 760,
+                height: hasImage ? 170 : (hasPreviewMedia ? 380 : 560),
                 background: 'rgba(255,255,255,0.96)',
                 color: '#111827',
-                font: 'bold 38px sans-serif',
-                lineHeight: 56,
+                font: hasImage ? 'bold 24px sans-serif' : 'bold 30px sans-serif',
+                lineHeight: hasImage ? 34 : 43,
+                padding: hasImage ? 42 : 70,
+                wrap: true,
+                maxLines: hasImage ? 2 : (hasPreviewMedia ? 7 : 10),
                 border: '#00491E',
-            }), panelPosition(0, hasPreviewMedia ? 0.62 : 0), { x: 2.65, y: hasPreviewMedia ? 0.62 : 1.1 }, { panel: true, action: 'noop' });
+            }), panelPosition(0, hasImage ? 1.04 : (hasPreviewMedia ? 0.78 : 0)), { x: hasImage ? 1.75 : 1.95, y: hasImage ? 0.4 : (hasPreviewMedia ? 0.96 : 1.45) }, { panel: true, action: 'noop' });
             panelGroup.add(panel);
 
             const buttons = [];
@@ -1723,15 +1960,15 @@ class VirtualTourEngine {
                     imageTexture.colorSpace = THREE.SRGBColorSpace;
                     const image = imageTexture.image;
                     const aspect = image?.width && image?.height ? image.width / image.height : 16 / 9;
-                    const maxWidth = 2.35;
-                    const maxHeight = 0.82;
+                    const maxWidth = 2.85;
+                    const maxHeight = 1.28;
                     let imageWidth = maxWidth;
                     let imageHeight = imageWidth / aspect;
                     if (imageHeight > maxHeight) {
                         imageHeight = maxHeight;
                         imageWidth = imageHeight * aspect;
                     }
-                    const imagePlane = makePlane(imageTexture, panelPosition(0, -0.12), { x: imageWidth, y: imageHeight }, { panel: true, action: 'noop' });
+                    const imagePlane = makePlane(imageTexture, panelPosition(0, 0.03), { x: imageWidth, y: imageHeight }, { panel: true, action: 'noop' });
                     panelGroup.add(imagePlane);
                     clearGroup(statusGroup);
                 } catch (error) {
@@ -1745,7 +1982,7 @@ class VirtualTourEngine {
                         background: '#FFC600',
                         color: '#00491E',
                         font: 'bold 34px sans-serif',
-                    }), panelPosition(-0.95, -0.82), { x: 0.9, y: 0.25 }, {
+                    }), panelPosition(-0.95, -0.86), { x: 0.9, y: 0.25 }, {
                         panel: true,
                         action: 'info-image',
                         hotspot: hs,
@@ -1758,7 +1995,7 @@ class VirtualTourEngine {
                         background: '#FFC600',
                         color: '#00491E',
                         font: 'bold 34px sans-serif',
-                    }), panelPosition(0.95, -0.82), { x: 0.9, y: 0.25 }, {
+                    }), panelPosition(0.95, -0.86), { x: 0.9, y: 0.25 }, {
                         panel: true,
                         action: 'info-image',
                         hotspot: hs,
@@ -1803,7 +2040,7 @@ class VirtualTourEngine {
                 }), panelPosition(0, -1.05), { x: 2.15, y: 0.38 }, { panel: true, action: 'open-url', url: videoUrl }));
             }
 
-            const closeY = hasImage ? (buttons.length > 1 ? -1.14 : -0.95) : (hasVideo ? -1.5 : -1.05);
+            const closeY = hasImage ? (buttons.length > 1 ? -1.24 : -1.02) : (hasVideo ? -1.5 : -1.05);
             buttons.push(makePlane(makeTextTexture('Close', {
                 width: 360,
                 height: 100,
@@ -1875,6 +2112,117 @@ class VirtualTourEngine {
             panelGroup.add(request, full, close);
         };
 
+        const getViewPanelFrame = (distance = 3.15) => {
+            const up = new THREE.Vector3(0, 1, 0);
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            forward.y = 0;
+            if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
+            forward.normalize();
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+            right.y = 0;
+            if (right.lengthSq() < 0.001) right.crossVectors(forward, up);
+            right.normalize();
+            const center = camera.position.clone().add(forward.multiplyScalar(distance));
+            return {
+                position: (x = 0, y = 0) => center.clone().add(right.clone().multiplyScalar(x)).add(up.clone().multiplyScalar(y)),
+            };
+        };
+
+        const showTourMapPanel = (page = tourMapPage) => {
+            // Preserve the existing frame so paginating doesn't shift the panel
+            const isPaginating = tourMapFrame !== null;
+            closePanel(true, isPaginating);
+            this._pauseGazeDetection(Infinity);
+
+            const totalPages = Math.max(1, Math.ceil(this.waypoints.length / XR_MAP_PAGE_SIZE));
+            tourMapPage = ((page % totalPages) + totalPages) % totalPages;
+            const start = tourMapPage * XR_MAP_PAGE_SIZE;
+            const pageWaypoints = this.waypoints.slice(start, start + XR_MAP_PAGE_SIZE);
+            if (!tourMapFrame) tourMapFrame = getViewPanelFrame(3.05);
+            const frame = tourMapFrame;
+            const currentName = this.currentWaypoint?.name || 'Current scene';
+
+            const header = makePlane(makeTextTexture([
+                'Tour Map',
+                `Current: ${truncateXRText(currentName, 34)}`,
+                `Page ${tourMapPage + 1} of ${totalPages}`,
+            ], {
+                width: 760,
+                height: 210,
+                background: 'rgba(0,73,30,0.96)',
+                color: '#ffffff',
+                font: 'bold 32px sans-serif',
+                lineHeight: 50,
+                padding: 54,
+                wrap: true,
+                maxLines: 3,
+                border: '#FFC600',
+            }), frame.position(0, 0.96), { x: 2.25, y: 0.62 }, { panel: true, action: 'noop' });
+            panelGroup.add(header);
+
+            pageWaypoints.forEach((wp, index) => {
+                const isActive = wp.slug === this.currentWaypoint?.slug;
+                const row = makePlane(makeTextTexture([
+                    truncateXRText(wp.name || 'Scene', 36),
+                    wp.type_label || '',
+                ].filter(Boolean), {
+                    width: 760,
+                    height: 135,
+                    background: isActive ? '#FFC600' : 'rgba(17,24,39,0.9)',
+                    color: isActive ? '#00491E' : '#ffffff',
+                    font: 'bold 30px sans-serif',
+                    lineHeight: 40,
+                    padding: 48,
+                    wrap: true,
+                    maxLines: 2,
+                    border: isActive ? '#00491E' : 'rgba(255,255,255,0.16)',
+                }), frame.position(0, 0.36 - index * 0.36), { x: 2.25, y: 0.3 }, {
+                    panel: true,
+                    action: 'tour-map-scene',
+                    slug: wp.slug,
+                });
+                panelGroup.add(row);
+            });
+
+            if (totalPages > 1) {
+                const prev = makePlane(makeTextTexture('Prev Page', {
+                    width: 380,
+                    height: 100,
+                    background: '#374151',
+                    color: '#ffffff',
+                    font: 'bold 30px sans-serif',
+                }), frame.position(-0.72, -1.52), { x: 0.9, y: 0.25 }, {
+                    panel: true,
+                    action: 'tour-map-page',
+                    page: tourMapPage - 1,
+                });
+                const next = makePlane(makeTextTexture('Next Page', {
+                    width: 380,
+                    height: 100,
+                    background: '#FFC600',
+                    color: '#00491E',
+                    font: 'bold 30px sans-serif',
+                }), frame.position(0.72, -1.52), { x: 0.9, y: 0.25 }, {
+                    panel: true,
+                    action: 'tour-map-page',
+                    page: tourMapPage + 1,
+                });
+                panelGroup.add(prev, next);
+            }
+
+            const close = makePlane(makeTextTexture('Close', {
+                width: 320,
+                height: 95,
+                background: '#111827',
+                color: '#ffffff',
+                font: 'bold 30px sans-serif',
+            }), frame.position(0, totalPages > 1 ? -1.88 : -1.52), { x: 0.72, y: 0.23 }, {
+                panel: true,
+                action: 'close-panel',
+            });
+            panelGroup.add(close);
+        };
+
         const rebuildHotspots = () => {
             clearGroup(hotspotGroup);
             interactive.length = 0;
@@ -1885,7 +2233,7 @@ class VirtualTourEngine {
                 const color = HOTSPOT_COLORS[hs.action_type] || '#6b7280';
                 const sizeScale = { 1: 0.6, 2: 0.8, 3: 1.0, 4: 1.25, 5: 1.5 }[hs.size || 3] ?? 1.0;
                 const planeSize = 1.0 * sizeScale; // Increased from 0.62 for better VR visibility
-                const hotspot = makePlane(makeHotspotTexture(hs.icon || 'chevron-up', {
+                const hotspot = makePlane(makeHotspotTexture(hs.icon || (hs.action_type === 'previous-scene' ? 'chevron-left' : 'chevron-up'), {
                     background: color,
                 }), yawPitchToVector(hs.yaw, hs.pitch), { x: planeSize, y: planeSize }, { action: 'hotspot', hotspot: hs });
                 hotspotGroup.add(hotspot);
@@ -1904,13 +2252,35 @@ class VirtualTourEngine {
                 }), yawPitchToVector(yaw, pitch), XR_ROOM_SCALE, { action: 'room-info' });
                 hotspotGroup.add(roomInfo);
             }
+
+            const mapYaw = Number.isFinite(parseFloat(this.currentWaypoint?.default_yaw))
+                ? parseFloat(this.currentWaypoint.default_yaw) - 35
+                : -35;
+            const mapAnchor = makePlane(makeTextTexture('Tour Map', {
+                width: 700,
+                height: 210,
+                background: '#00491E',
+                color: '#FFC600',
+                border: '#FFC600',
+                font: 'bold 58px sans-serif',
+            }), yawPitchToVector(mapYaw, -28), { x: 2.15, y: 0.62 }, {
+                action: 'tour-map-toggle',
+            });
+            hotspotGroup.add(mapAnchor);
         };
 
-        const loadXRWaypoint = async (slug) => {
+        const loadXRWaypoint = async (slug, options = {}) => {
+            const { trackSceneHistory = true, restoreView = null } = options;
             const wp = this.waypoints.find(w => w.slug === slug);
             if (!wp?.panorama_image) return;
+            const sceneHistoryEntry = trackSceneHistory
+                ? this._createSceneHistoryEntry(wp.slug, {
+                    yaw: contentGroup.rotation.y - Math.PI,
+                })
+                : null;
+            const restoredView = this._normalizeSceneView(restoreView);
             this.currentWaypoint = wp;
-            contentGroup.rotation.y = THREE.MathUtils.degToRad(parseFloat(wp.default_yaw) || 0) + Math.PI;
+            contentGroup.rotation.y = (restoredView?.yaw ?? THREE.MathUtils.degToRad(parseFloat(wp.default_yaw) || 0)) + Math.PI;
             if (wp.is_room_related && wp.linked_room_type_id) {
                 await this._fetchRoomInfo(wp);
             } else {
@@ -1927,6 +2297,9 @@ class VirtualTourEngine {
                 material.needsUpdate = true;
                 texture = nextTexture;
                 clearGroup(statusGroup);
+                if (sceneHistoryEntry) {
+                    this._pushSceneHistoryEntry(sceneHistoryEntry);
+                }
                 rebuildHotspots();
             } catch (error) {
                 console.error('WebXR panorama load failed:', error);
@@ -1939,6 +2312,10 @@ class VirtualTourEngine {
             
             // Pause gaze detection when action is triggered
             this._pauseGazeDetection();
+
+            // Actions that leave WebXR: reservation, reserve-page, open-url,
+            // and external-link hotspots. Scene, map, panel, image, and
+            // bookmark actions stay inside the immersive session.
             
             const launchExternalFromXR = async (url) => {
                 const safeUrl = this._normalizeHttpUrl(url);
@@ -1969,6 +2346,17 @@ class VirtualTourEngine {
                 showRoomInfoPanel();
             } else if (data.action === 'close-panel') {
                 closePanel();
+            } else if (data.action === 'tour-map-toggle') {
+                if (panelGroup.children.some(child => child.userData?.action === 'tour-map-scene' || child.userData?.action === 'tour-map-page')) {
+                    closePanel();
+                } else {
+                    showTourMapPanel();
+                }
+            } else if (data.action === 'tour-map-page') {
+                showTourMapPanel(data.page || 0);
+            } else if (data.action === 'tour-map-scene' && data.slug) {
+                closePanel();
+                await loadXRWaypoint(data.slug);
             } else if (data.action === 'reservation') {
                 await this.exitVRToReservationModal();
             } else if (data.action === 'reserve-page') {
@@ -1983,6 +2371,17 @@ class VirtualTourEngine {
                     // Pause gaze detection temporarily for navigation
                     this._pauseGazeDetection(1000);
                     await loadXRWaypoint(hs.action_target);
+                } else if (hs?.action_type === 'previous-scene') {
+                    this._pauseGazeDetection(1000);
+                    const target = this._getPreviousSceneTarget();
+                    if (target?.slug) {
+                        await loadXRWaypoint(target.slug, {
+                            trackSceneHistory: false,
+                            restoreView: target.restoreView,
+                        });
+                    } else {
+                        this._showToast('No previous scene available.', 'info');
+                    }
                 } else if (hs?.action_type === 'info') {
                     await showInfoPanel(hs);
                 } else if (hs?.action_type === 'external-link' && hs.action_target) {
@@ -2008,6 +2407,18 @@ class VirtualTourEngine {
             raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
             raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
             return raycaster.intersectObjects(interactive, false)[0] || null;
+        };
+
+        const getGazeHit = () => {
+            const viewerPose = getXRViewerPose();
+            raycaster.ray.origin.copy(viewerPose.origin);
+            raycaster.ray.direction.copy(viewerPose.direction);
+            return raycaster.intersectObjects(interactive, false)[0] || null;
+        };
+
+        const selectFromGaze = () => {
+            const hit = getGazeHit();
+            if (hit?.object) handleXRAction(hit.object);
         };
 
         const setHoveredObject = (next) => {
@@ -2042,7 +2453,10 @@ class VirtualTourEngine {
                 }
                 if (!bestHit && hit) bestHit = hit;
             });
-            setHoveredObject(bestHit?.object || null);
+            // Only override hover when a controller positively hits something.
+            // When no controller is active (e.g. phone VR), let the gaze system
+            // manage hover state to prevent per-frame flicker.
+            if (bestHit?.object) setHoveredObject(bestHit.object);
         };
 
         const makeController = (index) => {
@@ -2060,6 +2474,7 @@ class VirtualTourEngine {
             return controller;
         };
         const controllers = [makeController(0), makeController(1)];
+        renderer.domElement.addEventListener('pointerup', selectFromGaze);
 
         const onResize = () => {
             camera.aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -2075,6 +2490,7 @@ class VirtualTourEngine {
             
             renderer.setAnimationLoop(null);
             window.removeEventListener('resize', onResize);
+            renderer.domElement.removeEventListener('pointerup', selectFromGaze);
             closePanel();
             clearGroup(hotspotGroup);
             clearGroup(statusGroup);
@@ -2163,12 +2579,47 @@ class VirtualTourEngine {
         };
 
         const checkVRGaze = () => {
-            if (!this._gazeCheckEnabled || this._gazeCooldown) {
+            if (!this._gazeCheckEnabled) {
                 setHoveredObject(null);
                 this._syncGazeTarget(null, { vr: true });
                 return;
             }
-            
+            // Get the midpoint gaze direction for the XR viewer, not a single eye.
+            const viewerPose = getXRViewerPose();
+            const viewerDirection = viewerPose.direction;
+            raycaster.ray.origin.copy(viewerPose.origin);
+            raycaster.ray.direction.copy(viewerDirection);
+
+            const uiObjects = interactive.filter(object => XR_GAZE_UI_ACTIONS.has(object.userData?.action));
+            const uiHit = uiObjects.length ? raycaster.intersectObjects(uiObjects, false)[0] : null;
+            if (uiHit?.object) {
+                const data = uiHit.object.userData || {};
+                const wp = data.slug ? this.waypoints.find(waypoint => waypoint.slug === data.slug) : null;
+                const targetId = data.slug || String(data.page ?? '');
+                const uiGazeLabels = {
+                    'tour-map-toggle': 'Tour Map',
+                    'tour-map-page': 'Change page',
+                    'tour-map-scene': wp?.name || 'Tour scene',
+                    'close-panel': 'Close',
+                    'info-image': 'Image control',
+                    'open-url': 'Open link',
+                    'reservation': 'Reservation',
+                    'reserve-page': 'Reservation',
+                    'room-info': 'Room Info',
+                };
+                const target = {
+                    id: `xr-ui-${data.action}-${targetId}`,
+                    title: uiGazeLabels[data.action] || '',
+                    action_type: data.action,
+                };
+                setHoveredObject(uiHit.object);
+                this._syncGazeTarget(target, {
+                    vr: true,
+                    suppressTooltip: true,
+                });
+                return;
+            }
+
             const hotspots = this.currentWaypoint?.hotspots;
             if (!hotspots?.length) {
                 setHoveredObject(null);
@@ -2182,10 +2633,6 @@ class VirtualTourEngine {
                 this._syncGazeTarget(null, { vr: true });
                 return;
             }
-            
-            // Get the midpoint gaze direction for the XR viewer, not a single eye.
-            const viewerPose = getXRViewerPose();
-            const viewerDirection = viewerPose.direction;
             
             // Find the hotspot closest to camera's look direction
             const GAZE_THRESHOLD = 0.15; // ~8.6 degrees = cos(8.6°) ≈ 0.988
@@ -2209,6 +2656,13 @@ class VirtualTourEngine {
                 }
             }
             
+            // Hotspot gaze/dwell is skipped while a panel is open (cooldown active)
+            if (this._gazeCooldown) {
+                setHoveredObject(null);
+                this._syncGazeTarget(null, { vr: true });
+                return;
+            }
+
             // Use _syncGazeTarget to handle auto-activation logic
             setHoveredObject(closestHotspot ? xrHotspotObjects.get(closestHotspot.id) || null : null);
             this._syncGazeTarget(closestHotspot, { vr: true });
@@ -2638,15 +3092,18 @@ class VirtualTourEngine {
             const safeTypeLabel = this._escapeHtml(wp.type_label || '');
             const btn = document.createElement('button');
             btn.dataset.slug = wp.slug;
-            btn.className    = 'minimap-waypoint-btn w-full px-2 py-1.5 rounded text-left text-sm';
+            btn.className    = 'minimap-waypoint-btn w-full px-3 py-3 rounded-xl text-left text-sm';
             btn.setAttribute('role', 'menuitem');
             btn.setAttribute('aria-label', `Go to ${wp.name}`);
-            btn.innerHTML    = `<div style="display:flex;align-items:center;gap:6px">`
-                             + `<span class="wp-here-dot" style="display:none;width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0" aria-hidden="true"></span>`
-                             + `<div><div class="font-medium text-gray-800">${safeName}</div>`
-                             + (wp.type_label ? `<div class="text-xs text-gray-500">${safeTypeLabel}</div>` : '')
+            btn.innerHTML    = `<div style="display:flex;align-items:flex-start;gap:10px">`
+                             + `<span class="wp-here-dot" style="display:none;width:9px;height:9px;border-radius:50%;background:#22c55e;flex-shrink:0;margin-top:5px;box-shadow:0 0 0 4px rgba(34,197,94,0.16)" aria-hidden="true"></span>`
+                             + `<div style="min-width:0;flex:1"><div class="minimap-waypoint-title" style="font-weight:600;color:#f9fafb;line-height:1.25">${safeName}</div>`
+                             + (wp.type_label ? `<div class="minimap-waypoint-type" style="font-size:12px;color:rgba(229,231,235,0.68);margin-top:3px;line-height:1.2">${safeTypeLabel}</div>` : '')
                              + `</div></div>`;
-            btn.addEventListener('click', () => this.navigateToWaypoint(wp.slug));
+            btn.addEventListener('click', () => {
+                this.navigateToWaypoint(wp.slug);
+                window.closeMobileTourMap?.();
+            });
             list.appendChild(btn);
         });
     }
@@ -2656,8 +3113,7 @@ class VirtualTourEngine {
         if (!list) return;
         list.querySelectorAll('.minimap-waypoint-btn').forEach(el => {
             const isActive = el.dataset.slug === slug;
-            el.classList.toggle('bg-blue-500', isActive);
-            el.classList.toggle('text-white',  isActive);
+            el.classList.toggle('is-active', isActive);
             const dot = el.querySelector('.wp-here-dot');
             if (dot) dot.style.display = isActive ? 'block' : 'none';
             if (isActive) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -2665,9 +3121,14 @@ class VirtualTourEngine {
     }
 
     updateProgressIndicator() {
-        if (!this.progressIndicator || !this.currentWaypoint) return;
-        const i = this.waypoints.findIndex(w => w.slug === this.currentWaypoint.slug);
-        this.progressIndicator.textContent = `Stop ${i + 1} of ${this.waypoints.length}`;
+        if (!this.currentWaypoint) return;
+        if (this.progressIndicator) {
+            const i = this.waypoints.findIndex(w => w.slug === this.currentWaypoint.slug);
+            this.progressIndicator.textContent = `Stop ${i + 1} of ${this.waypoints.length}`;
+        }
+        if (this.navSceneName) {
+            this.navSceneName.textContent = this.currentWaypoint.name || 'Current scene';
+        }
     }
 
     // ── Loading ───────────────────────────────────────────────────────────────
@@ -2757,6 +3218,10 @@ class VirtualTourEngine {
                     _navCooldown = true;
                     setTimeout(() => _navCooldown = false, 600);
                     const forward = k === 'ArrowUp' || k === 'w' || k === 'W';
+                    if (!forward && this._roomInfoCardOpen) {
+                        this._closeInSceneCard();
+                        return;
+                    }
                     this._navigateToNearest(forward);
                 }
             }
@@ -2820,10 +3285,19 @@ class VirtualTourEngine {
      * backward (opposite) direction relative to the current view yaw.
      */
     _navigateToNearest(forward) {
-        const hotspots = this.currentWaypoint?.hotspots;
-        if (!hotspots?.length || !this.viewer) return;
+        if (!this.viewer || !this.currentWaypoint) return;
 
-        const targets = hotspots.filter(h => h.is_active !== false && h.action_type === 'navigate' && h.action_target);
+        const targets = (this.currentWaypoint.hotspots || []).filter(h => {
+            if (h.is_active === false) return false;
+            if (h.action_type === 'navigate') return Boolean(h.action_target);
+            return h.action_type === 'previous-scene';
+        });
+
+        if (forward) {
+            const roomInfoTarget = this._getRoomInfoKeyboardTarget();
+            if (roomInfoTarget) targets.push(roomInfoTarget);
+        }
+
         if (!targets.length) return;
 
         const currentYawRad = this.viewer.getPosition().yaw;
@@ -2868,7 +3342,38 @@ class VirtualTourEngine {
             if (dist < bestDist) { bestDist = dist; best = h; }
         }
 
-        if (best) this.navigateToWaypoint(best.action_target);
+        if (!best) return;
+
+        if (best.action_type === 'previous-scene') {
+            this.navigateToPreviousScene();
+            return;
+        }
+
+        if (best.action_type === 'room-info') {
+            if (this._roomInfoCardOpen) {
+                this._closeInSceneCard();
+            } else {
+                this._openInSceneCard();
+            }
+            return;
+        }
+
+        this.navigateToWaypoint(best.action_target);
+    }
+
+    _getRoomInfoKeyboardTarget() {
+        const wp = this.currentWaypoint;
+        if (!wp?.is_room_related || !wp.linked_room_type_id || !this.currentRoomType) {
+            return null;
+        }
+
+        return {
+            id: 'room-info-marker',
+            title: 'Room Info',
+            yaw: wp.room_info_yaw ?? wp.default_yaw ?? 0,
+            pitch: wp.room_info_pitch ?? ((wp.default_pitch ?? 0) + 15),
+            action_type: 'room-info',
+        };
     }
 
     // ── Audio playback ────────────────────────────────────────────────────────
@@ -2917,7 +3422,7 @@ class VirtualTourEngine {
         this._showUI();
         this._uiManuallyHidden = false;  // Clear manual override
         this._syncToggleUIBtn(false);
-        clearTimeout(this._uiIdleTimer);  // Prevent hiding while Auto Tour runs
+        this._resetUIIdleTimer();
 
         this._runAutoTourStep();
         const profileLabel = AUTO_TOUR_PROFILES[this._autoTourProfile].label;
@@ -2930,7 +3435,7 @@ class VirtualTourEngine {
         this._setAutoTourHud(false);
         this._syncAutoTourBtn(false);
 
-        // Resume auto-hide behavior
+        // Keep controls visible after Auto Tour; hiding is now only manual.
         this._resetUIIdleTimer();
     }
 
@@ -3050,11 +3555,12 @@ class VirtualTourEngine {
 
         const start = performance.now();
         const base = this.viewer.getPosition();
-        const baseYaw = base?.yaw || 0;
+        const focalYaw = base?.yaw || 0;
         const basePitch = base?.pitch || 0;
-        const yawAmplitude = 40 * Math.PI / 180;  // Wider horizontal sweep (was 24°)
-        const pitchAmplitude = 4 * Math.PI / 180;  // More vertical motion (was 2.4°)
-        const yawSway = 5 * Math.PI / 180;  // More horizontal sway (was 3.2°)
+        const yawSweep = 184 * Math.PI / 180;
+        const startYaw = focalYaw - (yawSweep / 2);
+        const pitchAmplitude = 5 * Math.PI / 180;
+        const pitchLift = 1.5 * Math.PI / 180;
 
         const tick = (now) => {
             if (!this._autoTourActive || !this.viewer) return;
@@ -3062,8 +3568,10 @@ class VirtualTourEngine {
             const elapsed = now - start;
             const progress = Math.min(1, elapsed / this._autoTourPanMs);
             const eased = 0.5 - 0.5 * Math.cos(progress * Math.PI);
-            const yaw = baseYaw + (eased * yawAmplitude) + (Math.sin(progress * Math.PI * 2) * yawSway);
-            const pitch = basePitch + Math.sin(progress * Math.PI * 2) * pitchAmplitude;
+            const yaw = startYaw + (eased * yawSweep);
+            const pitch = basePitch
+                + Math.sin(progress * Math.PI) * pitchLift
+                + Math.sin(progress * Math.PI * 2) * pitchAmplitude;
             this.viewer.rotate({ yaw, pitch });
 
             if (progress < 1) {
