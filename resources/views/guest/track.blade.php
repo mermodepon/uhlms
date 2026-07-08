@@ -67,8 +67,8 @@
 
                 $statusGuidance = [
                     'pending' => 'Your request is waiting for staff review. Please watch your email for approval or follow-up instructions.',
-                    'approved' => 'Your reservation request has been approved. You may now use the payment link sent by staff or shown below, if available.',
-                    'confirmed' => 'Your reservation has moved into confirmed status. Please keep monitoring your email for payment reminders or arrival instructions.',
+                    'approved' => 'Your reservation request has been approved. Staff will reserve room space before online payment becomes available.',
+                    'confirmed' => 'Room space has been reserved for your stay. Please keep monitoring your email for payment reminders or arrival instructions.',
                     'declined' => 'This reservation request was declined. Please contact the homestay staff if you need clarification or would like to submit a new request.',
                     'cancelled' => 'This reservation has been cancelled. Contact staff if you believe this was made in error.',
                     'checked_in' => 'You are currently checked in. If you need help during your stay, please contact the homestay staff.',
@@ -77,6 +77,7 @@
 
                 $summaryFields = [
                     'room_type' => $reservation->preferredRoomType?->name,
+                    'requested_rooms' => $reservation->requested_room_summary,
                     'check_in' => $reservation->check_in_date->format('M d, Y'),
                     'check_out' => $reservation->check_out_date->format('M d, Y'),
                 ];
@@ -181,6 +182,10 @@
                         <div class="flex justify-between">
                             <dt class="text-gray-500">Room Type</dt>
                             <dd class="font-medium">{{ $summaryFields['room_type'] ?? 'To be assigned' }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-gray-500">Requested Rooms</dt>
+                            <dd class="font-medium text-right">{{ $summaryFields['requested_rooms'] ?? 'To be assigned' }}</dd>
                         </div>
                         <div class="flex justify-between">
                             <dt class="text-gray-500">Check-in</dt>

@@ -16,7 +16,7 @@ class ReservationWorkflowService
     /**
      * Approve a pending reservation and optionally place advance room holds.
      *
-     * @param  array{admin_notes?: ?string, assigned_room_ids?: array<int, int>}  $data
+     * @param  array{admin_notes?: ?string, assigned_room_ids?: array<int, int>, assigned_room_ids_by_type?: array<int|string, array<int, int>>}  $data
      * @return array{reservation: Reservation, room_count: int, hold_error: ?string}
      */
     public function approve(Reservation $reservation, array $data = []): array
@@ -25,19 +25,18 @@ class ReservationWorkflowService
             throw new \RuntimeException('Only pending reservations can be approved.');
         }
 
-        $reservation->issueGuestPaymentLink(rotateToken: true);
-
         $reservation->update([
             'status' => 'approved',
             'approved_at' => now(),
             'admin_notes' => $data['admin_notes'] ?? $reservation->admin_notes,
-            'payment_link_token' => $reservation->payment_link_token,
-            'payment_link_expires_at' => $reservation->payment_link_expires_at,
+            'payment_link_token' => null,
+            'payment_link_expires_at' => null,
             'reviewed_by' => auth()->id(),
             'reviewed_at' => now(),
         ]);
 
-        $roomIds = array_values(array_unique(array_map('intval', $data['assigned_room_ids'] ?? [])));
+        $roomIdsByType = $this->normalizeAssignedRoomsByType($reservation, $data);
+        $roomIds = collect($roomIdsByType)->flatten()->filter()->values()->all();
 
         if (empty($roomIds)) {
             ReservationLog::record(
@@ -54,7 +53,16 @@ class ReservationWorkflowService
         }
 
         try {
-            $result = app(RoomHoldService::class)->createAdvanceHolds($reservation, $roomIds);
+            $result = count($roomIdsByType) > 1 || ! empty($data['assigned_room_ids_by_type'])
+                ? app(RoomHoldService::class)->createAdvanceHoldsByRoomType($reservation, $roomIdsByType)
+                : app(RoomHoldService::class)->createAdvanceHolds($reservation, $roomIds);
+
+            $reservation->refresh();
+            $reservation->issueGuestPaymentLink(rotateToken: true);
+            $reservation->update([
+                'payment_link_token' => $reservation->payment_link_token,
+                'payment_link_expires_at' => $reservation->payment_link_expires_at,
+            ]);
 
             $roomNumbers = Room::query()
                 ->whereIn('id', $roomIds)
@@ -84,6 +92,32 @@ class ReservationWorkflowService
                 'hold_error' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * @return array<int, array<int, int>>
+     */
+    protected function normalizeAssignedRoomsByType(Reservation $reservation, array $data): array
+    {
+        $grouped = [];
+
+        foreach ((array) ($data['assigned_room_ids_by_type'] ?? []) as $roomTypeId => $roomIds) {
+            $roomIds = array_values(array_unique(array_filter(array_map('intval', (array) $roomIds))));
+            if (! empty($roomIds)) {
+                $grouped[(int) $roomTypeId] = $roomIds;
+            }
+        }
+
+        if (! empty($grouped)) {
+            return $grouped;
+        }
+
+        $roomIds = array_values(array_unique(array_filter(array_map('intval', (array) ($data['assigned_room_ids'] ?? [])))));
+        if (empty($roomIds)) {
+            return [];
+        }
+
+        return [(int) $reservation->preferred_room_type_id => $roomIds];
     }
 
     public function decline(Reservation $reservation, ?string $reason = null): Reservation
@@ -146,6 +180,16 @@ class ReservationWorkflowService
 
     public function markConfirmedFromOnlinePayment(Reservation $reservation): Reservation
     {
+        if ($reservation->status === 'approved' && ! $reservation->hasActiveAdvanceHold()) {
+            ReservationLog::record(
+                $reservation,
+                'payment_received_without_room_hold',
+                'Online payment was received, but reservation was not confirmed because no room hold exists.'
+            );
+
+            return $reservation->fresh();
+        }
+
         $currentStatus = $reservation->status;
         $newStatus = match ($currentStatus) {
             'approved' => 'confirmed',
@@ -168,14 +212,14 @@ class ReservationWorkflowService
     }
 
     /**
-     * Refresh the guest payment link for an approved or confirmed reservation.
+     * Refresh the guest payment link for a reservation with protected inventory.
      *
      * @return array{reservation: Reservation, emailed: bool}
      */
     public function refreshGuestPaymentLink(Reservation $reservation, bool $emailGuest = false): array
     {
-        if (! in_array($reservation->status, ['approved', 'confirmed'], true)) {
-            throw new \RuntimeException('Only approved or confirmed reservations can receive refreshed payment links.');
+        if (! $reservation->canAcceptGuestPayment()) {
+            throw new \RuntimeException('Only reservations with active room holds can receive refreshed payment links.');
         }
 
         $reservation->issueGuestPaymentLink(rotateToken: true);

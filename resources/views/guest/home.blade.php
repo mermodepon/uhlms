@@ -8,8 +8,9 @@
         $guestSite = \App\Support\GuestSiteSettings::all();
         $welcomeMessage = $guestSite['guest_hero_message'];
         $siteTitle = $guestSite['guest_hero_headline'];
-        $defaultCheckIn = request('check_in', date('Y-m-d'));
-        $defaultCheckOut = request('check_out', date('Y-m-d', strtotime('+1 day')));
+        $guestDateDefaults = \App\Support\GuestDatePolicy::defaults(request('check_in'), request('check_out'));
+        $defaultCheckIn = $guestDateDefaults['check_in'];
+        $defaultCheckOut = $guestDateDefaults['check_out'];
         $heroBullets = array_filter($guestSite['guest_hero_bullets'] ?? []);
         $heroBackgroundUrl = \App\Support\GuestSiteSettings::heroBackgroundUrl();
         $heroOverlayOpacity = \App\Support\GuestSiteSettings::heroBackgroundOverlayOpacity();
@@ -244,10 +245,10 @@
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6">
-                <div class="bg-white rounded-2xl shadow-md border border-[#00491E]/10 p-6 md:p-8">
+                <div class="bg-white rounded-xl shadow-sm border border-[#00491E]/10 p-6 md:p-8">
                     <div class="flex items-center gap-3 mb-5 md:mb-6">
-                        <div class="w-12 h-12 rounded-2xl bg-[#00491E] flex items-center justify-center">
-                            <svg class="w-6 h-6 text-[#FFC600]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="w-10 h-10 rounded-full bg-[#00491E]/10 text-[#00491E] flex items-center justify-center">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                         </div>
@@ -257,11 +258,11 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
                         @foreach($stayInclusions as $item)
-                            <div class="rounded-xl bg-[#00491E]/5 border border-[#00491E]/10 px-4 py-3 text-sm text-[#00491E] font-medium flex items-start gap-3">
-                                <span class="mt-0.5 text-[#02681E]">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div class="border-b border-[#00491E]/10 py-3 text-sm text-[#00491E] font-medium flex items-start gap-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0">
+                                <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#00491E]/8 text-[#02681E]">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                                     </svg>
                                 </span>
@@ -281,10 +282,10 @@
                     </div>
                 </div>
 
-                <div class="bg-[#00491E] rounded-2xl shadow-md border border-[#02681E] p-6 md:p-8 text-white">
+                <div class="bg-[#00491E] rounded-xl shadow-sm border border-[#02681E]/80 p-6 md:p-8 text-white">
                     <div class="flex items-center gap-3 mb-5 md:mb-6">
-                        <div class="w-12 h-12 rounded-2xl bg-[#FFC600] text-[#00491E] flex items-center justify-center">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="w-10 h-10 rounded-full bg-[#FFC600]/15 text-[#FFC600] flex items-center justify-center">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6v6l4 2m5-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                         </div>
@@ -294,11 +295,11 @@
                         </div>
                     </div>
 
-                    <div class="space-y-3">
+                    <div class="divide-y divide-white/12">
                         @foreach($optionalAddOns as $item)
-                            <div class="rounded-xl bg-white/10 border border-white/10 px-4 py-3 text-sm font-medium flex items-start gap-3">
-                                <span class="mt-0.5 text-[#FFC600]">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div class="py-3 text-sm font-medium flex items-start gap-3">
+                                <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#FFC600]/12 text-[#FFC600]">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.5v15m7.5-7.5h-15"/>
                                     </svg>
                                 </span>
@@ -308,7 +309,7 @@
                                         <span class="block mt-1 text-xs font-normal text-white/70">{{ $item->description }}</span>
                                     @endif
                                 </span>
-                                <span class="shrink-0 rounded-full bg-[#FFC600] px-2.5 py-1 text-xs font-bold text-[#00491E]">
+                                <span class="shrink-0 text-sm font-bold text-[#FFC600]">
                                     {{ $item->formatted_price }}
                                 </span>
                             </div>
@@ -323,7 +324,7 @@
             </div>
 
             <div class="mt-6 text-center">
-                <p class="inline-flex items-center justify-center rounded-full bg-white border border-[#00491E]/10 px-5 py-2 text-sm text-gray-600 shadow-sm">
+                <p class="mx-auto max-w-4xl border-t border-[#00491E]/10 pt-4 text-sm text-gray-600">
                     Availability may vary by room type, season, and reservation arrangement. Room detail pages remain the best source for exact inclusions.
                 </p>
             </div>
@@ -400,23 +401,40 @@
         const checkOutInput = document.getElementById('check_out');
         
         if (!checkInInput || !checkOutInput) return;
+
+        const toDateString = (date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+
+        const addDays = (dateString, days) => {
+            const [year, month, day] = dateString.split('-').map(Number);
+            const date = new Date(year, month - 1, day);
+            date.setDate(date.getDate() + days);
+            return toDateString(date);
+        };
+
+        const syncCheckoutMinimum = () => {
+            if (!checkInInput.value) return;
+
+            const minCheckOut = addDays(checkInInput.value, 1);
+            checkOutInput.setAttribute('min', minCheckOut);
+
+            if (!checkOutInput.value || checkOutInput.value <= checkInInput.value) {
+                checkOutInput.value = minCheckOut;
+            }
+        };
+
+        checkInInput.min = checkInInput.min || toDateString(new Date());
+        if (!checkInInput.value || checkInInput.value < checkInInput.min) {
+            checkInInput.value = checkInInput.min;
+        }
+        syncCheckoutMinimum();
         
         // Update check-out minimum when check-in changes
-        checkInInput.addEventListener('change', function() {
-            if (this.value) {
-                const checkInDate = new Date(this.value);
-                const nextDay = new Date(checkInDate);
-                nextDay.setDate(nextDay.getDate() + 1);
-                
-                const minCheckOut = nextDay.toISOString().split('T')[0];
-                checkOutInput.setAttribute('min', minCheckOut);
-                
-                // Reset check-out if it's before new minimum
-                if (checkOutInput.value && checkOutInput.value <= this.value) {
-                    checkOutInput.value = minCheckOut;
-                }
-            }
-        });
+        checkInInput.addEventListener('change', syncCheckoutMinimum);
         
         // Validate on form submit
         const bookingForm = checkInInput.closest('form');

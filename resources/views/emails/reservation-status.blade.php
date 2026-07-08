@@ -117,6 +117,7 @@
             @if($reservation->preferredRoomType)
                 <div class="detail-row"><span class="label">Room Type:</span> {{ $reservation->preferredRoomType->name }}</div>
             @endif
+            <div class="detail-row"><span class="label">Requested Rooms:</span> {{ $reservation->requested_room_summary }}</div>
         </div>
 
         <div class="button-wrap">

@@ -239,6 +239,43 @@ class CheckInServiceTest extends TestCase
         $this->assertEquals(1, $result['checked_in_count']);
     }
 
+    public function test_complete_onsite_check_in_rejects_incomplete_companion_guest_rows(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+
+        $roomType = $this->createRoomType('public', 'per_person');
+        $room = $this->createRoom($roomType, 'available', 4);
+        $reservation = $this->createReservation($roomType);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Complete companion guest details for room entry #1, guest #1.');
+
+        $this->service->completeOnsiteCheckIn($reservation, [
+            'guest_first_name' => 'John',
+            'guest_last_name' => 'Doe',
+            'guest_gender' => 'Male',
+            'payment_mode' => 'cash',
+            'payment_amount' => 1000,
+            'payment_or_number' => 'OR-1001',
+            'or_date' => now()->toDateString(),
+            'reservation_rooms' => [
+                [
+                    'room_mode' => 'dorm',
+                    'room_id' => $room->id,
+                    'includes_primary_guest' => true,
+                    'guests' => [
+                        [
+                            'first_name' => null,
+                            'last_name' => null,
+                            'gender' => null,
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+    }
+
     public function test_complete_onsite_check_in_rejects_no_primary_guest_room(): void
     {
         $user = $this->createUser();

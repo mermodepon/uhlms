@@ -719,6 +719,11 @@ class ReservationResource extends Resource
                                         Infolists\Components\TextEntry::make('preferredRoomType.name')
                                             ->label('Preferred Room Type')
                                             ->placeholder('-'),
+                                        Infolists\Components\TextEntry::make('requested_room_summary')
+                                            ->label('Requested Rooms')
+                                            ->getStateUsing(fn (Reservation $record) => $record->requested_room_summary)
+                                            ->columnSpanFull()
+                                            ->placeholder('-'),
                                         Infolists\Components\TextEntry::make('check_in_date')
                                             ->label('Check In Date')
                                             ->date(),
@@ -754,7 +759,7 @@ class ReservationResource extends Resource
                                     ])->columns(2),
 
                                 Infolists\Components\Section::make('Online Payment Link')
-                                    ->description('Secure payment link for approved or confirmed reservations via GCash, Maya, or Card.')
+                                    ->description('Secure payment link for room-held reservations via GCash, Maya, or Card.')
                                     ->visible(fn (Reservation $record) => Setting::isOnlinePaymentsEnabled() &&
                                         $record->payment_link_token &&
                                         $record->canAcceptGuestPayment()
@@ -922,6 +927,12 @@ class ReservationResource extends Resource
                         });
                     })
                     ->wrap(),
+                Tables\Columns\TextColumn::make('requested_room_summary')
+                    ->label('Requested')
+                    ->getStateUsing(fn (Reservation $record) => $record->requested_room_summary)
+                    ->wrap()
+                    ->toggleable()
+                    ->width('190px'),
                 Tables\Columns\TextColumn::make('check_in_date')
                     ->date()
                     ->searchable()
@@ -1002,6 +1013,7 @@ class ReservationResource extends Resource
                 'payments',
                 'billingGuest',
                 'roomHolds.room', // For room display info
+                'roomRequests.roomType',
             ]))
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
@@ -1080,7 +1092,7 @@ class ReservationResource extends Resource
                         ->modalDescription('Approve this reservation. You may optionally assign specific rooms now to hold them for the guest\'s arrival.')
                         ->modalWidth('4xl')
                         ->visible(fn (Reservation $record) => $record->status === 'pending')
-                        ->form([
+                        ->form(fn (Reservation $record) => [
                             Forms\Components\Section::make('Approval Details')
                                 ->schema([
                                     Forms\Components\Textarea::make('admin_notes')
@@ -1090,39 +1102,8 @@ class ReservationResource extends Resource
 
                             Forms\Components\Section::make('Room Assignment (Optional)')
                                 ->description('Assigning rooms now will hold them exclusively for this reservation. If you skip this, rooms can be assigned later during check-in.')
-                                ->schema([
-                                    Forms\Components\Select::make('assigned_room_ids')
-                                        ->label('Select Rooms')
-                                        ->multiple()
-                                        ->searchable()
-                                        ->preload()
-                                        ->options(function (callable $get, Reservation $record) {
-                                            $checkIn = $record->check_in_date ? Carbon::parse($record->check_in_date) : null;
-                                            $checkOut = $record->check_out_date ? Carbon::parse($record->check_out_date) : null;
-
-                                            if (! $checkIn || ! $checkOut) {
-                                                return [];
-                                            }
-
-                                            $roomType = $record->preferredRoomType;
-                                            if (! $roomType) {
-                                                return [];
-                                            }
-
-                                            $availableRooms = app(RoomHoldService::class)
-                                                ->getAvailableRooms($roomType, $checkIn, $checkOut);
-
-                                            if ($availableRooms->isEmpty()) {
-                                                return ['' => '(No available rooms for this date range)'];
-                                            }
-
-                                            return $availableRooms->pluck('room_number', 'id')->toArray();
-                                        })
-                                        ->helperText(fn (Reservation $record) => $record->check_in_date && $record->check_out_date
-                                            ? 'Showing rooms available from '.$record->check_in_date->format('M d, Y').' to '.$record->check_out_date->format('M d, Y')
-                                            : 'Check-in and check-out dates are required to filter available rooms.'
-                                        ),
-                                ])->collapsible(),
+                                ->schema(self::makeApprovalRoomAssignmentSchema($record))
+                                ->collapsible(),
                         ])
                         ->action(function (Reservation $record, array $data) {
                             $result = app(ReservationWorkflowService::class)->approve($record, $data);
@@ -1311,10 +1292,10 @@ class ReservationResource extends Resource
                         ->icon('heroicon-o-arrow-path')
                         ->color('warning')
                         ->visible(fn (Reservation $record) => Setting::isOnlinePaymentsEnabled() &&
-                            in_array($record->status, ['approved', 'confirmed'], true)
+                            $record->canAcceptGuestPayment()
                         )
                         ->modalHeading('Refresh payment link')
-                        ->modalDescription('Generate a fresh payment link for this reservation and optionally email it to the guest.')
+                        ->modalDescription('Generate a fresh payment link for this room-held reservation and optionally email it to the guest.')
                         ->form(fn (Reservation $record) => [
                             Forms\Components\Placeholder::make('current_status')
                                 ->label('Reservation Status')
@@ -1364,7 +1345,7 @@ class ReservationResource extends Resource
                         ->color('info')
                         ->visible(fn (Reservation $record) => Setting::isOnlinePaymentsEnabled() &&
                             $record->isPaymentLinkValid() &&
-                            in_array($record->status, ['approved', 'confirmed'])
+                            $record->canAcceptGuestPayment()
                         )
                         ->modalHeading('Payment Link & QR Code')
                         ->modalDescription('Share this payment link or show the QR code to the guest for easy payment.')
@@ -1650,6 +1631,53 @@ class ReservationResource extends Resource
         ];
     }
 
+    protected static function makeApprovalRoomAssignmentSchema(Reservation $record): array
+    {
+        $checkIn = $record->check_in_date ? Carbon::parse($record->check_in_date) : null;
+        $checkOut = $record->check_out_date ? Carbon::parse($record->check_out_date) : null;
+
+        if (! $checkIn || ! $checkOut) {
+            return [
+                Forms\Components\Placeholder::make('room_assignment_dates_missing')
+                    ->label('Available Rooms')
+                    ->content('Check-in and check-out dates are required to filter available rooms.'),
+            ];
+        }
+
+        return $record->getEffectiveRoomRequests()
+            ->map(function ($requestLine) use ($checkIn, $checkOut) {
+                $roomType = $requestLine->roomType;
+
+                if (! $roomType) {
+                    return null;
+                }
+
+                $availableRooms = app(RoomHoldService::class)
+                    ->getAvailableRooms($roomType, $checkIn, $checkOut);
+                $requestedRooms = max(1, (int) $requestLine->requested_room_count);
+                $occupants = max(1, (int) $requestLine->occupant_count);
+                $options = $availableRooms
+                    ->mapWithKeys(fn (Room $room) => [
+                        $room->id => $room->room_number.($room->floor?->name ? ' - '.$room->floor->name : ''),
+                    ])
+                    ->all();
+
+                return Forms\Components\Select::make("assigned_room_ids_by_type.{$roomType->id}")
+                    ->label("{$roomType->name} ({$requestedRooms} room(s), {$occupants} guest(s))")
+                    ->multiple()
+                    ->searchable()
+                    ->preload()
+                    ->options($options)
+                    ->helperText($availableRooms->isEmpty()
+                        ? 'No available rooms for this date range.'
+                        : 'Showing rooms available from '.$checkIn->format('M d, Y').' to '.$checkOut->format('M d, Y')
+                    );
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
     /**
      * Compute total add-ons cost from [{code, qty}] items.
      * Also handles legacy format (plain array of code strings) for backward compatibility.
@@ -1759,9 +1787,7 @@ class ReservationResource extends Resource
 
             $room = $roomsById->get($roomId);
             $roomType = $room->roomType;
-            $companionCount = collect($entry['guests'] ?? [])
-                ->filter(fn ($guest) => filled($guest['first_name'] ?? null) || filled($guest['last_name'] ?? null))
-                ->count();
+            $companionCount = count($entry['guests'] ?? []);
             $guestCount = $companionCount + ((bool) ($entry['includes_primary_guest'] ?? false) ? 1 : 0);
             $rate = (float) $roomType->base_rate;
             $roomMode = $entry['room_mode'] ?? ($roomType->isPrivate() ? 'private' : 'dorm');

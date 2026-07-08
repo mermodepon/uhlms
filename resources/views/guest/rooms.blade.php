@@ -3,6 +3,16 @@
 @section('title', 'Room Catalog')
 
 @section('content')
+    @php
+        $guestDateDefaults = \App\Support\GuestDatePolicy::defaults(
+            $checkIn?->format('Y-m-d'),
+            $checkOut?->format('Y-m-d')
+        );
+        $defaultCheckIn = $guestDateDefaults['check_in'];
+        $defaultCheckOut = $guestDateDefaults['check_out'];
+        $defaultMinCheckIn = $guestDateDefaults['min_check_in'];
+        $defaultMinCheckOut = $guestDateDefaults['min_check_out'];
+    @endphp
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-bold mb-2">Room Catalog</h1>
@@ -44,16 +54,16 @@
                     @endif
                 </div>
                 <div class="flex-1">
-                    <form action="{{ route('guest.rooms', [], false) }}" method="GET" class="flex flex-col sm:flex-row gap-3">
-                        <div class="flex-1">
+                    <form action="{{ route('guest.rooms', [], false) }}" method="GET" class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_auto] sm:items-end">
+                        <div class="min-w-0">
                             <label for="check_in_filter" class="block text-xs font-medium text-gray-700 mb-1">Check-in</label>
-                            <input type="date" id="check_in_filter" name="check_in" value="{{ $checkIn?->format('Y-m-d') }}" min="{{ date('Y-m-d') }}" required class="h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
+                            <input type="date" id="check_in_filter" name="check_in" value="{{ $defaultCheckIn }}" min="{{ $defaultMinCheckIn }}" required class="h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
                         </div>
-                        <div class="flex-1">
+                        <div class="min-w-0">
                             <label for="check_out_filter" class="block text-xs font-medium text-gray-700 mb-1">Check-out</label>
-                            <input type="date" id="check_out_filter" name="check_out" value="{{ $checkOut?->format('Y-m-d') }}" min="{{ date('Y-m-d', strtotime('+1 day')) }}" required class="h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
+                            <input type="date" id="check_out_filter" name="check_out" value="{{ $defaultCheckOut }}" min="{{ $defaultMinCheckOut }}" required class="h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
                         </div>
-                        <div class="flex-shrink-0 sm:w-32">
+                        <div class="min-w-0">
                             <label for="guests_filter" class="block text-xs font-medium text-gray-700 mb-1">Guests</label>
                             <select id="guests_filter" name="guests" class="guest-select h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
                                 <option value="">Any</option>
@@ -63,7 +73,7 @@
                                 <option value="6" @selected($guests >= 6)>5+</option>
                             </select>
                         </div>
-                        <div class="flex gap-2 sm:flex-col sm:gap-0">
+                        <div class="flex gap-2 sm:flex-col sm:gap-0 sm:row-span-2">
                             <span class="hidden sm:block text-xs font-medium text-transparent mb-1 select-none" aria-hidden="true">Search</span>
                             <button type="submit" class="h-11 flex-1 sm:flex-none bg-[#02681E] text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-[#00491E] hover:shadow-lg active:scale-95 transition-all duration-200 whitespace-nowrap flex items-center justify-center gap-2">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -80,9 +90,37 @@
                                 </a>
                             @endif
                         </div>
+                        <div class="sm:col-span-3">
+                            <label for="show_unavailable" class="flex h-11 w-full items-center justify-between gap-3 rounded-lg border border-[#00491E]/10 bg-[#00491E]/5 px-3 text-sm font-semibold text-[#00491E] sm:max-w-xs">
+                                <span class="min-w-0 truncate">Show Unavailable Rooms</span>
+                                <input type="hidden" name="show_unavailable" value="0">
+                                <input type="checkbox" id="show_unavailable" name="show_unavailable" value="1" @checked($showUnavailable) class="h-5 w-5 flex-shrink-0 rounded border-[#00491E]/30 text-[#00491E] focus:ring-[#00491E]">
+                            </label>
+                        </div>
                     </form>
                 </div>
             </div>
+        </div>
+
+        <div class="mb-4 flex flex-col gap-2 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+                {{ $availableRoomTypesCount }} available {{ Str::plural('room type', $availableRoomTypesCount) }}
+                @if($showUnavailable && $unavailableRoomTypesCount > 0)
+                    <span class="text-gray-400">•</span> {{ $unavailableRoomTypesCount }} unavailable shown after available rooms
+                @elseif(!$showUnavailable)
+                    <span class="text-[#02681E] font-semibold">• Showing available rooms only</span>
+                @endif
+            </p>
+            @if(!$showUnavailable && $unavailableRoomTypesCount > 0)
+                <a href="{{ route('guest.rooms', array_filter([
+                    'check_in' => $checkIn?->format('Y-m-d'),
+                    'check_out' => $checkOut?->format('Y-m-d'),
+                    'guests' => $guests,
+                    'show_unavailable' => 1,
+                ], fn ($value) => filled($value)), false) }}" class="text-[#02681E] font-semibold hover:text-[#00491E]">
+                    Show unavailable rooms
+                </a>
+            @endif
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -92,14 +130,20 @@
                     $availableCount = $isPrivate ? $roomType->available_rooms_count : ($roomType->available_beds_count ?? 0);
                     $totalCount = $isPrivate ? $roomType->total_rooms_count : ($roomType->total_beds_count ?? 0);
                     $isAvailable = (bool) ($roomType->can_accommodate_requested_guests ?? false);
+                    $availabilityQuery = collect([
+                        'check_in' => $checkIn?->format('Y-m-d'),
+                        'check_out' => $checkOut?->format('Y-m-d'),
+                        'guests' => $guests,
+                    ])->filter(fn ($value) => filled($value))->all();
+                    $roomDetailUrl = route('guest.room-detail', array_merge(['roomType' => $roomType], $availabilityQuery), false);
                     $cardClasses = $isAvailable 
                         ? 'bg-white hover:shadow-lg cursor-pointer' 
                         : 'bg-gray-50 opacity-75 cursor-default';
                 @endphp
                 <div role="link" tabindex="0" class="block rounded-xl shadow-md overflow-hidden transition group {{ $cardClasses }}" 
                      @if($isAvailable)
-                         onclick="window.location.href='{{ route('guest.room-detail', $roomType, false) }}'" 
-                         onkeydown="if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); window.location.href='{{ route('guest.room-detail', $roomType, false) }}'; }"
+                         onclick="window.location.href='{{ $roomDetailUrl }}'" 
+                         onkeydown="if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); window.location.href='{{ $roomDetailUrl }}'; }"
                      @endif>
                     <div class="md:flex">
                         @if($roomType->images && count($roomType->images))
@@ -179,7 +223,20 @@
                 </div>
             @empty
                 <div class="col-span-full text-center py-12 text-gray-500">
-                    <p>No room types available at the moment.</p>
+                    @if(!$showUnavailable && $unavailableRoomTypesCount > 0)
+                        <p class="mb-3 font-semibold text-gray-700">No available rooms match this search.</p>
+                        <p class="mb-5 text-sm">Unavailable room types are currently hidden.</p>
+                        <a href="{{ route('guest.rooms', array_filter([
+                            'check_in' => $checkIn?->format('Y-m-d'),
+                            'check_out' => $checkOut?->format('Y-m-d'),
+                            'guests' => $guests,
+                            'show_unavailable' => 1,
+                        ], fn ($value) => filled($value)), false) }}" class="inline-flex items-center justify-center rounded-lg bg-[#FFC600] px-5 py-2.5 text-sm font-bold text-[#00491E] hover:bg-yellow-400">
+                            Show unavailable rooms
+                        </a>
+                    @else
+                        <p>No room types available at the moment.</p>
+                    @endif
                 </div>
             @endforelse
         </div>
@@ -193,27 +250,43 @@
     const checkOutFilter = document.getElementById('check_out_filter');
 
     if (checkInFilter && checkOutFilter) {
-        checkInFilter.addEventListener('change', function() {
-            const checkInDate = new Date(this.value);
-            const minCheckOut = new Date(checkInDate);
-            minCheckOut.setDate(minCheckOut.getDate() + 1);
-            
-            const minCheckOutStr = minCheckOut.toISOString().split('T')[0];
+        const toDateString = (date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+
+        const addDays = (dateString, days) => {
+            const [year, month, day] = dateString.split('-').map(Number);
+            const date = new Date(year, month - 1, day);
+            date.setDate(date.getDate() + days);
+            return toDateString(date);
+        };
+
+        const syncCheckoutMinimum = () => {
+            if (!checkInFilter.value) return;
+
+            const minCheckOutStr = addDays(checkInFilter.value, 1);
             checkOutFilter.min = minCheckOutStr;
             
             // Update check-out if it's before the new minimum
-            if (checkOutFilter.value && new Date(checkOutFilter.value) <= checkInDate) {
+            if (!checkOutFilter.value || checkOutFilter.value <= checkInFilter.value) {
                 checkOutFilter.value = minCheckOutStr;
             }
-        });
+        };
+
+        if (!checkInFilter.value || checkInFilter.value < checkInFilter.min) {
+            checkInFilter.value = checkInFilter.min;
+        }
+        syncCheckoutMinimum();
+
+        checkInFilter.addEventListener('change', syncCheckoutMinimum);
 
         checkOutFilter.addEventListener('change', function() {
-            const checkOutDate = new Date(this.value);
-            const checkInDate = new Date(checkInFilter.value);
-            
-            if (checkOutDate <= checkInDate) {
+            if (this.value <= checkInFilter.value) {
                 alert('Check-out date must be after check-in date.');
-                this.value = '';
+                this.value = checkOutFilter.min;
             }
         });
     }

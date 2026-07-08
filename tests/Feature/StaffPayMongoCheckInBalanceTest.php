@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Filament\Resources\ReservationResource;
 use App\Filament\Resources\ReservationResource\Pages\CheckInGuest;
 use App\Models\Floor;
 use App\Models\Reservation;
 use App\Models\ReservationPayment;
 use App\Models\Room;
+use App\Models\RoomHold;
 use App\Models\RoomType;
 use App\Models\Setting;
 use App\Models\User;
@@ -90,6 +92,106 @@ class StaffPayMongoCheckInBalanceTest extends TestCase
         $this->assertFalse($payment->is_deposit);
         $this->assertEquals('1500.00', (string) $payment->amount);
         $this->assertSame('cs_checkin_balance', $payment->gateway_source_id);
+    }
+
+    public function test_checkin_room_entries_are_prefilled_from_advance_holds(): void
+    {
+        $this->actingAs($this->createUser());
+        [$reservation, $privateRoomA] = $this->createReservationWithRoom();
+        $reservation->update(['number_of_occupants' => 7]);
+
+        $floor = $privateRoomA->floor;
+        $privateRoomB = Room::create([
+            'room_number' => 'R'.uniqid(),
+            'room_type_id' => $privateRoomA->room_type_id,
+            'floor_id' => $floor->id,
+            'capacity' => 2,
+            'status' => 'available',
+            'is_active' => true,
+        ]);
+
+        $dormType = RoomType::create([
+            'name' => 'Dorm '.uniqid(),
+            'base_rate' => 200,
+            'pricing_type' => 'per_person',
+            'room_sharing_type' => 'public',
+            'is_active' => true,
+        ]);
+        $dormRoom = Room::create([
+            'room_number' => 'D'.uniqid(),
+            'room_type_id' => $dormType->id,
+            'floor_id' => $floor->id,
+            'capacity' => 10,
+            'status' => 'available',
+            'is_active' => true,
+        ]);
+
+        $reservation->roomRequests()->createMany([
+            [
+                'room_type_id' => $privateRoomA->room_type_id,
+                'requested_room_count' => 2,
+                'occupant_count' => 4,
+                'sort_order' => 0,
+            ],
+            [
+                'room_type_id' => $dormType->id,
+                'requested_room_count' => 1,
+                'occupant_count' => 3,
+                'sort_order' => 1,
+            ],
+        ]);
+
+        foreach ([$privateRoomA, $privateRoomB, $dormRoom] as $room) {
+            RoomHold::create([
+                'room_id' => $room->id,
+                'reservation_id' => $reservation->id,
+                'hold_from' => $reservation->check_in_date,
+                'hold_to' => $reservation->check_out_date,
+                'hold_type' => 'advance',
+                'held_guest_count' => $room->is($dormRoom) ? 3 : null,
+            ]);
+        }
+
+        $component = Livewire::test(CheckInGuest::class, ['record' => $reservation]);
+        $entries = $component->get('data.reservation_rooms');
+
+        $this->assertCount(3, $entries);
+        $this->assertSame($privateRoomA->id, $entries[0]['room_id']);
+        $this->assertSame('private', $entries[0]['room_mode']);
+        $this->assertTrue($entries[0]['includes_primary_guest']);
+        $this->assertSame(2, $entries[0]['expected_guest_count']);
+        $this->assertCount(1, $entries[0]['guests']);
+        $this->assertSame($privateRoomB->id, $entries[1]['room_id']);
+        $this->assertSame('private', $entries[1]['room_mode']);
+        $this->assertFalse($entries[1]['includes_primary_guest']);
+        $this->assertSame(2, $entries[1]['expected_guest_count']);
+        $this->assertCount(2, $entries[1]['guests']);
+        $this->assertSame($dormRoom->id, $entries[2]['room_id']);
+        $this->assertSame('dorm', $entries[2]['room_mode']);
+        $this->assertFalse($entries[2]['includes_primary_guest']);
+        $this->assertSame(3, $entries[2]['expected_guest_count']);
+        $this->assertCount(3, $entries[2]['guests']);
+        $this->assertSame(6, collect($entries)->sum(fn ($entry) => count($entry['guests'] ?? [])));
+        $this->assertSame([
+            'total' => 3,
+            'loaded' => 3,
+            'skipped' => 0,
+        ], $component->get('roomHoldLoadStatus'));
+
+        $pricing = ReservationResource::computeCheckInPricing(
+            $reservation,
+            $entries,
+            $reservation->check_in_date,
+            $reservation->check_out_date,
+            [],
+        );
+
+        $dormLine = collect($pricing['rooms'])->first(
+            fn ($line) => str_contains($line['label'], "Room {$dormRoom->room_number}")
+        );
+
+        $this->assertNotNull($dormLine);
+        $this->assertSame(1200.0, $dormLine['line_total']);
     }
 
     public function test_staff_cannot_generate_checkin_balance_checkout_when_online_payments_are_disabled(): void

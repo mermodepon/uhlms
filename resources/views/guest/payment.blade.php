@@ -6,7 +6,7 @@
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-bold mb-2">Complete Your Payment</h1>
-            <p class="text-gray-200">Secure online payment for your reservation request or confirmed stay</p>
+            <p class="text-gray-200">Secure online payment for your reserved stay</p>
         </div>
     </section>
 
@@ -19,9 +19,9 @@
                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                     </svg>
                     <div class="flex-1">
-                        <h3 class="text-lg font-semibold text-green-900 mb-1">Reservation Request Approved</h3>
+                        <h3 class="text-lg font-semibold text-green-900 mb-1">Room Reserved for Your Stay</h3>
                         <p class="text-green-800 text-sm leading-relaxed mb-2">
-                            Great news! Your request has been approved. Complete your payment below to move it into <strong>confirmed status</strong>.
+                            Great news! Staff has reserved room space for your request. Complete your payment below to secure your stay.
                         </p>
                         @if($reservation->approved_at)
                             @php
@@ -64,7 +64,7 @@
                     <div>
                         <h3 class="text-lg font-semibold text-blue-900 mb-1">Reservation Confirmed</h3>
                         <p class="text-blue-800 text-sm">
-                            Your deposit has been received and your reservation is now in confirmed status. We look forward to welcoming you!
+                            Your room is reserved for your stay. We look forward to welcoming you!
                         </p>
                     </div>
                 </div>

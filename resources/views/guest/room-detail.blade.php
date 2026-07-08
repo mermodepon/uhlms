@@ -143,8 +143,17 @@
                         </div>
                     </div>
 
+                    @php
+                        $reservationQuery = collect([
+                            'room_type' => $roomType->id,
+                            'check_in' => $checkIn?->format('Y-m-d'),
+                            'check_out' => $checkOut?->format('Y-m-d'),
+                            'guests' => $guests,
+                        ])->filter(fn ($value) => filled($value))->all();
+                    @endphp
+
                     @if(($isPrivate && $availableRooms > 0) || (! $isPrivate && $availableBeds > 0))
-                        <a href="{{ route('guest.reserve', ['room_type' => $roomType->id], false) }}"
+                        <a href="{{ route('guest.reserve', $reservationQuery, false) }}"
                            class="block w-full bg-[#FFC600] text-[#00491E] text-center px-6 py-3 rounded-lg font-bold hover:bg-yellow-400 transition">
                             Request This Room Type
                         </a>

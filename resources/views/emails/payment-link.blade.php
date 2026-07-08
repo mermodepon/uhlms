@@ -127,11 +127,15 @@
                 <span class="detail-value">{{ $reservation->preferredRoomType->name }}</span>
             </div>
             @endif
+            <div class="detail-row">
+                <span class="detail-label">Requested Rooms:</span>
+                <span class="detail-value">{{ $reservation->requested_room_summary }}</span>
+            </div>
         </div>
 
         <div class="info-box">
             <strong>📋 What You'll Pay:</strong><br>
-            You'll pay a deposit now to move your request forward. The remaining balance will be collected when you check in at the homestay.
+            Staff has reserved room space for your stay. You'll pay a deposit now to secure the reservation, and the remaining balance will be collected when you check in at the homestay.
         </div>
 
         <div class="button-container">
@@ -142,7 +146,7 @@
 
         <div class="warning-box">
             <strong>⏰ Important:</strong> This payment link will expire on <strong>{{ $expiresAt ? $expiresAt->format('F j, Y \a\t g:i A') : 'N/A' }}</strong>. 
-            Please complete your payment before this time so your request can continue through the approval and confirmation flow.
+            Please complete your payment before this time so your room-held reservation remains active.
         </div>
 
         <p><strong>Payment Methods Available:</strong></p>
@@ -159,7 +163,7 @@
             <li>Choose your preferred payment method</li>
             <li>Complete the secure payment</li>
             <li>You'll receive a confirmation email</li>
-            <li>Our staff will finalize your reservation details and status</li>
+            <li>Our staff will keep your reserved room space active for your stay</li>
         </ol>
 
         <div class="info-box">

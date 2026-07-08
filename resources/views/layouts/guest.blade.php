@@ -63,11 +63,30 @@
         input[type="search"],
         select,
         textarea {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             border: 2px solid #d1d5db !important;
             background-color: #f9fafb !important;
             padding: 0.625rem 0.875rem !important;
             font-size: 0.95rem !important;
             transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s !important;
+        }
+        input[type="date"] {
+            min-height: 2.75rem;
+            line-height: 1.25;
+            -webkit-appearance: none;
+            appearance: none;
+            overflow: hidden;
+        }
+        input[type="date"]::-webkit-date-and-time-value {
+            min-height: 1.25rem;
+            text-align: left;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            flex-shrink: 0;
+            margin-left: 0.25rem;
         }
         input[type="text"]:focus,
         input[type="email"]:focus,
@@ -85,6 +104,20 @@
         input::placeholder,
         textarea::placeholder {
             color: #9ca3af !important;
+        }
+        .guest-field-invalid {
+            border-color: #dc2626 !important;
+            background-color: #fff7f7 !important;
+        }
+        .guest-validation-message {
+            display: none;
+            margin-top: 0.25rem;
+            font-size: 0.75rem;
+            line-height: 1.25;
+            color: #dc2626;
+        }
+        .guest-validation-message.is-visible {
+            display: block;
         }
         .guest-select {
             appearance: none;
@@ -244,6 +277,230 @@
         </div>
     </footer>
 
+    <script>
+        window.GuestDatePairs = window.GuestDatePairs || (() => {
+            const pairs = [
+                ['check_in', 'check_out'],
+                ['check_in_filter', 'check_out_filter'],
+                ['check_in_date', 'check_out_date'],
+            ];
+
+            const toDateString = (date) => {
+                const y = date.getFullYear();
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            };
+
+            const addDays = (dateString, days) => {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateString || ''))) return '';
+                const [year, month, day] = dateString.split('-').map(Number);
+                const date = new Date(year, month - 1, day);
+                date.setDate(date.getDate() + days);
+                return toDateString(date);
+            };
+
+            const findInput = (key) => document.getElementById(key) || document.querySelector(`[name="${key}"]`);
+
+            const sync = (checkIn, checkOut) => {
+                if (!checkIn || !checkOut || !checkIn.value) return;
+
+                const minCheckOut = addDays(checkIn.value, 1);
+                if (!minCheckOut) return;
+
+                checkOut.min = minCheckOut;
+                if (!checkOut.value || checkOut.value <= checkIn.value) {
+                    checkOut.value = minCheckOut;
+                }
+            };
+
+            const syncAll = () => {
+                pairs.forEach(([checkInKey, checkOutKey]) => sync(findInput(checkInKey), findInput(checkOutKey)));
+            };
+
+            const handleDateInput = (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLInputElement) || target.type !== 'date') return;
+
+                pairs.forEach(([checkInKey, checkOutKey]) => {
+                    const checkIn = findInput(checkInKey);
+                    const checkOut = findInput(checkOutKey);
+
+                    if (target === checkIn || target === checkOut) {
+                        sync(checkIn, checkOut);
+                    }
+                });
+            };
+
+            document.addEventListener('DOMContentLoaded', syncAll);
+            document.addEventListener('input', handleDateInput);
+            document.addEventListener('change', handleDateInput);
+
+            return { addDays, sync, syncAll };
+        })();
+    </script>
+    <script>
+        window.GuestRealtimeValidation = window.GuestRealtimeValidation || (() => {
+            const selector = 'input:not([type="hidden"]):not([type="radio"]), select, textarea';
+
+            const getLabelText = (field) => {
+                const label = field.id ? document.querySelector(`label[for="${CSS.escape(field.id)}"]`) : null;
+                return (label?.textContent || field.name || 'This field').replace(/\s*\*\s*$/, '').trim();
+            };
+
+            const messageFor = (field) => {
+                const label = getLabelText(field);
+                const validity = field.validity;
+
+                if (validity.valueMissing) return `${label} is required.`;
+                if (validity.typeMismatch && field.type === 'email') return 'Enter a valid email address.';
+                if (validity.rangeUnderflow) return field.dataset.validationMinMessage || `${label} must be at least ${field.min}.`;
+                if (validity.rangeOverflow) return field.dataset.validationMaxMessage || `${label} must be no more than ${field.max}.`;
+                if (validity.tooLong) return `${label} must be ${field.maxLength} characters or fewer.`;
+                if (validity.badInput) return `Enter a valid ${field.type === 'number' ? 'number' : 'value'}.`;
+                if (validity.patternMismatch) return field.dataset.validationPatternMessage || `${label} has an invalid format.`;
+                if (validity.customError) return field.validationMessage;
+
+                return field.validationMessage || `${label} is invalid.`;
+            };
+
+            const ensureMessageEl = (field) => {
+                if (!field.id) {
+                    field.id = `guest-field-${Math.random().toString(36).slice(2)}`;
+                }
+
+                const messageId = `${field.id}-validation`;
+                let message = document.getElementById(messageId);
+
+                if (!message) {
+                    message = document.createElement('p');
+                    message.id = messageId;
+                    message.className = 'guest-validation-message';
+                    message.setAttribute('aria-live', 'polite');
+                    field.insertAdjacentElement('afterend', message);
+                }
+
+                field.setAttribute('aria-describedby', [field.getAttribute('aria-describedby'), messageId].filter(Boolean).join(' '));
+                return message;
+            };
+
+            const syncConditionalFields = (form) => {
+                const discountDeclared = form.querySelector('[name="discount_declared"]');
+                const discountType = form.querySelector('[name="discount_declared_type"]');
+                if (discountDeclared && discountType) {
+                    discountType.required = discountDeclared.checked;
+                }
+            };
+
+            const syncCustomValidity = (field, form) => {
+                field.setCustomValidity('');
+
+                if (field.dataset.integer === 'true' && field.value && !Number.isInteger(Number(field.value))) {
+                    field.setCustomValidity(`${getLabelText(field)} must be a whole number.`);
+                }
+
+                if (['guest_first_name', 'guest_last_name'].includes(field.name) && field.required && field.value.trim() === '') {
+                    field.setCustomValidity(`${getLabelText(field)} is required.`);
+                }
+
+                if (field.name === 'check_out_date') {
+                    const checkIn = form.querySelector('[name="check_in_date"]');
+                    if (checkIn?.value && field.value && field.value <= checkIn.value) {
+                        field.setCustomValidity('Check-out date must be after check-in date.');
+                    }
+                }
+
+                if (field.name === 'number_of_occupants' && field.dataset.dynamicMax !== undefined && field.value) {
+                    const dynamicMax = Number(field.dataset.dynamicMax);
+                    const occupants = Number(field.value);
+                    if (Number.isFinite(dynamicMax) && (dynamicMax < 1 || occupants > dynamicMax)) {
+                        field.setCustomValidity(
+                            field.dataset.validationMaxMessage || `${getLabelText(field)} must be no more than ${dynamicMax}.`
+                        );
+                    }
+                }
+            };
+
+            const validateField = (field, form, force = false) => {
+                if (field.disabled || field.type === 'hidden') return true;
+
+                syncConditionalFields(form);
+                syncCustomValidity(field, form);
+
+                const isValid = field.checkValidity();
+                const shouldShow = force || field.dataset.touched === 'true' || field.value !== '';
+                const message = ensureMessageEl(field);
+
+                field.classList.toggle('guest-field-invalid', !isValid && shouldShow);
+                field.setAttribute('aria-invalid', String(!isValid && shouldShow));
+                message.textContent = !isValid && shouldShow ? messageFor(field) : '';
+                message.classList.toggle('is-visible', !isValid && shouldShow);
+
+                return isValid;
+            };
+
+            const validateForm = (form, force = false) => {
+                syncConditionalFields(form);
+                return Array.from(form.querySelectorAll(selector))
+                    .reduce((isFormValid, field) => validateField(field, form, force) && isFormValid, true);
+            };
+
+            const initForm = (form) => {
+                form.querySelectorAll(selector).forEach((field) => {
+                    ensureMessageEl(field);
+
+                    field.addEventListener('blur', () => {
+                        field.dataset.touched = 'true';
+                        validateField(field, form);
+                    });
+
+                    field.addEventListener('input', () => {
+                        field.dataset.touched = 'true';
+                        validateField(field, form);
+
+                        if (field.name === 'check_in_date') {
+                            const checkOut = form.querySelector('[name="check_out_date"]');
+                            if (checkOut) validateField(checkOut, form, true);
+                        }
+                    });
+
+                    field.addEventListener('change', () => {
+                        field.dataset.touched = 'true';
+                        validateField(field, form);
+
+                        if (field.name === 'check_in_date') {
+                            const checkOut = form.querySelector('[name="check_out_date"]');
+                            if (checkOut) validateField(checkOut, form, true);
+                        }
+
+                        if (field.name === 'discount_declared') {
+                            const discountType = form.querySelector('[name="discount_declared_type"]');
+                            if (discountType) validateField(discountType, form, true);
+                        }
+                    });
+                });
+
+                form.addEventListener('submit', (event) => {
+                    if (!validateForm(form, true)) {
+                        event.preventDefault();
+                        const firstInvalid = form.querySelector('.guest-field-invalid');
+                        firstInvalid?.focus({ preventScroll: true });
+                        firstInvalid?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                });
+
+                validateForm(form);
+            };
+
+            const init = () => {
+                document.querySelectorAll('form[data-guest-validate]').forEach(initForm);
+            };
+
+            document.addEventListener('DOMContentLoaded', init);
+
+            return { init, validateForm, validateField };
+        })();
+    </script>
     @stack('scripts')
 </body>
 </html>

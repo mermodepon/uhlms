@@ -261,6 +261,8 @@ class CheckInService
             throw new \RuntimeException('Please add at least one room entry before check-in.');
         }
 
+        $this->validateCompanionGuests($entries);
+
         $primaryGuest = [
             'first_name' => $payload['guest_first_name'] ?? null,
             'last_name' => $payload['guest_last_name'] ?? null,
@@ -344,9 +346,7 @@ class CheckInService
             $rate = (float) ($roomType->base_rate ?? 0);
             $roomMode = $entry['room_mode'] ?? ($roomType?->isPrivate() ? 'private' : 'dorm');
 
-            $guestCount = collect($entry['guests'] ?? [])
-                ->filter(fn ($guest) => filled($guest['first_name'] ?? null) || filled($guest['last_name'] ?? null))
-                ->count();
+            $guestCount = count($entry['guests'] ?? []);
 
             if ($roomMode === 'dorm') {
                 $roomSubtotal += $rate * max(1, $guestCount) * $nights;
@@ -575,9 +575,7 @@ class CheckInService
             $rate = (float) ($roomType->base_rate ?? 0);
             $roomMode = $entry['room_mode'] ?? ($roomType?->isPrivate() ? 'private' : 'dorm');
 
-            $guestCount = collect($entry['guests'] ?? [])
-                ->filter(fn ($guest) => filled($guest['first_name'] ?? null) || filled($guest['last_name'] ?? null))
-                ->count();
+            $guestCount = count($entry['guests'] ?? []);
 
             if ($roomMode === 'dorm') {
                 $roomChargesBeforeDiscount += $rate * max(1, $guestCount) * $nights;
@@ -763,6 +761,26 @@ class CheckInService
             'description' => $description,
             'subtotal' => $subtotal,
         ];
+    }
+
+    /**
+     * @param  array<int,array<string,mixed>>  $entries
+     */
+    private function validateCompanionGuests(array $entries): void
+    {
+        foreach ($entries as $entryIndex => $entry) {
+            foreach (($entry['guests'] ?? []) as $guestIndex => $guest) {
+                if (
+                    blank($guest['first_name'] ?? null)
+                    || blank($guest['last_name'] ?? null)
+                    || blank($guest['gender'] ?? null)
+                ) {
+                    throw new \RuntimeException(
+                        'Complete companion guest details for room entry #'.($entryIndex + 1).', guest #'.($guestIndex + 1).'.'
+                    );
+                }
+            }
+        }
     }
 
     /**

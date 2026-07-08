@@ -27,7 +27,8 @@ class ReservationStatusMailer
         }
 
         DB::afterCommit(function () use ($reservation, $context, $previousStatus) {
-            $freshReservation = $reservation->fresh(['preferredRoomType']) ?? $reservation->loadMissing('preferredRoomType');
+            $freshReservation = $reservation->fresh(['preferredRoomType', 'roomRequests.roomType'])
+                ?? $reservation->loadMissing(['preferredRoomType', 'roomRequests.roomType']);
 
             try {
                 Mail::to($freshReservation->guest_email)->send(

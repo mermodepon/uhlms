@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use App\Support\ReservationRoomRequests;
 
 class GuestController extends Controller
 {
@@ -60,6 +61,7 @@ class GuestController extends Controller
         $checkIn = $request->check_in ? Carbon::parse($request->check_in) : null;
         $checkOut = $request->check_out ? Carbon::parse($request->check_out) : null;
         $guests = $request->guests ? (int) $request->guests : null;
+        $showUnavailable = $request->boolean('show_unavailable', true);
 
         $roomTypes = RoomType::where('is_active', true)
             ->with('amenities')
@@ -83,16 +85,66 @@ class GuestController extends Controller
             }
         }
 
-        return view('guest.rooms', compact('roomTypes', 'checkIn', 'checkOut', 'guests'));
+        $roomTypes = $roomTypes
+            ->sortBy([
+                fn (RoomType $roomType): int => ($roomType->can_accommodate_requested_guests ?? false) ? 0 : 1,
+                fn (RoomType $roomType): string => Str::lower($roomType->name),
+                fn (RoomType $roomType): int => $roomType->id,
+            ])
+            ->values();
+
+        $availableRoomTypesCount = $roomTypes
+            ->filter(fn (RoomType $roomType): bool => (bool) ($roomType->can_accommodate_requested_guests ?? false))
+            ->count();
+        $unavailableRoomTypesCount = $roomTypes->count() - $availableRoomTypesCount;
+
+        if (! $showUnavailable) {
+            $roomTypes = $roomTypes
+                ->filter(fn (RoomType $roomType): bool => (bool) ($roomType->can_accommodate_requested_guests ?? false))
+                ->values();
+        }
+
+        return view('guest.rooms', compact(
+            'roomTypes',
+            'checkIn',
+            'checkOut',
+            'guests',
+            'showUnavailable',
+            'availableRoomTypesCount',
+            'unavailableRoomTypesCount'
+        ));
     }
 
     /**
      * Room type details with virtual tour
      */
-    public function roomDetail(RoomType $roomType)
+    public function roomDetail(Request $request, RoomType $roomType)
     {
         $roomType->load('amenities');
-        $this->applyAvailabilitySummary($roomType, app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType));
+
+        $checkIn = null;
+        $checkOut = null;
+        $guests = $request->filled('guests') ? max(1, (int) $request->guests) : null;
+        $roomHoldService = app(RoomHoldService::class);
+
+        try {
+            $checkIn = $request->filled('check_in') ? Carbon::parse($request->check_in) : null;
+            $checkOut = $request->filled('check_out') ? Carbon::parse($request->check_out) : null;
+        } catch (\Throwable) {
+            $checkIn = null;
+            $checkOut = null;
+        }
+
+        if ($checkIn && $checkOut && $checkOut->gt($checkIn)) {
+            $this->applyAvailabilitySummary(
+                $roomType,
+                $roomHoldService->getDateAvailabilitySummary($roomType, $checkIn, $checkOut, $guests)
+            );
+            $roomType->is_date_filtered = true;
+        } else {
+            $this->applyAvailabilitySummary($roomType, $roomHoldService->getCurrentAvailabilitySummary($roomType, $guests));
+            $roomType->is_date_filtered = false;
+        }
 
         $tourWaypointSlug = TourWaypoint::query()
             ->active()
@@ -107,7 +159,7 @@ class GuestController extends Controller
             ->ordered()
             ->value('slug');
 
-        return view('guest.room-detail', compact('roomType', 'tourWaypointSlug'));
+        return view('guest.room-detail', compact('roomType', 'tourWaypointSlug', 'checkIn', 'checkOut', 'guests'));
     }
 
     /**
@@ -138,19 +190,32 @@ class GuestController extends Controller
      */
     public function reserveSubmit(Request $request)
     {
+        $request->merge([
+            'guest_last_name' => trim((string) $request->input('guest_last_name', '')),
+            'guest_first_name' => trim((string) $request->input('guest_first_name', '')),
+            'guest_middle_initial' => trim((string) $request->input('guest_middle_initial', '')) ?: null,
+            'guest_phone' => trim((string) $request->input('guest_phone', '')) ?: null,
+        ]);
+
         $validated = $request->validate([
             'guest_last_name' => 'required|string|max:255',
             'guest_first_name' => 'required|string|max:255',
             'guest_middle_initial' => 'nullable|string|max:10',
             'guest_gender' => 'required|in:Male,Female,Other',
             'guest_email' => 'required|email|max:255',
-            'guest_phone' => 'nullable|string|max:20',
-            'guest_age' => 'nullable|integer|min:1|max:120',
+            'guest_phone' => ['required', 'string', 'max:20', 'regex:/^(09\d{9}|\+639\d{9}|639\d{9})$/'],
+            'guest_age' => 'required|integer|min:18|max:120',
             'guest_address' => 'nullable|string|max:1000',
             'preferred_room_type_id' => 'required|exists:room_types,id',
+            'requested_room_count' => 'nullable|integer|min:1|max:20',
+            'room_requests' => 'nullable|array|max:7',
+            'room_requests.*.room_type_id' => 'nullable|exists:room_types,id',
+            'room_requests.*.requested_room_count' => 'nullable|integer|min:1|max:20',
+            'room_requests.*.occupant_count' => 'nullable|integer|min:1|max:200',
+            'room_requests.*.notes' => 'nullable|string|max:500',
             'check_in_date' => 'required|date|after_or_equal:today',
             'check_out_date' => 'required|date|after:check_in_date',
-            'number_of_occupants' => 'required|integer|min:1|max:20',
+            'number_of_occupants' => 'required|integer|min:1',
             'purpose' => 'nullable|string|max:100',
             'special_requests' => 'nullable|string|max:2000',
             'discount_declared' => 'nullable|boolean',
@@ -165,20 +230,23 @@ class GuestController extends Controller
             $validated['guest_last_name']
         );
 
+        $roomRequestLines = ReservationRoomRequests::fromRequest($request);
+        $requestValidation = ReservationRoomRequests::validateAvailability(
+            $roomRequestLines,
+            $validated['check_in_date'],
+            $validated['check_out_date']
+        );
+
+        if (! empty($requestValidation['errors'])) {
+            throw ValidationException::withMessages($requestValidation['errors']);
+        }
+
         $validated['status'] = 'pending';
         $validated['discount_declared'] = $request->has('discount_declared');
 
-        $availabilityContext = $this->resolveAvailabilityContext(
-            (int) $validated['preferred_room_type_id'],
-            $validated['check_in_date'],
-            $validated['check_out_date'],
-            (int) $validated['number_of_occupants']
-        );
-
-        if ($availabilityContext !== null) {
-            $warning = 'This room type currently shows '
-                .$availabilityContext['summary']['availability_label']
-                .' for your selected dates and guest count. You can still submit this request for staff review by checking the acknowledgement below.';
+        if (! empty($requestValidation['warnings'])) {
+            $warning = implode(' ', $requestValidation['warnings'])
+                .' You can still submit this request for staff review by checking the acknowledgement below.';
 
             if (! $request->boolean('availability_acknowledged')) {
                 throw ValidationException::withMessages([
@@ -189,15 +257,19 @@ class GuestController extends Controller
             $validated['special_requests'] = trim(
                 (($validated['special_requests'] ?? null) ? rtrim($validated['special_requests'])."\n" : '')
                 .'[Availability warning acknowledged by guest: '
-                .$availabilityContext['summary']['availability_label']
-                .' for '.$validated['number_of_occupants'].' occupant(s) on '
+                .implode(' ', $requestValidation['warnings'])
+                .' Requested: '.$requestValidation['summary'].' on '
                 .$validated['check_in_date'].' to '.$validated['check_out_date'].']'
             );
         }
 
         unset($validated['availability_acknowledged']);
+        unset($validated['requested_room_count'], $validated['room_requests']);
+
+        $validated = ReservationRoomRequests::applyToReservationData($validated, $roomRequestLines);
 
         $reservation = Reservation::create($validated);
+        ReservationRoomRequests::persist($reservation, $roomRequestLines);
 
         return redirect()->route('guest.track')
             ->with('success', 'Your reservation request has been submitted successfully!')
@@ -280,6 +352,7 @@ class GuestController extends Controller
 
         $reservation->load([
             'preferredRoomType',
+            'roomRequests.roomType',
             'roomAssignments.room',
             'roomAssignments.room.roomType',
             'payments' => fn ($q) => $q->where('gateway', 'paymongo')->latest(),
@@ -326,5 +399,44 @@ class GuestController extends Controller
         return ($summary['can_accommodate_requested_guests'] ?? false)
             ? null
             : ['room_type' => $roomType, 'summary' => $summary];
+    }
+
+    /**
+     * @return array{max:int,message:string}|null
+     */
+    private function resolveOccupantLimit(int $roomTypeId, string $checkInDate, string $checkOutDate): ?array
+    {
+        $roomType = RoomType::query()
+            ->where('is_active', true)
+            ->find($roomTypeId);
+
+        if (! $roomType) {
+            return null;
+        }
+
+        if ($roomType->isPrivate()) {
+            $capacity = max(1, (int) ($roomType->capacity ?? 1));
+
+            return [
+                'max' => $capacity,
+                'message' => "This room type allows up to {$capacity} occupants.",
+            ];
+        }
+
+        $summary = app(RoomHoldService::class)->getDateAvailabilitySummary(
+            $roomType,
+            Carbon::parse($checkInDate),
+            Carbon::parse($checkOutDate),
+            null
+        );
+
+        $availableBeds = max(0, (int) ($summary['available_beds_count'] ?? 0));
+
+        return [
+            'max' => $availableBeds,
+            'message' => $availableBeds > 0
+                ? "Only {$availableBeds} beds are available for these dates."
+                : 'No beds are available for these dates.',
+        ];
     }
 }

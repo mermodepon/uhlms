@@ -29,6 +29,7 @@ class VirtualTourEngine {
         this._sceneHistory       = [];
         this.startWaypoint       = options.startWaypoint || '';
         this.apiBase             = options.apiBase || '/api/tour';
+        this.reserveUrl          = options.reserveUrl || '/reserve';
         this.currentRoomType     = null;
         this.currentRoom         = null;
         this.bookmarks           = this._loadBookmarks();
@@ -60,9 +61,10 @@ class VirtualTourEngine {
         this._uiManuallyHidden   = false;  // Manual override via toggle button
 
         // Date-aware availability state
-        this._checkIn  = null;   // 'YYYY-MM-DD'
-        this._checkOut = null;   // 'YYYY-MM-DD'
-        this._guests   = 1;
+        this._checkIn  = this._initialDateFromQuery('check_in') || this._todayString();   // 'YYYY-MM-DD'
+        this._checkOut = this._initialDateFromQuery('check_out') || this._addDays(this._checkIn, 1);   // 'YYYY-MM-DD'
+        this._guests   = this._initialGuestsFromQuery();
+        this._ensureCheckoutAfterCheckIn();
 
         this.onRoomDoorReached   = options.onRoomDoorReached   || (() => {});
         this.onReservationOpened = options.onReservationOpened || (() => {});
@@ -129,6 +131,15 @@ class VirtualTourEngine {
             const hs = data?.hotspot;
             if (!hs) return;
             this._handleHotspotAction(hs);
+        });
+
+        this.viewer.addEventListener('card-close', (e) => {
+            const markerId = e.marker?.config?.id;
+            if (markerId === 'room-info-card') {
+                this._closeInSceneCard();
+            } else if (markerId === 'info-card') {
+                this._closeInfoCard();
+            }
         });
 
         this._initAsync();
@@ -945,6 +956,7 @@ class VirtualTourEngine {
 
     _buildHotspots(wp) {
         this._roomInfoCardOpen = false;
+        this._setRoomCardOpenState(false);
         this._infoCardHotspotId = null;
         this._setPanoramaGazeFocus(null);
         this.viewer.clearMarkers();
@@ -1206,9 +1218,198 @@ class VirtualTourEngine {
 
     // ── Date-aware availability helpers ──────────────────────────────────────
 
-    _setCheckIn(val)  { this._checkIn  = val || null; }
-    _setCheckOut(val) { this._checkOut = val || null; }
-    _setGuests(val)   { this._guests   = Math.max(1, parseInt(val, 10) || 1); }
+    _todayString() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    _normalizeDateString(value) {
+        const raw = String(value || '').trim();
+        return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+    }
+
+    _initialDateFromQuery(key) {
+        try {
+            return this._normalizeDateString(new URLSearchParams(window.location.search).get(key));
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _initialGuestsFromQuery() {
+        try {
+            return Math.max(1, parseInt(new URLSearchParams(window.location.search).get('guests'), 10) || 1);
+        } catch (_) {
+            return 1;
+        }
+    }
+
+    _addDays(dateString, days) {
+        const base = this._normalizeDateString(dateString) || this._todayString();
+        const [year, month, day] = base.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        date.setDate(date.getDate() + days);
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    _ensureDefaultAvailabilityDates() {
+        const today = this._todayString();
+
+        if (!this._checkIn || this._checkIn < today) {
+            this._checkIn = today;
+        }
+
+        this._ensureCheckoutAfterCheckIn();
+    }
+
+    _ensureCheckoutAfterCheckIn() {
+        const checkIn = this._normalizeDateString(this._checkIn) || this._todayString();
+        const minCheckOut = this._addDays(checkIn, 1);
+
+        this._checkIn = checkIn;
+        if (!this._checkOut || this._checkOut <= checkIn) {
+            this._checkOut = minCheckOut;
+        }
+    }
+
+    _setCheckIn(val)  {
+        this._checkIn = this._normalizeDateString(val) || this._todayString();
+        this._ensureDefaultAvailabilityDates();
+        this._syncAvailabilityDateInputs();
+    }
+    _setCheckOut(val) {
+        this._checkOut = this._normalizeDateString(val) || null;
+        this._ensureDefaultAvailabilityDates();
+        this._syncAvailabilityDateInputs();
+    }
+    _setGuests(val)   {
+        const requestedGuests = Math.max(1, parseInt(val, 10) || 1);
+        const limit = this._getOccupantLimitForRoomType(this.currentRoomType);
+        this._guests = limit && limit.max >= 1 ? Math.min(requestedGuests, limit.max) : requestedGuests;
+    }
+
+    _syncAvailabilityDateInputs(root = document) {
+        const widgets = root?.matches?.('[data-tour-availability-widget]')
+            ? [root]
+            : Array.from(root?.querySelectorAll?.('[data-tour-availability-widget]') || []);
+
+        widgets.forEach((widget) => {
+            const checkIn = widget.querySelector('[data-tour-check-in]');
+            const checkOut = widget.querySelector('[data-tour-check-out]');
+            if (!checkIn || !checkOut) return;
+
+            const minCheckOut = this._addDays(this._checkIn, 1);
+
+            checkIn.min = this._todayString();
+            checkIn.value = this._checkIn;
+            checkOut.min = minCheckOut;
+            checkOut.value = this._checkOut;
+        });
+    }
+
+    _getReservationRoomTypeId() {
+        return this.currentRoomType?.id || this.currentRoom?.room_type?.id || null;
+    }
+
+    _buildReservationUrl() {
+        this._ensureDefaultAvailabilityDates();
+
+        const url = new URL(this.reserveUrl, window.location.href);
+        const roomTypeId = this._getReservationRoomTypeId();
+
+        if (roomTypeId) {
+            url.searchParams.set('room_type', roomTypeId);
+        }
+
+        url.searchParams.set('check_in', this._checkIn);
+        url.searchParams.set('check_out', this._checkOut);
+        url.searchParams.set('guests', String(this._guests));
+
+        return `${url.pathname}${url.search}${url.hash}`;
+    }
+
+    goToReservationPage() {
+        window.location.href = this._buildReservationUrl();
+    }
+
+    _getOccupantLimitForRoomType(roomType = this.currentRoomType) {
+        if (!roomType) return { max: 20, isPrivate: true, message: 'Number of Occupants must be no more than 20.' };
+
+        const isPrivate = Boolean(roomType.is_private ?? roomType.room_sharing_type !== 'public');
+        if (isPrivate) {
+            const roomCountInput = document.getElementById('requested_room_count');
+            const roomCount = Math.max(1, parseInt(roomCountInput?.value || '1', 10) || 1);
+            const max = Math.max(1, parseInt(roomType.capacity, 10) || 20) * roomCount;
+            return {
+                max,
+                isPrivate,
+                message: `This request allows up to ${max} occupants across ${roomCount} room(s).`,
+            };
+        }
+
+        const max = Math.max(0, parseInt(roomType.available_beds_count ?? roomType.availability_display_count ?? 0, 10) || 0);
+        return {
+            max,
+            isPrivate,
+            message: max > 0
+                ? `Only ${max} beds are available for these dates.`
+                : 'No beds are available for these dates.',
+        };
+    }
+
+    _applyOccupantLimitToInput(input, limit, forceValidation = true) {
+        if (!input || !limit) return;
+
+        input.max = String(Math.max(1, limit.max));
+        input.dataset.dynamicMax = String(limit.max);
+        input.dataset.validationMaxMessage = limit.message;
+
+        if (limit.max >= 1 && Number(input.value || 0) > limit.max) {
+            input.value = String(limit.max);
+            this._guests = limit.max;
+        }
+
+        const form = input.closest('form');
+        if (forceValidation && window.GuestRealtimeValidation && form) {
+            window.GuestRealtimeValidation.validateField(input, form, true);
+        }
+    }
+
+    _syncReservationOccupantLimit(forceValidation = true) {
+        const input = document.getElementById('number_of_occupants');
+        this._applyOccupantLimitToInput(input, this._getOccupantLimitForRoomType(), forceValidation);
+    }
+
+    async _refreshReservationOccupantLimit() {
+        const roomTypeId = this._getReservationRoomTypeId();
+        if (!roomTypeId || !this._checkIn || !this._checkOut) {
+            this._syncReservationOccupantLimit();
+            return;
+        }
+
+        this._syncReservationOccupantLimit(false);
+
+        try {
+            const url = new URL(`${this.apiBase}/room-type/${roomTypeId}/availability`, window.location.href);
+            url.searchParams.set('check_in',  this._checkIn);
+            url.searchParams.set('check_out', this._checkOut);
+            url.searchParams.set('guests',    this._guests);
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.success) {
+                this.currentRoomType = data.data;
+                this._syncReservationOccupantLimit();
+            }
+        } catch (e) {
+            this._syncReservationOccupantLimit();
+        }
+    }
 
     _computeNights() {
         if (!this._checkIn || !this._checkOut) return 0;
@@ -1244,6 +1445,7 @@ class VirtualTourEngine {
             const data = await res.json();
             if (data.success) {
                 this.currentRoomType = data.data;
+                this._syncReservationOccupantLimit(false);
                 // Update both overlay panel AND in-scene card
                 this._populateRoomInfoOverlay(data.data, false);
                 this._closeInSceneCard();
@@ -1275,6 +1477,13 @@ class VirtualTourEngine {
         const wp = this.currentWaypoint;
         const yaw = wp.room_info_yaw ?? wp.default_yaw ?? 0;
         const pitch = wp.room_info_pitch ?? ((wp.default_pitch ?? 0) + 15);
+        const isMobileViewport = window.matchMedia?.('(max-width: 768px)').matches ?? window.innerWidth <= 768;
+
+        if (isMobileViewport) {
+            this.viewer.rotate({ yaw: `${yaw}deg`, pitch: `${pitch}deg` });
+        }
+
+        this._ensureDefaultAvailabilityDates();
         
         // Extract display data from either room or room type
         let name, description, price, tags, count, roomSharingType, availText, isPrivateRoom, otherAvailCount;
@@ -1324,8 +1533,8 @@ class VirtualTourEngine {
             : undefined;
 
         // ── Date availability widget ──────────────────────────────────────────
-        const today = new Date().toISOString().split('T')[0];
-        const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+        const today = this._todayString();
+        const minCheckOut = this._addDays(this._checkIn || today, 1);
 
         const roomTypeId = hasSpecificRoom 
             ? (this.currentRoom.room_type?.id || this.currentRoomType?.id)
@@ -1343,7 +1552,7 @@ class VirtualTourEngine {
                 + `</div>`;
         }
 
-        const inputStyle = 'width:100%;min-width:0;font-size:12px;border:1px solid #d7e5db;border-radius:6px;padding:8px 34px 8px 10px;box-sizing:border-box;height:40px;background:#ffffff;color:#1f2937;line-height:1.2;appearance:auto;-webkit-appearance:auto';
+        const inputStyle = 'width:100%;max-width:100%;min-width:0;font-size:12px;border:1px solid #d7e5db;border-radius:6px;padding:8px 30px 8px 10px;box-sizing:border-box;height:40px;background:#ffffff;color:#1f2937;line-height:1.2;appearance:none;-webkit-appearance:none;overflow:hidden';
         const availabilityCardStyle = 'border:1px solid #dce9df;border-radius:10px;padding:10px;background:linear-gradient(180deg,#f8fcf9 0%,#f3f9f5 100%)';
         const availabilityTitleStyle = 'font-size:11px;font-weight:700;text-transform:uppercase;color:#00491E;margin-bottom:8px;letter-spacing:.04em';
         const availabilityLabelStyle = 'font-size:10px;color:#6b7280;margin-bottom:4px';
@@ -1352,13 +1561,13 @@ class VirtualTourEngine {
         // Build availability widget - hide Guests field for private rooms
         let availWidget = '';
         if (!this.previewMode) {
-            availWidget = `<div style="${availabilityCardStyle}">`
+            availWidget = `<div data-tour-availability-widget style="${availabilityCardStyle}">`
               + `<div style="${availabilityTitleStyle}">📅 Check Availability</div>`
               + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;margin-bottom:8px">`
               +   `<div style="min-width:0"><div style="${availabilityLabelStyle}">Check-in</div>`
-              +   `<input type="date" value="${this._checkIn || ''}" min="${today}" onclick="event.stopPropagation()" onchange="tourEngine._setCheckIn(this.value)" style="${inputStyle}"></div>`
+              +   `<input type="date" data-tour-check-in value="${this._checkIn || today}" min="${today}" onclick="event.stopPropagation()" onchange="tourEngine._setCheckIn(this.value)" style="${inputStyle}"></div>`
               +   `<div style="min-width:0"><div style="${availabilityLabelStyle}">Check-out</div>`
-              +   `<input type="date" value="${this._checkOut || ''}" min="${tomorrow}" onclick="event.stopPropagation()" onchange="tourEngine._setCheckOut(this.value)" style="${inputStyle}"></div>`
+              +   `<input type="date" data-tour-check-out value="${this._checkOut || minCheckOut}" min="${minCheckOut}" onclick="event.stopPropagation()" onchange="tourEngine._setCheckOut(this.value)" style="${inputStyle}"></div>`
               + `</div>`;
             
             // For private rooms: full-width Check button. For dorm rooms: show Guests input
@@ -1435,7 +1644,7 @@ class VirtualTourEngine {
           + `<div style="display:flex;flex-direction:column;gap:5px;align-items:center;margin-top:4px">`
           +   `<button onclick="tourEngine.openReservationModal();event.stopPropagation()" style="${buttonStyle}">${buttonText}</button>`
           +   exploreButtonHtml
-          +   `<button onclick="window.location.href='/reserve';event.stopPropagation()" style="width:100%;background:#00491E;color:white;border:none;padding:8px;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer">📝 Full Reservation Form</button>`
+          +   `<button onclick="tourEngine.goToReservationPage();event.stopPropagation()" style="width:100%;background:#00491E;color:white;border:none;padding:8px;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer">📝 Full Reservation Form</button>`
           + `</div>`
           + disclaimer
           + `</div>`;
@@ -1458,6 +1667,7 @@ class VirtualTourEngine {
             },
         });
         this._roomInfoCardOpen = true;
+        this._setRoomCardOpenState(true);
         
         // Pause gaze detection indefinitely while room info card is open
         this._pauseGazeDetection(Infinity);
@@ -1475,9 +1685,20 @@ class VirtualTourEngine {
             });
         } catch (e) {}
         this._roomInfoCardOpen = false;
+        this._setRoomCardOpenState(false);
         
         // Resume gaze detection when room info card is closed
         this._resumeGazeDetection();
+    }
+
+    _setRoomCardOpenState(isOpen) {
+        const viewerEl = document.getElementById('tour-viewer');
+        viewerEl?.classList.toggle('room-card-open', Boolean(isOpen));
+
+        if (isOpen) {
+            window.closeMobileTourSettings?.();
+            window.closeMobileTourMap?.();
+        }
     }
 
     _inSceneCardHtml(data, isSpecificRoom = false) {
@@ -1517,7 +1738,7 @@ class VirtualTourEngine {
         const buttons = this.previewMode ? '' : `
             <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;align-items:center">
                 <button onclick="tourEngine.openReservationModal()" style="width:85%;background:#FFC600;color:#00491E;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83C\uDFE8 Request Reservation</button>
-                <button onclick="window.location.href='/reserve'" style="width:85%;background:#00491E;color:white;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83D\uDCDD Full Reservation Form</button>
+                <button onclick="tourEngine.goToReservationPage()" style="width:85%;background:#00491E;color:white;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83D\uDCDD Full Reservation Form</button>
             </div>`;
 
         return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:360px;font-family:var(--guest-font-body);display:flex;flex-direction:column;max-height:90vh">
@@ -1913,9 +2134,10 @@ class VirtualTourEngine {
             const currentImageIndex = hasImage
                 ? Math.max(0, Math.min(imageUrls.length - 1, imageIndex))
                 : 0;
+            const descriptionText = String(hs.description || '').replace(/\s+/g, ' ').trim();
             const lines = [
                 truncateXRText(hs.title || 'Information', 56),
-                hasImage ? '' : String(hs.description || '').replace(/\s+/g, ' ').trim(),
+                hasImage ? '' : descriptionText,
                 videoId ? 'Preview only in VR. Exit to watch on YouTube.' : (hasVideo ? 'Exit VR to open this video.' : ''),
                 hasImage ? `Image ${currentImageIndex + 1} of ${imageUrls.length}` : '',
             ].filter(Boolean);
@@ -1961,18 +2183,34 @@ class VirtualTourEngine {
                     const image = imageTexture.image;
                     const aspect = image?.width && image?.height ? image.width / image.height : 16 / 9;
                     const maxWidth = 2.85;
-                    const maxHeight = 1.28;
+                    const maxHeight = descriptionText ? 1.08 : 1.28;
                     let imageWidth = maxWidth;
                     let imageHeight = imageWidth / aspect;
                     if (imageHeight > maxHeight) {
                         imageHeight = maxHeight;
                         imageWidth = imageHeight * aspect;
                     }
-                    const imagePlane = makePlane(imageTexture, panelPosition(0, 0.03), { x: imageWidth, y: imageHeight }, { panel: true, action: 'noop' });
+                    const imagePlane = makePlane(imageTexture, panelPosition(0, descriptionText ? 0.2 : 0.03), { x: imageWidth, y: imageHeight }, { panel: true, action: 'noop' });
                     panelGroup.add(imagePlane);
                     clearGroup(statusGroup);
                 } catch (error) {
                     console.error('WebXR info image load failed:', error);
+                }
+
+                if (descriptionText) {
+                    const descriptionPanel = makePlane(makeTextTexture(descriptionText, {
+                        width: 900,
+                        height: 160,
+                        background: 'rgba(255,255,255,0.96)',
+                        color: '#374151',
+                        font: 'bold 26px sans-serif',
+                        lineHeight: 38,
+                        padding: 48,
+                        wrap: true,
+                        maxLines: 3,
+                        border: 'rgba(0,73,30,0.28)',
+                    }), panelPosition(0, -0.68), { x: 2.45, y: 0.42 }, { panel: true, action: 'noop' });
+                    panelGroup.add(descriptionPanel);
                 }
 
                 if (imageUrls.length > 1) {
@@ -2040,7 +2278,9 @@ class VirtualTourEngine {
                 }), panelPosition(0, -1.05), { x: 2.15, y: 0.38 }, { panel: true, action: 'open-url', url: videoUrl }));
             }
 
-            const closeY = hasImage ? (buttons.length > 1 ? -1.24 : -1.02) : (hasVideo ? -1.5 : -1.05);
+            const closeY = hasImage
+                ? (descriptionText ? (buttons.length > 1 ? -1.48 : -1.3) : (buttons.length > 1 ? -1.24 : -1.02))
+                : (hasVideo ? -1.5 : -1.05);
             buttons.push(makePlane(makeTextTexture('Close', {
                 width: 360,
                 height: 100,
@@ -2519,7 +2759,12 @@ class VirtualTourEngine {
         };
 
         session.addEventListener('end', cleanup, { once: true });
-        await renderer.xr.setSession(session);
+        try {
+            await renderer.xr.setSession(session);
+        } catch (error) {
+            cleanup();
+            throw error;
+        }
         
         // Enable gaze detection for VR mode
         this._gazeCheckEnabled = true;
@@ -2935,6 +3180,8 @@ class VirtualTourEngine {
     // ── Reservation modal ─────────────────────────────────────────────────────
 
     openReservationModal() {
+        this._ensureDefaultAvailabilityDates();
+
         if (this.reservationModal) {
             this.reservationModal.removeAttribute('hidden');
             this.reservationModal.classList.remove('hidden');
@@ -2951,18 +3198,22 @@ class VirtualTourEngine {
         }
         
         // Pre-fill dates and occupants from the availability widget state
-        if (this._checkIn) {
-            const ciEl = document.getElementById('check_in_date');
-            if (ciEl) ciEl.value = this._checkIn;
+        const ciEl = document.getElementById('check_in_date');
+        const coEl = document.getElementById('check_out_date');
+        if (ciEl) {
+            ciEl.min = this._todayString();
+            ciEl.value = this._checkIn;
         }
-        if (this._checkOut) {
-            const coEl = document.getElementById('check_out_date');
-            if (coEl) coEl.value = this._checkOut;
+        if (coEl) {
+            coEl.min = this._addDays(this._checkIn, 1);
+            coEl.value = this._checkOut;
         }
         if (this._guests > 1) {
             const gEl = document.getElementById('number_of_occupants');
             if (gEl) gEl.value = this._guests;
         }
+
+        this._refreshReservationOccupantLimit();
     }
 
     async exitVRToReservationModal() {
@@ -2978,7 +3229,7 @@ class VirtualTourEngine {
             await this.stopWebXRTest();
         }
 
-        window.location.href = '/reserve';
+        this.goToReservationPage();
     }
 
     closeReservationModal() {

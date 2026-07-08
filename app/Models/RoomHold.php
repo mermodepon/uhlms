@@ -17,6 +17,7 @@ class RoomHold extends Model
         'hold_from',
         'hold_to',
         'hold_type',
+        'held_guest_count',
         'expires_at',
     ];
 
@@ -25,6 +26,7 @@ class RoomHold extends Model
         return [
             'hold_from' => 'date',
             'hold_to' => 'date',
+            'held_guest_count' => 'integer',
             'expires_at' => 'datetime',
         ];
     }

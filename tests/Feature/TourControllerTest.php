@@ -107,6 +107,7 @@ class TourControllerTest extends TestCase
             'guest_last_name' => 'Guest',
             'guest_email' => 'tour-warning@example.com',
             'guest_phone' => '09171234567',
+            'guest_age' => 18,
             'guest_gender' => 'Male',
             'preferred_room_type_id' => $roomType->id,
             'check_in_date' => $checkIn,
@@ -132,6 +133,7 @@ class TourControllerTest extends TestCase
             'guest_last_name' => 'Guest',
             'guest_email' => 'tour@example.com',
             'guest_phone' => '09171234567',
+            'guest_age' => 18,
             'guest_gender' => 'Male',
             'preferred_room_type_id' => $roomType->id,
             'preferred_room_id' => $room->id,
@@ -150,6 +152,12 @@ class TourControllerTest extends TestCase
 
         $this->assertNotNull($reservation);
         $this->assertSame($roomType->id, $reservation->preferred_room_type_id);
+        $this->assertDatabaseHas('reservation_room_requests', [
+            'reservation_id' => $reservation->id,
+            'room_type_id' => $roomType->id,
+            'requested_room_count' => 1,
+            'occupant_count' => 2,
+        ]);
         $this->assertStringContainsString('Reservation request submitted via Virtual Tour', (string) $reservation->special_requests);
         $this->assertStringNotContainsString((string) $room->id, (string) $reservation->special_requests);
         $this->assertStringNotContainsString('Availability warning acknowledged by guest', (string) $reservation->special_requests);
@@ -169,6 +177,7 @@ class TourControllerTest extends TestCase
             'guest_last_name' => 'Guest',
             'guest_email' => 'tour-ack@example.com',
             'guest_phone' => '09171234567',
+            'guest_age' => 18,
             'guest_gender' => 'Male',
             'preferred_room_type_id' => $roomType->id,
             'check_in_date' => $checkIn,
@@ -184,5 +193,162 @@ class TourControllerTest extends TestCase
         $reservation = Reservation::where('guest_email', 'tour-ack@example.com')->first();
         $this->assertNotNull($reservation);
         $this->assertStringContainsString('Availability warning acknowledged by guest', (string) $reservation->special_requests);
+    }
+
+    public function test_virtual_tour_reservation_rejects_primary_guest_younger_than_eighteen(): void
+    {
+        $this->withoutMiddleware(\Spatie\Honeypot\ProtectAgainstSpam::class);
+
+        $roomType = $this->createRoomType(['name' => 'Tour Suite']);
+
+        $response = $this->postJson(route('api.tour.reserve'), [
+            'guest_first_name' => 'Tour',
+            'guest_last_name' => 'Guest',
+            'guest_email' => 'tour-underage@example.com',
+            'guest_phone' => '09171234567',
+            'guest_age' => 17,
+            'guest_gender' => 'Male',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->addDay()->toDateString(),
+            'check_out_date' => now()->addDays(3)->toDateString(),
+            'number_of_occupants' => 1,
+            'source' => 'virtual_tour',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('guest_age');
+    }
+
+    public function test_virtual_tour_reservation_rejects_missing_required_mobile_number(): void
+    {
+        $this->withoutMiddleware(\Spatie\Honeypot\ProtectAgainstSpam::class);
+
+        $roomType = $this->createRoomType(['name' => 'Tour Suite']);
+        $this->createRoom($roomType);
+
+        $response = $this->postJson(route('api.tour.reserve'), [
+            'guest_first_name' => 'Tour',
+            'guest_last_name' => 'Guest',
+            'guest_email' => 'tour-missing-mobile@example.com',
+            'guest_age' => 18,
+            'guest_gender' => 'Male',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->addDay()->toDateString(),
+            'check_out_date' => now()->addDays(3)->toDateString(),
+            'number_of_occupants' => 1,
+            'availability_acknowledged' => 1,
+            'source' => 'virtual_tour',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('guest_phone');
+    }
+
+    public function test_virtual_tour_reservation_rejects_invalid_mobile_number(): void
+    {
+        $this->withoutMiddleware(\Spatie\Honeypot\ProtectAgainstSpam::class);
+
+        $roomType = $this->createRoomType(['name' => 'Tour Suite']);
+
+        $response = $this->postJson(route('api.tour.reserve'), [
+            'guest_first_name' => 'Tour',
+            'guest_last_name' => 'Guest',
+            'guest_email' => 'tour-invalid-mobile@example.com',
+            'guest_phone' => 'wewe',
+            'guest_age' => 18,
+            'guest_gender' => 'Male',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->addDay()->toDateString(),
+            'check_out_date' => now()->addDays(3)->toDateString(),
+            'number_of_occupants' => 1,
+            'source' => 'virtual_tour',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('guest_phone');
+    }
+
+    public function test_virtual_tour_reservation_rejects_private_room_occupants_above_capacity(): void
+    {
+        $this->withoutMiddleware(\Spatie\Honeypot\ProtectAgainstSpam::class);
+
+        $roomType = $this->createRoomType(['name' => 'Tour Capacity Limited Private Room']);
+        $this->createRoom($roomType);
+
+        $response = $this->postJson(route('api.tour.reserve'), [
+            'guest_first_name' => 'Tour',
+            'guest_last_name' => 'Guest',
+            'guest_email' => 'tour-private-capacity@example.com',
+            'guest_phone' => '09171234567',
+            'guest_age' => 18,
+            'guest_gender' => 'Male',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->addDay()->toDateString(),
+            'check_out_date' => now()->addDays(3)->toDateString(),
+            'number_of_occupants' => 5,
+            'source' => 'virtual_tour',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('number_of_occupants');
+    }
+
+    public function test_virtual_tour_reservation_rejects_public_room_occupants_above_available_beds(): void
+    {
+        $this->withoutMiddleware(\Spatie\Honeypot\ProtectAgainstSpam::class);
+
+        $roomType = $this->createRoomType([
+            'name' => 'Tour Dormitory Bed Limit',
+            'room_sharing_type' => 'public',
+        ]);
+        $this->createRoom($roomType);
+        $this->createRoom($roomType);
+
+        $response = $this->postJson(route('api.tour.reserve'), [
+            'guest_first_name' => 'Tour',
+            'guest_last_name' => 'Guest',
+            'guest_email' => 'tour-dorm-nine@example.com',
+            'guest_phone' => '09171234567',
+            'guest_age' => 18,
+            'guest_gender' => 'Male',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->addDay()->toDateString(),
+            'check_out_date' => now()->addDays(3)->toDateString(),
+            'number_of_occupants' => 9,
+            'source' => 'virtual_tour',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('number_of_occupants');
+    }
+
+    public function test_virtual_tour_reservation_accepts_public_room_occupants_up_to_available_beds(): void
+    {
+        $this->withoutMiddleware(\Spatie\Honeypot\ProtectAgainstSpam::class);
+
+        $roomType = $this->createRoomType([
+            'name' => 'Tour Dormitory Available Beds',
+            'room_sharing_type' => 'public',
+        ]);
+        $this->createRoom($roomType);
+        $this->createRoom($roomType);
+
+        $response = $this->postJson(route('api.tour.reserve'), [
+            'guest_first_name' => 'Tour',
+            'guest_last_name' => 'Guest',
+            'guest_email' => 'tour-dorm-eight@example.com',
+            'guest_phone' => '09171234567',
+            'guest_age' => 18,
+            'guest_gender' => 'Male',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->addDay()->toDateString(),
+            'check_out_date' => now()->addDays(3)->toDateString(),
+            'number_of_occupants' => 8,
+            'availability_acknowledged' => 1,
+            'source' => 'virtual_tour',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true);
     }
 }

@@ -145,33 +145,46 @@ class RoomHoldService
      * Check if a specific room is available for a given date range.
      * A room is available if no active hold overlaps the requested dates.
      */
-    public function isRoomAvailable(Room $room, Carbon $checkIn, Carbon $checkOut): bool
+    public function isRoomAvailable(Room $room, Carbon $checkIn, Carbon $checkOut, ?int $requestedSlots = null): bool
     {
-        return ! $this->hasConflict($room, $checkIn, $checkOut);
+        return ! $this->hasConflict($room, $checkIn, $checkOut, $requestedSlots);
     }
 
     /**
      * Check if a specific room has a conflicting hold for the given date range.
      * Checks both RoomHolds (advance reservations) and RoomAssignments (checked-in guests).
      */
-    public function hasConflict(Room $room, Carbon $checkIn, Carbon $checkOut): bool
+    public function hasConflict(Room $room, Carbon $checkIn, Carbon $checkOut, ?int $requestedSlots = null): bool
     {
+        $room->loadMissing('roomType');
+
         // Check for RoomHolds (advance reservations with assigned rooms)
-        $hasHoldConflict = RoomHold::query()
+        $conflictingHolds = RoomHold::query()
             ->where('room_id', $room->id)
             ->active()
             ->conflictingWith($checkIn, $checkOut)
-            ->exists();
+            ->with('reservation:id,number_of_occupants')
+            ->get();
 
-        if ($hasHoldConflict) {
-            return true;
+        if ($room->roomType?->isPrivate()) {
+            if ($conflictingHolds->isNotEmpty()) {
+                return true;
+            }
+        } elseif ($conflictingHolds->isNotEmpty()) {
+            $capacity = max(0, (int) ($room->capacity ?? 0));
+            $reservedSlots = $conflictingHolds->sum(fn (RoomHold $hold): int => $this->resolveHoldGuestCount($hold));
+            $neededSlots = max(1, (int) ($requestedSlots ?? 1));
+
+            if ($capacity <= 0 || $reservedSlots + $neededSlots > $capacity) {
+                return true;
+            }
         }
 
         // Check for RoomAssignments (actual checked-in guests)
         // A room assignment conflicts if:
         // 1. The guest hasn't checked out yet (checked_out_at is null)
         // 2. The reservation's date range overlaps with the requested dates
-        $hasAssignmentConflict = \App\Models\RoomAssignment::query()
+        $assignmentQuery = \App\Models\RoomAssignment::query()
             ->where('room_id', $room->id)
             ->whereNull('checked_out_at') // Guest is still checked in
             ->whereHas('reservation', function ($query) use ($checkIn, $checkOut) {
@@ -180,10 +193,18 @@ class RoomHoldService
                     $q->where('check_in_date', '<', $checkOut->format('Y-m-d'))
                       ->where('check_out_date', '>', $checkIn->format('Y-m-d'));
                 });
-            })
-            ->exists();
+            });
 
-        return $hasAssignmentConflict;
+        if ($room->roomType?->isPrivate()) {
+            return $assignmentQuery->exists();
+        }
+
+        $capacity = max(0, (int) ($room->capacity ?? 0));
+        $checkedInSlots = $assignmentQuery->count();
+        $reservedSlots = $this->getReservedHoldSlotsForDates($room, $checkIn, $checkOut);
+        $neededSlots = max(1, (int) ($requestedSlots ?? 1));
+
+        return $capacity <= 0 || $checkedInSlots + $reservedSlots + $neededSlots > $capacity;
     }
 
     /**
@@ -203,37 +224,13 @@ class RoomHoldService
             return collect();
         }
 
-        // Find rooms that have NO conflicting active holds or assignments
-        $conflictingRoomIds = RoomHold::query()
-            ->whereIn('room_id', $roomId)
-            ->active()
-            ->conflictingWith($checkIn, $checkOut)
-            ->pluck('room_id')
-            ->unique();
-
-        // Also check for rooms with active assignments (checked-in guests)
-        $assignmentConflictIds = \App\Models\RoomAssignment::query()
-            ->whereIn('room_id', $roomId)
-            ->whereNull('checked_out_at') // Guest is still checked in
-            ->whereHas('reservation', function ($query) use ($checkIn, $checkOut) {
-                $query->where(function ($q) use ($checkIn, $checkOut) {
-                    // Overlapping date ranges
-                    $q->where('check_in_date', '<', $checkOut->format('Y-m-d'))
-                      ->where('check_out_date', '>', $checkIn->format('Y-m-d'));
-                });
-            })
-            ->pluck('room_id')
-            ->unique();
-
-        // Merge both conflict lists
-        $allConflictingIds = $conflictingRoomIds->merge($assignmentConflictIds)->unique();
-
         return Room::query()
             ->whereIn('id', $roomId)
-            ->whereNotIn('id', $allConflictingIds)
             ->with(['roomType', 'floor'])
             ->orderBy('room_number')
-            ->get();
+            ->get()
+            ->filter(fn (Room $room): bool => ! $this->hasConflict($room, $checkIn, $checkOut))
+            ->values();
     }
 
     /**
@@ -294,7 +291,9 @@ class RoomHoldService
 
         $holds = [];
 
-        DB::transaction(function () use ($reservation, $rooms, $checkIn, $checkOut, &$holds) {
+        DB::transaction(function () use ($reservation, $rooms, $checkIn, $checkOut, $isPrivate, &$holds) {
+            $guestAllocation = $this->allocateGuestsAcrossRooms($reservation, $rooms);
+
             foreach ($rooms as $room) {
                 $hold = RoomHold::create([
                     'room_id' => $room->id,
@@ -302,6 +301,7 @@ class RoomHoldService
                     'hold_from' => $checkIn->toDateString(),
                     'hold_to' => $checkOut->toDateString(),
                     'hold_type' => 'advance',
+                    'held_guest_count' => $isPrivate ? null : ($guestAllocation[$room->id] ?? 1),
                     'expires_at' => null, // No expiry for advance holds
                 ]);
 
@@ -313,6 +313,87 @@ class RoomHoldService
                 $reservation->update(['status' => 'confirmed']);
             }
         });
+
+        return [
+            'holds' => $holds,
+            'room_count' => count($holds),
+        ];
+    }
+
+    /**
+     * Create advance holds from room IDs grouped by room type.
+     *
+     * @param  array<int|string, array<int, int>>  $roomIdsByRoomType
+     * @return array<string, mixed>
+     */
+    public function createAdvanceHoldsByRoomType(Reservation $reservation, array $roomIdsByRoomType): array
+    {
+        $checkIn = Carbon::parse($reservation->check_in_date);
+        $checkOut = Carbon::parse($reservation->check_out_date);
+        $requests = $reservation->getEffectiveRoomRequests()->keyBy('room_type_id');
+        $holds = [];
+
+        DB::transaction(function () use ($reservation, $roomIdsByRoomType, $requests, $checkIn, $checkOut, &$holds): void {
+            foreach ($roomIdsByRoomType as $roomTypeId => $roomIds) {
+                $roomTypeId = (int) $roomTypeId;
+                $roomIds = array_values(array_unique(array_filter(array_map('intval', (array) $roomIds))));
+
+                if (empty($roomIds)) {
+                    continue;
+                }
+
+                $requestLine = $requests->get($roomTypeId);
+                if (! $requestLine) {
+                    throw new \RuntimeException('One or more selected rooms do not match the guest requested room types.');
+                }
+
+                $rooms = Room::query()
+                    ->whereIn('id', $roomIds)
+                    ->where('room_type_id', $roomTypeId)
+                    ->where('is_active', true)
+                    ->whereNotIn('status', ['maintenance', 'inactive'])
+                    ->with('roomType')
+                    ->get()
+                    ->sortBy(fn (Room $room) => array_search($room->id, $roomIds, true))
+                    ->values();
+
+                if ($rooms->count() !== count($roomIds)) {
+                    throw new \RuntimeException('One or more selected rooms are not valid for this room type.');
+                }
+
+                $isPrivate = $rooms->first()?->roomType?->isPrivate() ?? true;
+                $guestAllocation = $isPrivate
+                    ? $rooms->mapWithKeys(fn (Room $room) => [$room->id => null])->all()
+                    : $this->allocateGuestsAcrossRooms($reservation, $rooms, (int) $requestLine->occupant_count);
+
+                foreach ($rooms as $room) {
+                    $slotsNeeded = $isPrivate ? null : max(1, (int) ($guestAllocation[$room->id] ?? 1));
+                    if ($this->hasConflict($room, $checkIn, $checkOut, $slotsNeeded)) {
+                        throw new \RuntimeException("Room {$room->room_number} is not yet available for the selected dates.");
+                    }
+                }
+
+                foreach ($rooms as $room) {
+                    $holds[] = RoomHold::create([
+                        'room_id' => $room->id,
+                        'reservation_id' => $reservation->id,
+                        'hold_from' => $checkIn->toDateString(),
+                        'hold_to' => $checkOut->toDateString(),
+                        'hold_type' => 'advance',
+                        'held_guest_count' => $isPrivate ? null : ($guestAllocation[$room->id] ?? 1),
+                        'expires_at' => null,
+                    ]);
+                }
+            }
+
+            if (! empty($holds) && $reservation->status === 'approved') {
+                $reservation->update(['status' => 'confirmed']);
+            }
+        });
+
+        if (empty($holds)) {
+            throw new \RuntimeException('At least one room must be selected.');
+        }
 
         return [
             'holds' => $holds,
@@ -354,16 +435,25 @@ class RoomHoldService
         }
 
         $roomEntries = [];
+        $guestQueue = collect($guestData)->values();
+        $remainingHolds = $holds->count();
 
         foreach ($holds as $hold) {
             $room = $hold->room;
             $isPrivate = $room->roomType?->isPrivate() ?? false;
+            $remainingHolds = max(1, $remainingHolds);
+            $guestCount = $hold->held_guest_count
+                ? max(1, (int) $hold->held_guest_count)
+                : max(1, (int) ceil(max(1, $guestQueue->count()) / $remainingHolds));
+            $roomGuests = $guestQueue->splice(0, $guestCount)->values()->all();
 
             $roomEntries[] = [
                 'room_id' => $room->id,
                 'room_mode' => $isPrivate ? 'private' : 'dorm',
-                'guests' => $guestData,
+                'guests' => ! empty($roomGuests) ? $roomGuests : $guestData,
             ];
+
+            $remainingHolds--;
         }
 
         return $roomEntries;
@@ -481,9 +571,7 @@ class RoomHoldService
             ->conflictingWith($checkIn, $checkOut)
             ->with('reservation:id,number_of_occupants')
             ->get()
-            ->sum(function (RoomHold $hold) {
-                return max(1, (int) ($hold->reservation?->number_of_occupants ?? 1));
-            });
+            ->sum(fn (RoomHold $hold): int => $this->resolveHoldGuestCount($hold));
 
         $checkedInSlots = RoomAssignment::query()
             ->where('room_id', $room->id)
@@ -495,5 +583,48 @@ class RoomHoldService
             ->count();
 
         return min(max(0, (int) ($room->capacity ?? 0)), $heldSlots + $checkedInSlots);
+    }
+
+    protected function getReservedHoldSlotsForDates(Room $room, Carbon $checkIn, Carbon $checkOut): int
+    {
+        return RoomHold::query()
+            ->where('room_id', $room->id)
+            ->active()
+            ->conflictingWith($checkIn, $checkOut)
+            ->with('reservation:id,number_of_occupants')
+            ->get()
+            ->sum(fn (RoomHold $hold): int => $this->resolveHoldGuestCount($hold));
+    }
+
+    protected function resolveHoldGuestCount(RoomHold $hold): int
+    {
+        return max(1, (int) ($hold->held_guest_count ?? $hold->reservation?->number_of_occupants ?? 1));
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Room>  $rooms
+     * @return array<int, int>
+     */
+    protected function allocateGuestsAcrossRooms(Reservation $reservation, Collection $rooms, ?int $guestCount = null): array
+    {
+        $remainingGuests = max(1, (int) ($guestCount ?? $reservation->number_of_occupants ?? 1));
+        $allocation = [];
+
+        foreach ($rooms as $room) {
+            $capacity = max(1, (int) ($room->capacity ?? 1));
+            $slots = min($remainingGuests, $capacity);
+            $allocation[$room->id] = max(1, $slots);
+            $remainingGuests -= $slots;
+
+            if ($remainingGuests <= 0) {
+                break;
+            }
+        }
+
+        foreach ($rooms as $room) {
+            $allocation[$room->id] ??= 1;
+        }
+
+        return $allocation;
     }
 }

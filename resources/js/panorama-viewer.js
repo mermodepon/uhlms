@@ -249,8 +249,31 @@ class PanoramaViewer {
             marker.size = { width: 20, height: 20 };
         }
 
-        this._markers.addMarker(marker);
         this._markerConfigs.set(config.id, { ...config });
+        this._markers.addMarker(marker);
+        this._wireCardCloseControl(config.id);
+    }
+
+    _wireCardCloseControl(markerId) {
+        const markerEl = document.getElementById(`psv-marker-${markerId}`);
+        const closeBtn = markerEl?.querySelector('[data-pv-card-close]');
+        if (!closeBtn || closeBtn.dataset.pvCloseBound === '1') return;
+
+        closeBtn.dataset.pvCloseBound = '1';
+        const stopMarkerSelection = (event) => event.stopPropagation();
+        closeBtn.addEventListener('pointerdown', stopMarkerSelection);
+        closeBtn.addEventListener('mousedown', stopMarkerSelection);
+        closeBtn.addEventListener('touchstart', stopMarkerSelection, { passive: true });
+        closeBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const config = this._markerConfigs.get(markerId);
+            this._emit('card-close', {
+                marker: {
+                    config: config || { id: markerId },
+                },
+            });
+        });
     }
 
     _escapeHtml(value) {
@@ -383,19 +406,19 @@ class PanoramaViewer {
             `<span style="display:inline-block;background:#eef6f0;color:#00491E;border:1px solid #dce9df;font-size:11px;padding:3px 8px;border-radius:999px;margin:2px;font-weight:600">${a}</span>`
         ).join('');
 
-        const closeStyle = 'position:absolute;top:10px;right:10px;background:rgba(255,255,255,.2);border:none;color:white;width:26px;height:26px;border-radius:50%;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:0';
+        const closeStyle = 'position:absolute;top:8px;right:8px;background:rgba(15,23,42,.78);border:1px solid rgba(255,255,255,.22);color:white;width:44px;height:44px;border-radius:999px;font-size:18px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:0;box-shadow:0 8px 18px rgba(0,0,0,.24);-webkit-tap-highlight-color:transparent';
         const closeBtn = closeAction
-            ? `<button onclick="${closeAction};event.stopPropagation()" style="${closeStyle};cursor:pointer">X</button>`
-            : `<div style="${closeStyle}">X</div>`;
+            ? `<button type="button" aria-label="Close information card" data-pv-card-close="1" style="${closeStyle};cursor:pointer">&times;</button>`
+            : `<div aria-label="Close information card" style="${closeStyle}">&times;</div>`;
 
         const interactionShield = `onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onpointerdown="event.stopPropagation()" onwheel="event.stopPropagation()" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()"`;
 
         return `<div class="pv-info-card" ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:var(--guest-font-body);display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight};pointer-events:auto;touch-action:pan-y">`
-            + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 16px;position:relative;flex-shrink:0">`
+            + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 64px 14px 16px;position:relative;flex-shrink:0;min-height:60px;box-sizing:border-box">`
             + closeBtn
-            + `<h2 style="font-size:16px;font-weight:700;margin:0 32px 0 0">${title}</h2>`
+            + `<h2 style="font-size:16px;font-weight:700;margin:0">${title}</h2>`
             + (subtitle ? `<span style="display:inline-block;margin-top:4px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22);font-size:11px;padding:2px 8px;border-radius:999px;color:#f6f7eb;font-weight:600">${subtitle}</span>` : '')
-            + (badge ? `<div style="position:absolute;top:10px;right:42px;font-size:11px;font-weight:700;color:${badgeClr};background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);padding:3px 8px;border-radius:999px;backdrop-filter:blur(2px)">${badge}</div>` : '')
+            + (badge ? `<div style="display:inline-block;margin-top:6px;font-size:11px;font-weight:700;color:${badgeClr};background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);padding:3px 8px;border-radius:999px;backdrop-filter:blur(2px)">${badge}</div>` : '')
             + `</div>`
             + `<div style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y">`
             + mediaHtml

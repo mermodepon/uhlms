@@ -156,6 +156,11 @@ class Reservation extends Model
         return $this->hasMany(RoomHold::class);
     }
 
+    public function roomRequests(): HasMany
+    {
+        return $this->hasMany(ReservationRoomRequest::class)->orderBy('sort_order');
+    }
+
     public function refreshFinancialSummary(): void
     {
         $chargesTotal = (float) $this->charges()->sum('amount');
@@ -241,7 +246,22 @@ class Reservation extends Model
      */
     public function canAcceptGuestPayment(): bool
     {
-        return in_array($this->status, ['approved', 'confirmed'], true);
+        return in_array($this->status, ['approved', 'confirmed'], true)
+            && $this->hasActiveAdvanceHold();
+    }
+
+    public function hasActiveAdvanceHold(): bool
+    {
+        if ($this->relationLoaded('roomHolds')) {
+            return $this->roomHolds
+                ->where('hold_type', 'advance')
+                ->contains(fn ($hold) => ! $hold->isExpired());
+        }
+
+        return $this->roomHolds()
+            ->advance()
+            ->active()
+            ->exists();
     }
 
     /**
@@ -267,13 +287,9 @@ class Reservation extends Model
         // First, try to use actual charges if they exist
         $totalCharges = $this->balance_due + $this->payments_total;
 
-        // If no charges calculated yet (new reservation), estimate based on room type
-        if ($totalCharges <= 0 && $this->preferredRoomType) {
-            $nights = $this->nights ?? 1;
-            $guests = $this->number_of_occupants ?? 1;
-            
-            // Calculate estimated rate from preferred room type
-            $totalCharges = $this->preferredRoomType->calculateRate($nights, $guests);
+        // If no charges are calculated yet, estimate from requested room lines.
+        if ($totalCharges <= 0) {
+            $totalCharges = $this->calculateRequestedRoomAmount();
         }
 
         if ($totalCharges <= 0) {
@@ -294,16 +310,83 @@ class Reservation extends Model
         // First, try to use actual charges if they exist
         $totalCharges = $this->balance_due + $this->payments_total;
 
-        // If no charges calculated yet (new reservation), estimate based on room type
-        if ($totalCharges <= 0 && $this->preferredRoomType) {
-            $nights = $this->nights ?? 1;
-            $guests = $this->number_of_occupants ?? 1;
-
-            // Calculate estimated rate from preferred room type
-            $totalCharges = $this->preferredRoomType->calculateRate($nights, $guests);
+        // If no charges are calculated yet, estimate from requested room lines.
+        if ($totalCharges <= 0) {
+            $totalCharges = $this->calculateRequestedRoomAmount();
         }
 
         return round($totalCharges, 2);
+    }
+
+    public function calculateRequestedRoomAmount(): float
+    {
+        $nights = max(1, (int) ($this->nights ?? 1));
+        $requests = $this->getEffectiveRoomRequests();
+
+        if ($requests->isEmpty()) {
+            return 0.0;
+        }
+
+        return round((float) $requests->sum(function (ReservationRoomRequest $request) use ($nights): float {
+            $roomType = $request->roomType;
+            if (! $roomType) {
+                return 0.0;
+            }
+
+            $occupants = max(1, (int) $request->occupant_count);
+            $rooms = max(1, (int) $request->requested_room_count);
+
+            if ($roomType->isPerPersonPricing()) {
+                return (float) $roomType->base_rate * $occupants * $nights;
+            }
+
+            return (float) $roomType->base_rate * $rooms * $nights;
+        }), 2);
+    }
+
+    public function getRequestedRoomSummaryAttribute(): string
+    {
+        $requests = $this->getEffectiveRoomRequests();
+
+        if ($requests->isEmpty()) {
+            return 'To be assigned';
+        }
+
+        return $requests
+            ->map(fn (ReservationRoomRequest $request): string => $request->summary_label)
+            ->filter()
+            ->implode('; ');
+    }
+
+    /**
+     * Return persisted request lines, or synthesize one for older reservations.
+     *
+     * @return \Illuminate\Support\Collection<int, ReservationRoomRequest>
+     */
+    public function getEffectiveRoomRequests()
+    {
+        $requests = $this->relationLoaded('roomRequests')
+            ? $this->roomRequests
+            : $this->roomRequests()->with('roomType')->get();
+
+        if ($requests->isNotEmpty()) {
+            return $requests->loadMissing('roomType')->values();
+        }
+
+        if (! $this->preferred_room_type_id) {
+            return collect();
+        }
+
+        $request = new ReservationRoomRequest([
+            'reservation_id' => $this->id,
+            'room_type_id' => $this->preferred_room_type_id,
+            'requested_room_count' => 1,
+            'occupant_count' => max(1, (int) ($this->number_of_occupants ?? 1)),
+            'sort_order' => 0,
+        ]);
+        $request->setRelation('roomType', $this->preferredRoomType);
+
+        return collect([$request]);
     }
 
     /**

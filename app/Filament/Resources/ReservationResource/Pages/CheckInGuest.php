@@ -32,6 +32,8 @@ class CheckInGuest extends Page
 
     public Reservation $record;
 
+    public ?array $roomHoldLoadStatus = null;
+
     public function mount(Reservation $record): void
     {
         $this->record = $record;
@@ -39,6 +41,9 @@ class CheckInGuest extends Page
         abort_unless(in_array($record->status, ['approved', 'confirmed']), 403, 'This reservation cannot be checked in.');
 
         $this->form->fill();
+        $this->form->fill(array_merge($this->data ?? [], [
+            'reservation_rooms' => $this->buildInitialReservationRoomEntries(),
+        ]));
     }
 
     public function form(Form $form): Form
@@ -103,69 +108,13 @@ class CheckInGuest extends Page
                     : 'Add one row per room involved in this check-in. Use PRIVATE for whole-room assignment or DORM for per-bed assignment.')
                 ->schema([
                     Forms\Components\Repeater::make('reservation_rooms')
-                        ->default(function () {
-                            // Pre-populate from advance room holds if they exist
-                            $holds = $this->record->roomHolds()
-                                ->advance()
-                                ->with('room.roomType')
-                                ->get();
-
-                            if ($holds->isEmpty()) {
-                                return [[
-                                    'room_mode' => $this->record->preferredRoomType?->isPrivate() ? 'private' : 'dorm',
-                                    'room_id' => null,
-                                    'includes_primary_guest' => true,
-                                    'guests' => [],
-                                ]];
-                            }
-
-                            $validEntries = [];
-                            $skippedCount = 0;
-
-                            foreach ($holds as $index => $hold) {
-                                // Skip if room is deleted or inactive
-                                if (! $hold->room || ! $hold->room->is_active) {
-                                    $skippedCount++;
-
-                                    continue;
-                                }
-
-                                $room = $hold->room;
-
-                                // Skip if room is in maintenance or inactive status
-                                if (in_array($room->status, ['maintenance', 'inactive'], true)) {
-                                    $skippedCount++;
-
-                                    continue;
-                                }
-
-                                $isPrivate = $room->roomType?->isPrivate() ?? false;
-
-                                $validEntries[] = [
-                                    'room_mode' => $isPrivate ? 'private' : 'dorm',
-                                    'room_id' => $room->id,
-                                    'includes_primary_guest' => (count($validEntries) === 0), // Only first gets primary
-                                    'guests' => [], // Staff will fill in guest details
-                                ];
-                            }
-
-                            // Store counts in session for helper text display
-                            if ($skippedCount > 0) {
-                                session()->flash('room_hold_load_status', [
-                                    'total' => $holds->count(),
-                                    'loaded' => count($validEntries),
-                                    'skipped' => $skippedCount,
-                                ]);
-                            }
-
-                            return $validEntries;
-                        })
+                        ->default(fn () => [$this->blankReservationRoomEntry()])
                         ->helperText(function () {
-                            $status = session('room_hold_load_status');
+                            $status = $this->roomHoldLoadStatus;
                             if (! $status) {
-                                $totalHolds = $this->record->roomHolds()->advance()->count();
+                                $totalHolds = $this->record->roomHolds()->advance()->active()->count();
                                 if ($totalHolds > 0) {
-                                    return "{$totalHolds} room(s) held from approval stage. Pre-populated above.";
+                                    return "{$totalHolds} room(s) held from approval stage.";
                                 }
 
                                 return 'Add one or more rooms to proceed with check-in.';
@@ -302,6 +251,9 @@ class CheckInGuest extends Page
                                 ->helperText(fn ($get) => filled($get('room_mode') ?? null)
                                     ? 'Held rooms shown first. Preferred room type shown in other available rooms.'
                                     : 'Room mode is pre-filled based on held room'),
+                            Forms\Components\Hidden::make('expected_guest_count')
+                                ->default(1)
+                                ->dehydrated(),
                             Forms\Components\Toggle::make('includes_primary_guest')
                                 ->label('Primary guest stays in this room')
                                 ->helperText(fn ($get) => filled($get('room_id') ?? null)
@@ -349,7 +301,14 @@ class CheckInGuest extends Page
                                 ->minItems(0)
                                 ->defaultItems(0)
                                 ->addActionLabel('Add Another Guest')
-                                ->helperText('Add companion guests only. Primary guest is auto-included when enabled above.')
+                                ->helperText(function ($get) {
+                                    $expected = max(0, (int) ($get('expected_guest_count') ?? 0));
+                                    if ($expected > 0) {
+                                        return "Expected {$expected} occupant".($expected === 1 ? '' : 's').' in this room. Add companion guests only. Primary guest is auto-included when enabled above.';
+                                    }
+
+                                    return 'Add companion guests only. Primary guest is auto-included when enabled above.';
+                                })
                                 ->visible(fn ($get) => filled($get('room_mode') ?? null) && filled($get('room_id') ?? null))
                                 ->reorderable(false),
                         ])
@@ -480,7 +439,17 @@ class CheckInGuest extends Page
                         ->columnSpanFull(),
                     Forms\Components\Placeholder::make('declared_occupants')
                         ->label('Declared Number of Guests')
-                        ->content(fn () => $this->record->number_of_occupants.' guest'.($this->record->number_of_occupants > 1 ? 's' : '')),
+                        ->content(function ($get) {
+                            $declared = max(1, (int) ($this->record->number_of_occupants ?? 1));
+                            $allocated = $this->countAllocatedGuests($get('reservation_rooms') ?? []);
+                            $text = $declared.' guest'.($declared === 1 ? '' : 's');
+
+                            if ($allocated !== $declared) {
+                                $text .= " ({$allocated} currently allocated in room entries)";
+                            }
+
+                            return $text;
+                        }),
                     Forms\Components\Placeholder::make('declared_days')
                         ->label('Declared Number of Nights')
                         ->content(function ($get) {
@@ -625,6 +594,234 @@ class CheckInGuest extends Page
                         ->helperText('Date on the official receipt'),
                 ])->columns(2),
         ];
+    }
+
+    protected function buildInitialReservationRoomEntries(): array
+    {
+        $holds = $this->record->roomHolds()
+            ->advance()
+            ->active()
+            ->with('room.roomType')
+            ->get();
+
+        if ($holds->isEmpty()) {
+            $this->roomHoldLoadStatus = null;
+
+            return [$this->blankReservationRoomEntry()];
+        }
+
+        $entries = [];
+        $skippedCount = 0;
+        $validHolds = collect();
+
+        foreach ($holds as $hold) {
+            $room = $hold->room;
+
+            if (! $room || ! $room->is_active || in_array($room->status, ['maintenance', 'inactive'], true)) {
+                $skippedCount++;
+
+                continue;
+            }
+
+            $validHolds->push($hold);
+        }
+
+        $allocations = $this->allocateExpectedGuestCounts($validHolds);
+        $primaryHoldIndex = $this->resolvePrimaryHoldIndex($validHolds);
+
+        foreach ($validHolds->values() as $index => $hold) {
+            $room = $hold->room;
+            $expectedGuestCount = max(0, (int) ($allocations[$index] ?? 0));
+            $includesPrimaryGuest = $index === $primaryHoldIndex && $expectedGuestCount > 0;
+            $companionCount = max(0, $expectedGuestCount - ($includesPrimaryGuest ? 1 : 0));
+
+            $entries[] = [
+                'room_mode' => ($room->roomType?->isPrivate() ?? false) ? 'private' : 'dorm',
+                'room_id' => $room->id,
+                'expected_guest_count' => $expectedGuestCount,
+                'includes_primary_guest' => $includesPrimaryGuest,
+                'guests' => $this->blankCompanionGuestRows($companionCount),
+            ];
+        }
+
+        $this->roomHoldLoadStatus = [
+            'total' => $holds->count(),
+            'loaded' => count($entries),
+            'skipped' => $skippedCount,
+        ];
+
+        return ! empty($entries)
+            ? $entries
+            : [$this->blankReservationRoomEntry()];
+    }
+
+    protected function blankReservationRoomEntry(): array
+    {
+        return [
+            'room_mode' => $this->record->preferredRoomType?->isPrivate() ? 'private' : 'dorm',
+            'room_id' => null,
+            'expected_guest_count' => 1,
+            'includes_primary_guest' => true,
+            'guests' => [],
+        ];
+    }
+
+    protected function allocateExpectedGuestCounts($holds): array
+    {
+        $holds = $holds->values();
+        $declaredGuests = max(1, (int) ($this->record->number_of_occupants ?? 1));
+
+        if ($holds->isEmpty()) {
+            return [];
+        }
+
+        $allocations = array_fill(0, $holds->count(), 0);
+        $requests = $this->record->getEffectiveRoomRequests()->values();
+
+        foreach ($holds as $index => $hold) {
+            $room = $hold->room;
+            $isDorm = ! ($room->roomType?->isPrivate() ?? false);
+
+            if ($isDorm && $hold->held_guest_count) {
+                $allocations[$index] = max(1, min((int) $hold->held_guest_count, $this->roomCapacity($room)));
+            }
+        }
+
+        foreach ($requests as $request) {
+            $roomTypeId = (int) $request->room_type_id;
+            $matchingIndexes = $holds
+                ->keys()
+                ->filter(fn ($index) => (int) ($holds[$index]->room?->room_type_id ?? 0) === $roomTypeId)
+                ->values();
+            $remaining = max(
+                0,
+                (int) $request->occupant_count - $matchingIndexes->sum(fn ($index) => (int) ($allocations[$index] ?? 0))
+            );
+
+            if ($remaining <= 0 || $matchingIndexes->isEmpty()) {
+                continue;
+            }
+
+            foreach ($matchingIndexes as $index) {
+                if ($remaining <= 0) {
+                    break;
+                }
+
+                $hold = $holds[$index];
+                $room = $hold->room;
+                $isDorm = ! ($room->roomType?->isPrivate() ?? false);
+
+                if ($isDorm && $hold->held_guest_count) {
+                    $slots = max(1, min($remaining, (int) $hold->held_guest_count));
+                } else {
+                    $slots = max(1, min($remaining, $this->roomCapacity($room)));
+                }
+
+                $allocations[$index] += $slots;
+                $remaining -= $slots;
+            }
+        }
+
+        $allocated = array_sum($allocations);
+
+        if ($allocated === 0) {
+            $allocations[$this->resolvePrimaryHoldIndex($holds)] = min($declaredGuests, $this->roomCapacity($holds->first()->room));
+            $allocated = array_sum($allocations);
+        }
+
+        while ($allocated < $declaredGuests) {
+            $changed = false;
+
+            foreach ($holds as $index => $hold) {
+                if ($allocated >= $declaredGuests) {
+                    break;
+                }
+
+                $capacity = $this->roomCapacity($hold->room);
+                if ($allocations[$index] >= $capacity) {
+                    continue;
+                }
+
+                $allocations[$index]++;
+                $allocated++;
+                $changed = true;
+            }
+
+            if (! $changed) {
+                $allocations[$this->resolvePrimaryHoldIndex($holds)] += $declaredGuests - $allocated;
+                $allocated = $declaredGuests;
+            }
+        }
+
+        while ($allocated > $declaredGuests) {
+            $changed = false;
+
+            for ($index = count($allocations) - 1; $index >= 0; $index--) {
+                if ($allocated <= $declaredGuests) {
+                    break;
+                }
+
+                if ($allocations[$index] <= 0) {
+                    continue;
+                }
+
+                $allocations[$index]--;
+                $allocated--;
+                $changed = true;
+            }
+
+            if (! $changed) {
+                break;
+            }
+        }
+
+        return $allocations;
+    }
+
+    protected function resolvePrimaryHoldIndex($holds): int
+    {
+        $holds = $holds->values();
+        $primaryTypeId = (int) ($this->record->getEffectiveRoomRequests()->first()?->room_type_id ?? $this->record->preferred_room_type_id);
+
+        if ($primaryTypeId) {
+            foreach ($holds as $index => $hold) {
+                if ((int) ($hold->room?->room_type_id ?? 0) === $primaryTypeId) {
+                    return (int) $index;
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    protected function roomCapacity(?Room $room): int
+    {
+        return max(1, (int) ($room?->capacity ?? 1));
+    }
+
+    protected function blankCompanionGuestRows(int $count): array
+    {
+        if ($count <= 0) {
+            return [];
+        }
+
+        return collect(range(1, $count))
+            ->map(fn () => [
+                'last_name' => null,
+                'first_name' => null,
+                'middle_initial' => null,
+                'age' => null,
+                'gender' => null,
+            ])
+            ->all();
+    }
+
+    protected function countAllocatedGuests(array $reservationRooms): int
+    {
+        return collect($reservationRooms)->sum(function (array $entry): int {
+            return count($entry['guests'] ?? [])
+                + ((bool) ($entry['includes_primary_guest'] ?? false) ? 1 : 0);
+        });
     }
 
     public function createPayMongoBalanceCheckout(): void

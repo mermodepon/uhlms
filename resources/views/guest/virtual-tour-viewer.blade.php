@@ -505,7 +505,7 @@
         text-overflow: ellipsis;
     }
 
-    /* Exit Tour Button */
+    /* Top-right tour controls */
     .top-right-controls {
         position: absolute;
         top: 1rem;
@@ -514,6 +514,7 @@
         gap: 0.45rem;
         z-index: 50;
         align-items: center;
+        transition: opacity 0.18s ease, transform 0.18s ease;
     }
 
     .top-right-controls button,
@@ -548,14 +549,6 @@
 
     .top-right-controls .home-btn:hover {
         background: rgba(0, 73, 30, 0.94);
-    }
-
-    .top-right-controls .exit-btn {
-        background: rgba(220, 38, 38, 0.78);
-    }
-
-    .top-right-controls .exit-btn:hover {
-        background: rgba(185, 28, 28, 0.94);
     }
 
     .top-right-controls .toggle-ui-btn {
@@ -1121,17 +1114,6 @@
             display: none !important;
         }
 
-        .top-right-controls .exit-btn {
-            width: 42px;
-            height: 42px;
-            overflow: hidden;
-            white-space: nowrap;
-            font-size: 0;
-            display: inline-grid;
-            place-items: center;
-            line-height: 1;
-        }
-
         .top-right-controls .home-btn {
             width: 42px;
             height: 42px;
@@ -1165,17 +1147,24 @@
         }
 
         .nav-label,
-        .exit-label,
         .home-label {
             display: none;
         }
 
-        .top-right-controls .exit-btn .mobile-glyph {
-            font-size: 1rem;
-        }
-
         #mobile-settings-btn {
             display: flex !important;
+        }
+
+        #tour-viewer.room-card-open .top-right-controls {
+            opacity: 0;
+            transform: translateY(-8px);
+            pointer-events: none;
+        }
+
+        #tour-viewer.room-card-open .vr-controls.mobile-open {
+            opacity: 0;
+            transform: translateY(-6px);
+            pointer-events: none;
         }
 
         .vr-controls {
@@ -1703,10 +1692,6 @@
             </svg>
             <span class="home-label">Home</span>
         </button>
-        <button class="exit-btn" onclick="window.location.href='{{ route('guest.virtual-tours', [], false) }}'" aria-label="Exit tour">
-            <span class="mobile-glyph" aria-hidden="true">X</span>
-            <span class="exit-label">Exit Tour</span>
-        </button>
         <button id="room-info-btn" onclick="tourEngine.toggleRoomInfoOverlay()" title="View room information">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
@@ -1851,7 +1836,7 @@
             <div class="modal-body">
                 <div id="reservation-errors" class="mb-4"></div>
 
-                <form id="reservation-form" onsubmit="handleReservationSubmit(event)">
+                <form id="reservation-form" onsubmit="handleReservationSubmit(event)" data-guest-validate novalidate>
                     <input type="hidden" id="preferred_room_type_id" name="preferred_room_type_id">
                     <input type="hidden" name="source" value="virtual_tour">
                     @honeypot
@@ -1859,29 +1844,31 @@
                     <div class="grid grid-cols-2 gap-4">
                         <div class="form-group">
                             <label for="guest_first_name">First Name *</label>
-                            <input type="text" id="guest_first_name" name="guest_first_name" required>
+                            <input type="text" id="guest_first_name" name="guest_first_name" required maxlength="255">
                         </div>
 
                         <div class="form-group">
                             <label for="guest_last_name">Last Name *</label>
-                            <input type="text" id="guest_last_name" name="guest_last_name" required>
+                            <input type="text" id="guest_last_name" name="guest_last_name" required maxlength="255">
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="guest_email">Email *</label>
-                        <input type="email" id="guest_email" name="guest_email" required>
+                        <input type="email" id="guest_email" name="guest_email" required maxlength="255">
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
                         <div class="form-group">
-                            <label for="guest_phone">Phone</label>
-                            <input type="tel" id="guest_phone" name="guest_phone">
+                            <label for="guest_phone">Mobile Number *</label>
+                            <input type="tel" id="guest_phone" name="guest_phone" maxlength="20" required
+                                   pattern="^(09[0-9]{9}|\+639[0-9]{9}|639[0-9]{9})$"
+                                   data-validation-pattern-message="Enter a valid Philippine mobile number, e.g. 09171234567 or +639171234567.">
                         </div>
 
                         <div class="form-group">
-                            <label for="guest_age">Age</label>
-                            <input type="number" id="guest_age" name="guest_age" min="1" max="120">
+                            <label for="guest_age">Age *</label>
+                            <input type="number" id="guest_age" name="guest_age" min="18" max="120" step="1" data-integer="true" data-validation-min-message="Guest age must be at least 18." required>
                         </div>
                     </div>
 
@@ -1898,28 +1885,35 @@
                     <div class="grid grid-cols-2 gap-4">
                         <div class="form-group">
                             <label for="check_in_date">Check-in Date *</label>
-                            <input type="date" id="check_in_date" name="check_in_date" required>
+                            <input type="date" id="check_in_date" name="check_in_date" value="{{ date('Y-m-d') }}" min="{{ date('Y-m-d') }}" required>
                         </div>
 
                         <div class="form-group">
                             <label for="check_out_date">Check-out Date *</label>
-                            <input type="date" id="check_out_date" name="check_out_date" required>
+                            <input type="date" id="check_out_date" name="check_out_date" value="{{ date('Y-m-d', strtotime('+1 day')) }}" min="{{ date('Y-m-d', strtotime('+1 day')) }}" required>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="requested_room_count">Rooms Requested *</label>
+                            <input type="number" id="requested_room_count" name="requested_room_count" min="1" max="20" step="1" data-integer="true" value="1" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="number_of_occupants">Number of Occupants *</label>
+                            <input type="number" id="number_of_occupants" name="number_of_occupants" min="1" max="20" step="1" data-integer="true" data-dynamic-max="20" value="1" required>
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label for="number_of_occupants">Number of Occupants *</label>
-                        <input type="number" id="number_of_occupants" name="number_of_occupants" min="1" max="20" value="1" required>
-                    </div>
-
-                    <div class="form-group">
                         <label for="guest_address">Address</label>
-                        <textarea id="guest_address" name="guest_address" rows="2"></textarea>
+                        <textarea id="guest_address" name="guest_address" rows="2" maxlength="1000"></textarea>
                     </div>
 
                     <div class="form-group">
                         <label for="special_requests">Special Requests</label>
-                        <textarea id="special_requests" name="special_requests" rows="3" 
+                        <textarea id="special_requests" name="special_requests" rows="3" maxlength="2000"
                                   placeholder="Any special requirements or questions..."></textarea>
                     </div>
 
@@ -2065,7 +2059,7 @@
                     <div class="help-markers">
                         <div class="help-marker-row">
                             <div class="help-marker-dot nav"></div>
-                            <div><strong>Blue Markers</strong> — Navigation hotspots to move between scenes (hallways, doorways, areas)</div>
+                            <div><strong>Blue Markers</strong> — Navigation hotspots to move between scenes</div>
                         </div>
                         <div class="help-marker-row">
                             <div class="help-marker-dot info"></div>
@@ -2087,7 +2081,7 @@
                     <ul class="help-list">
                         <li>
                             <span class="help-icon">💡</span>
-                            <div><strong>Best Experience</strong><br>Use fullscreen mode on desktop or landscape orientation on mobile for the most immersive view</div>
+                            <div><strong>Best Experience</strong><br>Use fullscreen mode on desktop for the most immersive view</div>
                         </li>
                         <li>
                             <span class="help-icon">🎯</span>
@@ -2099,7 +2093,7 @@
                         </li>
                         <li>
                             <span class="help-icon">📱</span>
-                            <div><strong>Mobile Users</strong><br>For the best experience, rotate your device to landscape mode and enable motion sensors if prompted</div>
+                            <div><strong>Mobile Users</strong><br>Enable motion sensors if prompted</div>
                         </li>
                     </ul>
                 </div>
@@ -2128,6 +2122,7 @@
         tourEngine = new VirtualTourEngine('panorama-container', {
             startWaypoint: @json($startWaypoint),
             apiBase: '/api/tour',
+            reserveUrl: @json(route('guest.reserve', [], false)),
             onRoomDoorReached: function(waypoint) {
                 console.log('Reached room door:', waypoint.name);
             },
@@ -2508,11 +2503,62 @@
         }
     }
 
+    function syncTourReservationDateInputs() {
+        const checkIn = document.getElementById('check_in_date');
+        const checkOut = document.getElementById('check_out_date');
+        if (!checkIn || !checkOut || !checkIn.value) return;
+
+        const [year, month, day] = checkIn.value.split('-').map(Number);
+        const minDate = new Date(year, month - 1, day);
+        minDate.setDate(minDate.getDate() + 1);
+        const minCheckOut = [
+            minDate.getFullYear(),
+            String(minDate.getMonth() + 1).padStart(2, '0'),
+            String(minDate.getDate()).padStart(2, '0'),
+        ].join('-');
+
+        checkIn.min = checkIn.min || '{{ date('Y-m-d') }}';
+        checkOut.min = minCheckOut;
+
+        if (!checkOut.value || checkOut.value <= checkIn.value) {
+            checkOut.value = minCheckOut;
+        }
+    }
+
+    document.getElementById('check_in_date')?.addEventListener('change', () => {
+        syncTourReservationDateInputs();
+        if (window.tourEngine) {
+            tourEngine._setCheckIn(document.getElementById('check_in_date')?.value);
+            tourEngine._setCheckOut(document.getElementById('check_out_date')?.value);
+            tourEngine._refreshReservationOccupantLimit?.();
+        }
+    });
+    document.getElementById('check_out_date')?.addEventListener('change', () => {
+        if (window.tourEngine) {
+            tourEngine._setCheckOut(document.getElementById('check_out_date')?.value);
+            tourEngine._refreshReservationOccupantLimit?.();
+        }
+    });
+    document.getElementById('requested_room_count')?.addEventListener('input', () => {
+        if (window.tourEngine) {
+            tourEngine._refreshReservationOccupantLimit?.();
+        }
+    });
+    syncTourReservationDateInputs();
+
     // Handle reservation form submission
     async function handleReservationSubmit(event) {
         event.preventDefault();
 
-        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const form = event.target;
+        if (window.GuestRealtimeValidation && !window.GuestRealtimeValidation.validateForm(form, true)) {
+            const firstInvalid = form.querySelector('.guest-field-invalid');
+            firstInvalid?.focus({ preventScroll: true });
+            firstInvalid?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+
+        const submitBtn = form.querySelector('button[type="submit"]');
         if (submitBtn) {
             submitBtn.disabled = true;
             submitBtn.dataset.originalText = submitBtn.textContent;
@@ -2528,6 +2574,7 @@
             guest_gender: document.getElementById('guest_gender').value,
             guest_address: document.getElementById('guest_address').value,
             preferred_room_type_id: document.getElementById('preferred_room_type_id').value,
+            requested_room_count: document.getElementById('requested_room_count')?.value || 1,
             check_in_date: document.getElementById('check_in_date').value,
             check_out_date: document.getElementById('check_out_date').value,
             number_of_occupants: document.getElementById('number_of_occupants').value,

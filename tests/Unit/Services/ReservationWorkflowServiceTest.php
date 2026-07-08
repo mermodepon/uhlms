@@ -118,6 +118,58 @@ class ReservationWorkflowServiceTest extends TestCase
         ]);
     }
 
+    public function test_approve_can_hold_rooms_grouped_by_requested_room_type(): void
+    {
+        $this->actingAs($this->createUser());
+
+        $executive = $this->createRoomType('private');
+        $dormitory = $this->createRoomType('public');
+        $executiveRoom = $this->createRoom($executive);
+        $dormRoomA = $this->createRoom($dormitory);
+        $dormRoomB = $this->createRoom($dormitory);
+        $reservation = $this->createReservation($executive);
+        $reservation->update(['number_of_occupants' => 7]);
+        $reservation->roomRequests()->createMany([
+            [
+                'room_type_id' => $executive->id,
+                'requested_room_count' => 1,
+                'occupant_count' => 1,
+                'sort_order' => 0,
+            ],
+            [
+                'room_type_id' => $dormitory->id,
+                'requested_room_count' => 2,
+                'occupant_count' => 6,
+                'sort_order' => 1,
+            ],
+        ]);
+
+        $result = $this->service->approve($reservation, [
+            'assigned_room_ids_by_type' => [
+                $executive->id => [$executiveRoom->id],
+                $dormitory->id => [$dormRoomA->id, $dormRoomB->id],
+            ],
+        ]);
+
+        $this->assertSame('confirmed', $reservation->fresh()->status);
+        $this->assertSame(3, $result['room_count']);
+        $this->assertDatabaseHas('room_holds', [
+            'reservation_id' => $reservation->id,
+            'room_id' => $executiveRoom->id,
+            'held_guest_count' => null,
+        ]);
+        $this->assertDatabaseHas('room_holds', [
+            'reservation_id' => $reservation->id,
+            'room_id' => $dormRoomA->id,
+            'held_guest_count' => 4,
+        ]);
+        $this->assertDatabaseHas('room_holds', [
+            'reservation_id' => $reservation->id,
+            'room_id' => $dormRoomB->id,
+            'held_guest_count' => 2,
+        ]);
+    }
+
     public function test_cancel_releases_existing_holds(): void
     {
         $this->actingAs($this->createUser());
@@ -155,7 +207,7 @@ class ReservationWorkflowServiceTest extends TestCase
         $this->assertNull($fresh->approved_at);
     }
 
-    public function test_mark_confirmed_from_online_payment_updates_approved_reservation(): void
+    public function test_mark_confirmed_from_online_payment_does_not_confirm_without_room_hold(): void
     {
         $roomType = $this->createRoomType();
         $reservation = $this->createReservation($roomType, 'approved');
@@ -163,10 +215,34 @@ class ReservationWorkflowServiceTest extends TestCase
 
         $this->service->markConfirmedFromOnlinePayment($reservation);
 
+        $this->assertSame('approved', $reservation->fresh()->status);
+        $this->assertDatabaseHas('reservation_logs', [
+            'reservation_id' => $reservation->id,
+            'event' => 'payment_received_without_room_hold',
+        ]);
+    }
+
+    public function test_mark_confirmed_from_online_payment_updates_room_held_approved_reservation(): void
+    {
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType);
+        $reservation = $this->createReservation($roomType, 'approved');
+        $reservation->update(['approved_at' => now()]);
+
+        RoomHold::create([
+            'room_id' => $room->id,
+            'reservation_id' => $reservation->id,
+            'hold_from' => $reservation->check_in_date,
+            'hold_to' => $reservation->check_out_date,
+            'hold_type' => 'advance',
+        ]);
+
+        $this->service->markConfirmedFromOnlinePayment($reservation);
+
         $this->assertSame('confirmed', $reservation->fresh()->status);
     }
 
-    public function test_approve_refreshes_guest_payment_link_window_from_approval_time(): void
+    public function test_approve_without_room_hold_does_not_issue_guest_payment_link(): void
     {
         $this->actingAs($this->createUser());
 
@@ -187,6 +263,35 @@ class ReservationWorkflowServiceTest extends TestCase
         $fresh = $reservation->fresh();
 
         $this->assertSame('approved', $fresh->status);
+        $this->assertNull($fresh->payment_link_token);
+        $this->assertNull($fresh->payment_link_expires_at);
+    }
+
+    public function test_approve_with_room_hold_refreshes_guest_payment_link_window_from_approval_time(): void
+    {
+        $this->actingAs($this->createUser());
+
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType);
+        $reservation = $this->createReservation($roomType);
+
+        $staleToken = (string) Str::uuid();
+        $reservation->update([
+            'payment_link_token' => $staleToken,
+            'payment_link_expires_at' => now()->subDay(),
+        ]);
+
+        $approvalTime = Carbon::parse('2026-05-02 10:00:00');
+        $this->travelTo($approvalTime);
+
+        $this->service->approve($reservation, [
+            'admin_notes' => 'Approved for payment',
+            'assigned_room_ids' => [$room->id],
+        ]);
+
+        $fresh = $reservation->fresh();
+
+        $this->assertSame('confirmed', $fresh->status);
         $this->assertNotSame($staleToken, $fresh->payment_link_token);
         $this->assertTrue($fresh->payment_link_expires_at?->equalTo($approvalTime->copy()->addHours(48)));
     }
@@ -197,7 +302,15 @@ class ReservationWorkflowServiceTest extends TestCase
         $this->actingAs($this->createUser());
 
         $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType);
         $reservation = $this->createReservation($roomType, 'approved');
+        RoomHold::create([
+            'room_id' => $room->id,
+            'reservation_id' => $reservation->id,
+            'hold_from' => $reservation->check_in_date,
+            'hold_to' => $reservation->check_out_date,
+            'hold_type' => 'advance',
+        ]);
         $oldToken = $reservation->payment_link_token;
 
         $result = $this->service->refreshGuestPaymentLink($reservation, true);
@@ -222,13 +335,13 @@ class ReservationWorkflowServiceTest extends TestCase
         ]);
     }
 
-    public function test_refresh_guest_payment_link_rejects_pending_reservations(): void
+    public function test_refresh_guest_payment_link_rejects_reservations_without_room_holds(): void
     {
         $roomType = $this->createRoomType();
-        $reservation = $this->createReservation($roomType, 'pending');
+        $reservation = $this->createReservation($roomType, 'approved');
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Only approved or confirmed reservations can receive refreshed payment links.');
+        $this->expectExceptionMessage('Only reservations with active room holds can receive refreshed payment links.');
 
         $this->service->refreshGuestPaymentLink($reservation);
     }

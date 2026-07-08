@@ -50,7 +50,7 @@
                     <li>Check your account balance or payment method</li>
                     <li>Try again using a different payment method</li>
                     <li>Contact our staff if the problem persists</li>
-                    <li>Your approved reservation is still active and awaiting payment</li>
+                    <li>Your room-held reservation is still active and awaiting payment</li>
                 </ul>
             </div>
 

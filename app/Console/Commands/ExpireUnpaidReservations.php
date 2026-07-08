@@ -23,7 +23,7 @@ class ExpireUnpaidReservations extends Command
      *
      * @var string
      */
-    protected $description = 'Auto-cancel approved reservations that remain unpaid after the payment deadline';
+    protected $description = 'Auto-cancel payable room-held reservations that remain unpaid after the payment deadline';
 
     /**
      * Execute the console command.
@@ -40,17 +40,20 @@ class ExpireUnpaidReservations extends Command
         $hoursLimit = (int) $this->option('hours');
         $cutoffTime = now()->subHours($hoursLimit);
 
-        $this->info("Checking for approved reservations unpaid for more than {$hoursLimit} hours (approved before {$cutoffTime->format('Y-m-d H:i:s')})...");
+        $this->info("Checking for room-held reservations unpaid for more than {$hoursLimit} hours (approved before {$cutoffTime->format('Y-m-d H:i:s')})...");
 
-        // Find approved reservations that:
-        // 1. Have status 'approved'
+        // Find payable reservations that:
+        // 1. Have protected room inventory
         // 2. Were approved more than X hours ago
         // 3. Have zero payments
-        $expiredReservations = Reservation::where('status', 'approved')
+        $expiredReservations = Reservation::whereIn('status', ['approved', 'confirmed'])
             ->whereNotNull('approved_at')
             ->where('approved_at', '<', $cutoffTime)
             ->where('payments_total', 0)
-            ->get();
+            ->whereHas('roomHolds', fn ($query) => $query->advance()->active())
+            ->get()
+            ->filter(fn (Reservation $reservation) => $reservation->canAcceptGuestPayment())
+            ->values();
 
         if ($expiredReservations->isEmpty()) {
             $this->info('No unpaid reservations to expire.');

@@ -8,6 +8,7 @@ use App\Models\TourWaypoint;
 use App\Models\RoomType;
 use App\Services\RoomHoldService;
 use App\Support\MediaUrl;
+use App\Support\ReservationRoomRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -250,18 +251,30 @@ class TourController extends Controller
      */
     public function reserveSubmit(Request $request): JsonResponse
     {
+        $request->merge([
+            'guest_first_name' => trim((string) $request->input('guest_first_name', '')),
+            'guest_last_name' => trim((string) $request->input('guest_last_name', '')),
+            'guest_phone' => trim((string) $request->input('guest_phone', '')) ?: null,
+        ]);
+
         $validator = Validator::make($request->all(), [
             'guest_first_name' => 'required|string|max:255',
             'guest_last_name' => 'required|string|max:255',
             'guest_email' => 'required|email|max:255',
-            'guest_phone' => 'nullable|string|max:20',
-            'guest_age' => 'nullable|integer|min:1|max:120',
+            'guest_phone' => ['required', 'string', 'max:20', 'regex:/^(09\d{9}|\+639\d{9}|639\d{9})$/'],
+            'guest_age' => 'required|integer|min:18|max:120',
             'guest_gender' => 'required|in:Male,Female,Other',
             'guest_address' => 'nullable|string|max:1000',
             'preferred_room_type_id' => 'required|exists:room_types,id',
+            'requested_room_count' => 'nullable|integer|min:1|max:20',
+            'room_requests' => 'nullable|array|max:7',
+            'room_requests.*.room_type_id' => 'nullable|exists:room_types,id',
+            'room_requests.*.requested_room_count' => 'nullable|integer|min:1|max:20',
+            'room_requests.*.occupant_count' => 'nullable|integer|min:1|max:200',
+            'room_requests.*.notes' => 'nullable|string|max:500',
             'check_in_date' => 'required|date|after_or_equal:today',
             'check_out_date' => 'required|date|after:check_in_date',
-            'number_of_occupants' => 'required|integer|min:1|max:20',
+            'number_of_occupants' => 'required|integer|min:1',
             'special_requests' => 'nullable|string|max:2000',
             'source' => 'nullable|string|in:virtual_tour',
             'availability_acknowledged' => 'nullable|boolean',
@@ -277,6 +290,21 @@ class TourController extends Controller
 
         $validated = $validator->validated();
 
+        $roomRequestLines = ReservationRoomRequests::fromRequest($request);
+        $requestValidation = ReservationRoomRequests::validateAvailability(
+            $roomRequestLines,
+            $validated['check_in_date'],
+            $validated['check_out_date']
+        );
+
+        if (! empty($requestValidation['errors'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => collect($requestValidation['errors'])->map(fn ($message) => [$message])->all(),
+            ], 422);
+        }
+
         // Combine name fields
         $validated['guest_name'] = trim(
             $validated['guest_first_name'].' '.
@@ -285,26 +313,18 @@ class TourController extends Controller
 
         $validated['status'] = 'pending';
 
-        $availabilityContext = $this->resolveAvailabilityContext(
-            (int) $validated['preferred_room_type_id'],
-            $validated['check_in_date'],
-            $validated['check_out_date'],
-            (int) $validated['number_of_occupants']
-        );
-
-        if ($availabilityContext !== null) {
-            $warning = 'This room type currently shows '
-                .$availabilityContext['summary']['availability_label']
-                .' for your selected dates and guest count. You can still submit this request for staff review by confirming the warning.';
+        if (! empty($requestValidation['warnings'])) {
+            $warning = implode(' ', $requestValidation['warnings'])
+                .' You can still submit this request for staff review by confirming the warning.';
 
             if (! $request->boolean('availability_acknowledged')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Availability confirmation required',
-                    'requires_availability_confirmation' => true,
-                    'availability_warning' => $warning,
-                    'availability_summary' => [
-                        'availability_label' => $availabilityContext['summary']['availability_label'],
+                'requires_availability_confirmation' => true,
+                'availability_warning' => $warning,
+                'availability_summary' => [
+                        'availability_label' => implode(' ', $requestValidation['warnings']),
                         'can_accommodate_requested_guests' => false,
                     ],
                 ], 422);
@@ -313,8 +333,8 @@ class TourController extends Controller
             $validated['special_requests'] = trim(
                 (($validated['special_requests'] ?? null) ? rtrim($validated['special_requests'])."\n" : '')
                 .'[Availability warning acknowledged by guest: '
-                .$availabilityContext['summary']['availability_label']
-                .' for '.$validated['number_of_occupants'].' occupant(s) on '
+                .implode(' ', $requestValidation['warnings'])
+                .' Requested: '.$requestValidation['summary'].' on '
                 .$validated['check_in_date'].' to '.$validated['check_out_date'].']'
             );
         }
@@ -326,8 +346,12 @@ class TourController extends Controller
         // source is metadata for validation/context only and is not persisted on reservations.
         unset($validated['source']);
         unset($validated['availability_acknowledged']);
+        unset($validated['requested_room_count'], $validated['room_requests']);
+
+        $validated = ReservationRoomRequests::applyToReservationData($validated, $roomRequestLines);
 
         $reservation = Reservation::create($validated);
+        ReservationRoomRequests::persist($reservation, $roomRequestLines);
 
         return response()->json([
             'success' => true,
@@ -355,6 +379,7 @@ class TourController extends Controller
             'base_rate' => $roomType->base_rate,
             'pricing_type' => $roomType->pricing_type,
             'room_sharing_type' => $roomType->room_sharing_type,
+            'capacity' => (int) ($roomType->capacity ?? 1),
             'formatted_price' => $roomType->getFormattedPrice(),
             'is_private' => $roomType->isPrivate(),
             'is_public' => $roomType->isPublic(),
@@ -393,6 +418,45 @@ class TourController extends Controller
         return ($summary['can_accommodate_requested_guests'] ?? false)
             ? null
             : ['room_type' => $roomType, 'summary' => $summary];
+    }
+
+    /**
+     * @return array{max:int,message:string}|null
+     */
+    protected function resolveOccupantLimit(int $roomTypeId, string $checkInDate, string $checkOutDate): ?array
+    {
+        $roomType = RoomType::query()
+            ->where('is_active', true)
+            ->find($roomTypeId);
+
+        if (! $roomType) {
+            return null;
+        }
+
+        if ($roomType->isPrivate()) {
+            $capacity = max(1, (int) ($roomType->capacity ?? 1));
+
+            return [
+                'max' => $capacity,
+                'message' => "This room type allows up to {$capacity} occupants.",
+            ];
+        }
+
+        $summary = app(RoomHoldService::class)->getDateAvailabilitySummary(
+            $roomType,
+            Carbon::parse($checkInDate),
+            Carbon::parse($checkOutDate),
+            null
+        );
+
+        $availableBeds = max(0, (int) ($summary['available_beds_count'] ?? 0));
+
+        return [
+            'max' => $availableBeds,
+            'message' => $availableBeds > 0
+                ? "Only {$availableBeds} beds are available for these dates."
+                : 'No beds are available for these dates.',
+        ];
     }
 
     /**
