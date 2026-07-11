@@ -16,11 +16,15 @@
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div class="bg-gradient-to-r from-yellow-400 to-[#00491E] rounded-xl shadow-lg overflow-hidden">
             <div class="p-8 text-center">
-                <h2 class="text-3xl font-bold text-white mb-4">🎮 Interactive Virtual Tour</h2>
+                <h2 class="text-3xl font-bold text-white mb-4 inline-flex items-center justify-center gap-2">
+                    <svg class="w-7 h-7" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    <span>Interactive Virtual Tour</span>
+                </h2>
                 <p class="text-white text-lg mb-6 max-w-2xl mx-auto">Experience our establishment in an immersive guided tour! Navigate through rooms, explore amenities, and make reservations — all from your browser.</p>
                 <a href="{{ route('guest.tour.viewer', [], false) }}"
-                   class="inline-block bg-white text-[#00491E] font-bold px-8 py-4 rounded-lg hover:bg-gray-100 transition text-lg shadow-lg">
-                    🚀 Start Interactive Tour
+                   class="inline-flex items-center justify-center gap-2 bg-white text-[#00491E] font-bold px-8 py-4 rounded-lg hover:bg-gray-100 transition text-lg shadow-lg">
+                    <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    <span>Start Interactive Tour</span>
                 </a>
             </div>
         </div>

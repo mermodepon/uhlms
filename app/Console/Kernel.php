@@ -29,6 +29,7 @@ class Kernel extends ConsoleKernel
 
         // Auto-cancel approved unpaid reservations daily (72 hour deadline)
         $schedule->command('reservations:expire-unpaid')->dailyAt('02:00');
+
     }
 
     /**

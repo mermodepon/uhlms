@@ -1,6 +1,7 @@
 ﻿@extends('layouts.guest')
 
 @section('title', 'Welcome')
+@section('suppressGlobalGuestFlashes', 'true')
 
 @section('content')
     {{-- Hero Section --}}
@@ -49,7 +50,7 @@
                     <div class="flex flex-col sm:flex-row gap-2.5 md:gap-3">
                         @if($guestSite['guest_show_virtual_tour_cta'])
                         <a href="{{ route('guest.tour.viewer', [], false) }}" class="inline-flex items-center justify-center gap-2 bg-[#FFC600] text-[#00491E] px-5 sm:px-6 md:px-8 py-2.5 sm:py-3 md:py-3.5 rounded-lg font-bold text-sm sm:text-base md:text-lg hover:bg-yellow-400 transition shadow-lg">
-                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <svg class="w-4 h-4 sm:w-5 sm:h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                             {{ $guestSite['guest_hero_primary_cta_label'] }}
                         </a>
                         @endif
@@ -136,6 +137,11 @@
         </div>
         <div class="absolute bottom-0 left-0 right-0 z-10 h-16 bg-gradient-to-t from-gray-50 to-transparent"></div>
     </section>
+
+    @include('guest.partials.flash-messages', [
+        'wrap' => false,
+        'containerClass' => 'mx-auto max-w-7xl space-y-3 px-4 py-8 sm:px-6 lg:px-8',
+    ])
 
     {{-- About & Amenities --}}
     @php
@@ -365,6 +371,9 @@
             <div class="text-center mb-10 md:mb-12">
                 <h2 class="text-2xl md:text-3xl font-bold text-[#00491E] mb-3 md:mb-4">{{ $guestSite['guest_reservation_steps_heading'] }}</h2>
                 <p class="text-sm md:text-base text-gray-600">{{ $guestSite['guest_reservation_steps_intro'] }}</p>
+                <p class="mt-3 inline-flex items-center rounded-full bg-[#FFC600]/20 px-4 py-2 text-xs md:text-sm font-semibold text-[#00491E]">
+                    Estimated processing time: 1-2 business days after submitting your request.
+                </p>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
                 @php

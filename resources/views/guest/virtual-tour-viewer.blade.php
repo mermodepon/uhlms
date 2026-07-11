@@ -439,6 +439,328 @@
         transition: width 0.08s linear;
     }
 
+    /* Floating tour guide */
+    #tour-guide-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 66;
+        display: none;
+        pointer-events: none;
+    }
+
+    #tour-guide-layer.is-visible {
+        display: block;
+    }
+
+    #tour-guide-spotlight {
+        position: absolute;
+        display: none;
+        border: 2px solid rgba(255, 198, 0, 0.95);
+        border-radius: 999px;
+        box-shadow:
+            0 0 0 9999px rgba(3, 7, 18, 0.18),
+            0 0 0 8px rgba(255, 198, 0, 0.16),
+            0 14px 32px rgba(0, 0, 0, 0.32);
+        transform: translateZ(0);
+        transition: left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
+        animation: tour-guide-pulse 1.9s ease-in-out infinite;
+    }
+
+    #tour-guide-spotlight.is-visible {
+        display: block;
+    }
+
+    @keyframes tour-guide-pulse {
+        0%, 100% {
+            box-shadow:
+                0 0 0 9999px rgba(3, 7, 18, 0.18),
+                0 0 0 8px rgba(255, 198, 0, 0.16),
+                0 14px 32px rgba(0, 0, 0, 0.32);
+        }
+        50% {
+            box-shadow:
+                0 0 0 9999px rgba(3, 7, 18, 0.18),
+                0 0 0 14px rgba(255, 198, 0, 0.08),
+                0 14px 32px rgba(0, 0, 0, 0.32);
+        }
+    }
+
+    @keyframes tour-check-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .tour-media-lightbox {
+        position: absolute;
+        inset: 0;
+        z-index: 9998;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: clamp(0.75rem, 2vw, 1.5rem);
+    }
+
+    .tour-media-lightbox.is-open {
+        display: flex;
+    }
+
+    .tour-media-lightbox-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(3, 7, 18, 0.88);
+        backdrop-filter: blur(8px);
+    }
+
+    .tour-media-lightbox-panel {
+        position: relative;
+        z-index: 1;
+        width: min(1180px, 100%);
+        max-height: min(92vh, 920px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-radius: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(15, 23, 42, 0.96);
+        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.52);
+    }
+
+    .tour-media-lightbox-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.9rem 1rem;
+        color: white;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        flex-shrink: 0;
+    }
+
+    .tour-media-lightbox-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 800;
+        line-height: 1.25;
+    }
+
+    .tour-media-lightbox-counter {
+        margin: 0.2rem 0 0;
+        color: rgba(226, 232, 240, 0.76);
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
+
+    .tour-media-lightbox-close {
+        width: 2.4rem;
+        height: 2.4rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: white;
+        font-size: 1.65rem;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .tour-media-lightbox-stage {
+        position: relative;
+        min-height: 0;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #020617;
+    }
+
+    .tour-media-lightbox-body {
+        width: 100%;
+        height: 100%;
+        min-height: 280px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: clamp(0.75rem, 2vw, 1.25rem);
+    }
+
+    .tour-media-lightbox-body img {
+        max-width: 100%;
+        max-height: calc(92vh - 6.5rem);
+        width: auto;
+        height: auto;
+        object-fit: contain;
+        border-radius: 0.5rem;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.38);
+    }
+
+    .tour-media-lightbox-video {
+        position: relative;
+        width: min(100%, 1040px);
+        aspect-ratio: 16 / 9;
+        background: #000;
+        border-radius: 0.65rem;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.38);
+    }
+
+    .tour-media-lightbox-video iframe,
+    .tour-media-lightbox-video video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #000;
+    }
+
+    .tour-media-lightbox-nav {
+        position: absolute;
+        top: 50%;
+        z-index: 2;
+        width: clamp(2.75rem, 5vw, 4rem);
+        height: clamp(2.75rem, 5vw, 4rem);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.78);
+        color: white;
+        font-size: clamp(2rem, 4vw, 3.5rem);
+        line-height: 1;
+        transform: translateY(-50%);
+        cursor: pointer;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
+    }
+
+    .tour-media-lightbox-prev {
+        left: clamp(0.6rem, 2vw, 1.25rem);
+    }
+
+    .tour-media-lightbox-next {
+        right: clamp(0.6rem, 2vw, 1.25rem);
+    }
+
+    .tour-media-lightbox-nav.is-hidden {
+        display: none;
+    }
+
+    #tour-guide-bubble {
+        position: absolute;
+        width: min(330px, calc(100vw - 2rem));
+        pointer-events: auto;
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(17, 24, 39, 0.94) 100%);
+        color: #f8fafc;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 0.85rem;
+        box-shadow: 0 22px 50px rgba(0, 0, 0, 0.38);
+        padding: 0.9rem;
+        backdrop-filter: blur(16px);
+        opacity: 0;
+        transform: translate(-50%, 8px);
+        transition: opacity 0.18s ease, transform 0.18s ease, left 0.18s ease, top 0.18s ease;
+    }
+
+    #tour-guide-layer.is-visible #tour-guide-bubble {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+
+    #tour-guide-bubble::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        width: 14px;
+        height: 14px;
+        background: rgba(15, 23, 42, 0.96);
+        border-left: 1px solid rgba(255, 255, 255, 0.18);
+        border-top: 1px solid rgba(255, 255, 255, 0.18);
+        transform: translateX(-50%) rotate(45deg);
+    }
+
+    #tour-guide-bubble[data-placement="bottom"]::before {
+        top: -8px;
+    }
+
+    #tour-guide-bubble[data-placement="top"]::before {
+        bottom: -8px;
+        transform: translateX(-50%) rotate(225deg);
+    }
+
+    #tour-guide-bubble[data-placement="center"]::before {
+        display: none;
+    }
+
+    .tour-guide-kicker {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0.45rem;
+        color: rgba(255, 248, 214, 0.78);
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .tour-guide-title {
+        margin: 0;
+        color: #ffffff;
+        font-size: 0.98rem;
+        font-weight: 800;
+        line-height: 1.25;
+    }
+
+    .tour-guide-copy {
+        margin: 0.45rem 0 0;
+        color: rgba(241, 245, 249, 0.82);
+        font-size: 0.83rem;
+        line-height: 1.45;
+    }
+
+    .tour-guide-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-top: 0.85rem;
+    }
+
+    .tour-guide-btn {
+        border: 0;
+        border-radius: 0.5rem;
+        min-height: 36px;
+        padding: 0.45rem 0.8rem;
+        font-size: 0.78rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .tour-guide-btn-secondary {
+        background: rgba(255, 255, 255, 0.08);
+        color: rgba(248, 250, 252, 0.84);
+    }
+
+    .tour-guide-btn-primary {
+        background: #FFC600;
+        color: #00491E;
+    }
+
+    .tour-guide-btn:hover {
+        filter: brightness(1.05);
+    }
+
+    #tour-viewer.room-card-open #tour-guide-layer,
+    #tour-viewer.mobile-map-open #tour-guide-layer,
+    #tour-viewer.mobile-settings-open #tour-guide-layer {
+        display: none !important;
+    }
+
 
 
     /* Navigation Controls */
@@ -545,6 +867,12 @@
 
     .top-right-controls .home-btn {
         background: rgba(0, 73, 30, 0.78);
+        display: none;
+    }
+
+    #tour-viewer:fullscreen .home-btn,
+    #tour-viewer:-webkit-full-screen .home-btn {
+        display: flex;
     }
 
     .top-right-controls .home-btn:hover {
@@ -1565,15 +1893,14 @@
         background: white;
         border-radius: 0 0 0.75rem 0.75rem;
     }
-    .help-dont-show {
+    .help-actions {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        font-size: 0.78rem;
-        color: #6b7280;
-        cursor: pointer;
-        user-select: none;
+        gap: 0.625rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
     }
+
     .help-close-btn {
         background: linear-gradient(135deg, #00491E 0%, #02681E 100%);
         color: white;
@@ -1590,9 +1917,39 @@
         opacity: 0.9;
     }
 
+    .help-replay-guide-btn {
+        background: #f3f4f6;
+        color: #00491E;
+        border: 1px solid #d1d5db;
+        padding: 0.6rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: 700;
+        font-size: 0.85rem;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .help-replay-guide-btn:hover {
+        background: #e5e7eb;
+    }
+
     @media (max-width: 560px) {
         .help-body {
             grid-template-columns: 1fr;
+        }
+
+        .help-footer {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .help-actions {
+            justify-content: stretch;
+        }
+
+        .help-replay-guide-btn,
+        .help-close-btn {
+            width: 100%;
         }
     }
 </style>
@@ -1628,6 +1985,22 @@
 
     <!-- Panorama Container -->
     <div id="panorama-container"></div>
+
+    <!-- Floating Tour Guide -->
+    <div id="tour-guide-layer" aria-hidden="true">
+        <div id="tour-guide-spotlight" aria-hidden="true"></div>
+        <div id="tour-guide-bubble" data-placement="center" role="status">
+            <div class="tour-guide-kicker">
+                <span id="tour-guide-step">Tour guide</span>
+            </div>
+            <h2 id="tour-guide-title" class="tour-guide-title"></h2>
+            <p id="tour-guide-copy" class="tour-guide-copy"></p>
+            <div class="tour-guide-actions">
+                <button id="tour-guide-dismiss" type="button" class="tour-guide-btn tour-guide-btn-secondary">Skip</button>
+                <button id="tour-guide-next" type="button" class="tour-guide-btn tour-guide-btn-primary">Next</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Progress Indicator -->
     <div id="progress-indicator" class="hidden">Stop 0 of 0</div>
@@ -1935,8 +2308,16 @@
                     </div>
 
                     <button type="submit" class="btn-submit">
-                        Submit Reservation Request
+                        Request This Room Type
                     </button>
+
+                    <button type="button" onclick="tourEngine.goToReservationPage()" class="mt-3 w-full rounded-lg border border-[#00491E] bg-white px-4 py-3 text-sm font-bold text-[#00491E] transition hover:bg-[#00491E] hover:text-white">
+                        Reserve Multiple Room Types
+                    </button>
+
+                    <p class="text-xs text-gray-500 mt-3 text-center">
+                        Need different room types in one reservation? Use the full reservation form.
+                    </p>
 
                     <p class="text-xs text-gray-500 mt-4 text-center">
                         This will create a pending reservation request. You'll receive a reference number to track it and follow the next steps.
@@ -1996,10 +2377,16 @@
                     </h3>
                     <ul class="help-list">
                         <li>
-                            <div style="display:flex;gap:0.25rem;flex-shrink:0;margin-top:0.05rem;">
-                                <span class="help-kbd">W</span><span class="help-kbd">S</span>
+                            <div style="display:flex;gap:0.25rem;flex-shrink:0;margin-top:0.05rem;flex-wrap:wrap;">
+                                <span class="help-kbd">A</span><span class="help-kbd">D</span><span class="help-kbd">←</span><span class="help-kbd">→</span>
                             </div>
-                            <div><strong>Quick Navigation Keys</strong><br>Press <strong>W</strong> to jump to the nearest scene in front of you, or <strong>S</strong> to jump to the nearest scene behind you</div>
+                            <div><strong>Pan Left / Right</strong><br>Press <strong>A</strong> or <strong>←</strong> to rotate the view left, or <strong>D</strong> or <strong>→</strong> to rotate the view right</div>
+                        </li>
+                        <li>
+                            <div style="display:flex;gap:0.25rem;flex-shrink:0;margin-top:0.05rem;flex-wrap:wrap;">
+                                <span class="help-kbd">W</span><span class="help-kbd">S</span><span class="help-kbd">↑</span><span class="help-kbd">↓</span>
+                            </div>
+                            <div><strong>Tilt Up / Down</strong><br>Press <strong>W</strong> or <strong>↑</strong> to pan the view upward, or <strong>S</strong> or <strong>↓</strong> to pan the view downward</div>
                         </li>
                         <li>
                             <span class="help-icon">🖱️</span>
@@ -2099,11 +2486,10 @@
                 </div>
             </div>
             <div class="help-footer">
-                <label class="help-dont-show">
-                    <input type="checkbox" id="help-no-show-again">
-                    Don't show this on next visit
-                </label>
-                <button onclick="closeTourHelp()" class="help-close-btn">Got it, let's explore!</button>
+                <div class="help-actions">
+                    <button onclick="replayTourGuide()" class="help-replay-guide-btn" type="button">Show floating guide</button>
+                    <button onclick="closeTourHelp()" class="help-close-btn" type="button">Got it, let's explore!</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2221,6 +2607,9 @@
 
         button?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         viewer?.classList.toggle('mobile-map-open', isOpen);
+        if (!isOpen && tourEngine?._tourGuideActive) {
+            setTimeout(() => tourEngine._showTourGuideStep(), 80);
+        }
     }
 
     function syncMobileTourMapTrigger() {
@@ -2329,7 +2718,11 @@
     function syncMobileTourSettingsState() {
         const panel = document.querySelector('.vr-controls');
         const viewer = document.getElementById('tour-viewer');
-        viewer?.classList.toggle('mobile-settings-open', !!panel?.classList.contains('mobile-open'));
+        const isOpen = !!panel?.classList.contains('mobile-open');
+        viewer?.classList.toggle('mobile-settings-open', isOpen);
+        if (!isOpen && tourEngine?._tourGuideActive) {
+            setTimeout(() => tourEngine._showTourGuideStep(), 80);
+        }
     }
 
     function closeMobileTourSettings() {
@@ -2587,7 +2980,7 @@
             alert('Please open Room Info from a room scene before submitting a reservation request.');
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.textContent = submitBtn.dataset.originalText || 'Submit Reservation Request';
+                submitBtn.textContent = submitBtn.dataset.originalText || 'Request This Room Type';
             }
             return;
         }
@@ -2622,29 +3015,28 @@
         } finally {
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.textContent = submitBtn.dataset.originalText || 'Submit Reservation Request';
+                submitBtn.textContent = submitBtn.dataset.originalText || 'Request This Room Type';
             }
         }
     }
 
     // Tour Help guide
     function openTourHelp() {
+        tourEngine?.tourGuideLayer?.classList.remove('is-visible');
         document.getElementById('tour-help-modal').style.display = 'flex';
     }
 
     function closeTourHelp() {
         document.getElementById('tour-help-modal').style.display = 'none';
-        if (document.getElementById('help-no-show-again').checked) {
-            localStorage.setItem('tour_help_seen', '1');
+        if (tourEngine?._tourGuideActive) {
+            setTimeout(() => tourEngine._showTourGuideStep(), 100);
         }
     }
 
-    // Auto-show on first visit (1.5 s delay so panorama starts loading first)
-    document.addEventListener('DOMContentLoaded', function() {
-        if (!localStorage.getItem('tour_help_seen')) {
-            setTimeout(openTourHelp, 1500);
-        }
-    });
+    function replayTourGuide() {
+        closeTourHelp();
+        setTimeout(() => tourEngine?.startTourGuide?.({ force: true }), 160);
+    }
 
     function filterMinimapScenes(query) {
         const q = query.toLowerCase().trim();

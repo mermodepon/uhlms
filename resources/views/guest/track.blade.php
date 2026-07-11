@@ -66,7 +66,8 @@
                 };
 
                 $statusGuidance = [
-                    'pending' => 'Your request is waiting for staff review. Please watch your email for approval or follow-up instructions.',
+                    'pending' => 'Your request is waiting for staff review. Estimated processing time is 1-2 business days. Please watch your email for approval or follow-up instructions.',
+                    'awaiting_alternative_confirmation' => 'We have reserved a possible room alternative for you. Please check your email and accept or decline the offer before it expires.',
                     'approved' => 'Your reservation request has been approved. Staff will reserve room space before online payment becomes available.',
                     'confirmed' => 'Room space has been reserved for your stay. Please keep monitoring your email for payment reminders or arrival instructions.',
                     'declined' => 'This reservation request was declined. Please contact the homestay staff if you need clarification or would like to submit a new request.',
@@ -106,17 +107,9 @@
                 <div class="flex justify-between items-center mb-6">
                     <h2 class="text-xl font-bold text-[#00491E]">Reservation {{ $reservation->reference_number }}</h2>
                     @php
-                        $statusColors = [
-                            'pending' => 'bg-yellow-100 text-yellow-800 border-yellow-300',
-                            'approved' => 'bg-blue-100 text-blue-800 border-blue-300',
-                            'confirmed' => 'bg-green-100 text-green-800 border-green-300',
-                            'declined' => 'bg-red-100 text-red-800 border-red-300',
-                            'cancelled' => 'bg-gray-100 text-gray-800 border-gray-300',
-                            'checked_in' => 'bg-emerald-100 text-emerald-900 border-emerald-300',
-                            'checked_out' => 'bg-gray-100 text-gray-600 border-gray-300',
-                        ];
                         $statusLabels = [
                             'pending' => 'Pending Review',
+                            'awaiting_alternative_confirmation' => 'Alternative Offer Pending',
                             'approved' => 'Approved',
                             'confirmed' => 'Confirmed',
 
@@ -126,9 +119,10 @@
                             'checked_out' => 'Checked out',
                         ];
                     @endphp
-                    <span class="px-4 py-1 rounded-full border font-semibold text-sm {{ $statusColors[$reservation->status] ?? 'bg-gray-100 text-gray-800' }}">
-                        {{ $statusLabels[$reservation->status] ?? ucfirst(str_replace('_', ' ', $reservation->status)) }}
-                    </span>
+                    @include('guest.partials.reservation-status-badge', [
+                        'status' => $reservation->status,
+                        'label' => $statusLabels[$reservation->status] ?? ucfirst(str_replace('_', ' ', $reservation->status)),
+                    ])
                 </div>
 
                 {{-- Progress Bar --}}

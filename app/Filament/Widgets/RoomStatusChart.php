@@ -53,7 +53,7 @@ class RoomStatusChart extends ChartWidget
                     ],
                 ],
             ],
-            'labels' => ['Available', 'Occupied', 'Maintenance', 'Inactive'],
+            'labels' => ['Available', 'Occupied', 'Out of Order', 'Inactive'],
         ];
     }
 

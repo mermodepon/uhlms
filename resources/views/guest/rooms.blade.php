@@ -12,7 +12,23 @@
         $defaultCheckOut = $guestDateDefaults['check_out'];
         $defaultMinCheckIn = $guestDateDefaults['min_check_in'];
         $defaultMinCheckOut = $guestDateDefaults['min_check_out'];
+        $priceRangeOptions = [
+            '' => 'Any budget',
+            '0-799' => 'Under &#8369;800',
+            '800-1199' => '&#8369;800 - &#8369;1,199',
+            '1200-1699' => '&#8369;1,200 - &#8369;1,699',
+            '1700-' => '&#8369;1,700+',
+        ];
+        $currentPriceRange = match (true) {
+            $priceMin === null && $priceMax === null => '',
+            (int) ($priceMin ?? 0) === 0 && (int) ($priceMax ?? 0) === 799 => '0-799',
+            (int) ($priceMin ?? 0) === 800 && (int) ($priceMax ?? 0) === 1199 => '800-1199',
+            (int) ($priceMin ?? 0) === 1200 && (int) ($priceMax ?? 0) === 1699 => '1200-1699',
+            (int) ($priceMin ?? 0) === 1700 && $priceMax === null => '1700-',
+            default => 'custom',
+        };
     @endphp
+
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-bold mb-2">Room Catalog</h1>
@@ -21,103 +37,170 @@
     </section>
 
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {{-- Virtual Tour Banner --}}
-        <div class="mb-8 bg-gradient-to-r from-[#00491E] to-[#02681E] rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div class="flex items-center gap-4">
-                <div class="w-10 h-10 bg-[#FFC600] rounded-lg flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-[#00491E]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                </div>
-                <div>
-                    <p class="text-white font-bold">Want to look around first?</p>
-                    <p class="text-gray-200 text-sm">Take an interactive 360° virtual tour of the establishment before choosing a room.</p>
-                </div>
-            </div>
-            <a href="{{ route('guest.tour.viewer', [], false) }}" class="whitespace-nowrap bg-[#FFC600] text-[#00491E] px-5 py-2 rounded-lg font-bold text-sm hover:bg-yellow-400 transition flex-shrink-0">
-                Take the Tour &rarr;
-            </a>
-        </div>
-
-        {{-- Date Filter Widget --}}
         <div class="mb-8 bg-white rounded-xl shadow-md p-5 md:p-6">
-            <div class="flex flex-col lg:flex-row lg:items-center gap-4">
-                <div class="flex-shrink-0">
-                    <h3 class="text-base md:text-lg font-bold text-[#00491E] mb-1">Check Availability</h3>
+            <div class="mb-5 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <h3 class="text-base md:text-lg font-bold text-[#00491E] mb-1">Search Rooms</h3>
                     @if($checkIn && $checkOut)
                         <p class="text-xs md:text-sm text-gray-600">
                             Showing availability for <span class="font-semibold text-[#02681E]">{{ $checkIn->format('M d, Y') }} - {{ $checkOut->format('M d, Y') }}</span>
                             @if($guests)
-                                • {{ $guests }} {{ Str::plural('guest', $guests) }}
+                                <span class="text-gray-400">&bull;</span> {{ $guests }} {{ Str::plural('guest', $guests) }}
                             @endif
                         </p>
                     @else
-                        <p class="text-xs md:text-sm text-gray-600">Enter dates to check availability for your trip</p>
+                        <p class="text-xs md:text-sm text-gray-600">Enter dates to check availability for your trip.</p>
                     @endif
                 </div>
-                <div class="flex-1">
-                    <form action="{{ route('guest.rooms', [], false) }}" method="GET" class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_auto] sm:items-end">
-                        <div class="min-w-0">
-                            <label for="check_in_filter" class="block text-xs font-medium text-gray-700 mb-1">Check-in</label>
-                            <input type="date" id="check_in_filter" name="check_in" value="{{ $defaultCheckIn }}" min="{{ $defaultMinCheckIn }}" required class="h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
-                        </div>
-                        <div class="min-w-0">
-                            <label for="check_out_filter" class="block text-xs font-medium text-gray-700 mb-1">Check-out</label>
-                            <input type="date" id="check_out_filter" name="check_out" value="{{ $defaultCheckOut }}" min="{{ $defaultMinCheckOut }}" required class="h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
-                        </div>
-                        <div class="min-w-0">
-                            <label for="guests_filter" class="block text-xs font-medium text-gray-700 mb-1">Guests</label>
-                            <select id="guests_filter" name="guests" class="guest-select h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
-                                <option value="">Any</option>
-                                @for($i = 1; $i <= 5; $i++)
-                                    <option value="{{ $i }}" @selected($guests == $i)>{{ $i }}</option>
-                                @endfor
-                                <option value="6" @selected($guests >= 6)>5+</option>
-                            </select>
-                        </div>
-                        <div class="flex gap-2 sm:flex-col sm:gap-0 sm:row-span-2">
-                            <span class="hidden sm:block text-xs font-medium text-transparent mb-1 select-none" aria-hidden="true">Search</span>
-                            <button type="submit" class="h-11 flex-1 sm:flex-none bg-[#02681E] text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-[#00491E] hover:shadow-lg active:scale-95 transition-all duration-200 whitespace-nowrap flex items-center justify-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </div>
+
+            <form action="{{ route('guest.rooms', [], false) }}" method="GET" class="space-y-4" id="room-search-form">
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-3 md:items-end">
+                    <div class="min-w-0">
+                        <label for="check_in_filter" class="block text-xs font-medium text-gray-700 mb-1">Check-in</label>
+                        <input type="date" id="check_in_filter" name="check_in" value="{{ $defaultCheckIn }}" min="{{ $defaultMinCheckIn }}" required class="h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
+                    </div>
+                    <div class="min-w-0">
+                        <label for="check_out_filter" class="block text-xs font-medium text-gray-700 mb-1">Check-out</label>
+                        <input type="date" id="check_out_filter" name="check_out" value="{{ $defaultCheckOut }}" min="{{ $defaultMinCheckOut }}" required class="h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
+                    </div>
+                    <div class="min-w-0">
+                        <label for="guests_filter" class="block text-xs font-medium text-gray-700 mb-1">Guests</label>
+                        <select id="guests_filter" name="guests" class="guest-select h-11 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#02681E] focus:border-transparent">
+                            <option value="">Any</option>
+                            @for($i = 1; $i <= 5; $i++)
+                                <option value="{{ $i }}" @selected($guests == $i)>{{ $i }}</option>
+                            @endfor
+                            <option value="6" @selected($guests >= 6)>5+</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-100 pt-4">
+                    <label for="show_unavailable" class="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-[#00491E]">
+                        <input type="hidden" name="show_unavailable" value="0">
+                        <input type="checkbox" id="show_unavailable" name="show_unavailable" value="1" @checked($showUnavailable) class="h-5 w-5 rounded border-[#00491E]/30 text-[#00491E] focus:ring-[#00491E]">
+                        <span>Show unavailable rooms</span>
+                    </label>
+
+                    <details class="group rounded-lg border border-[#00491E]/15 bg-[#00491E]/5" @if($hasAdvancedFilters) open @endif>
+                        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-bold text-[#00491E] transition hover:bg-[#00491E]/10 [&::-webkit-details-marker]:hidden">
+                            <span class="inline-flex items-center gap-2">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h18M6 12h12M10 20h4"/>
                                 </svg>
-                                Update Search
-                            </button>
-                            @if($checkIn || $checkOut)
-                                <a href="{{ route('guest.rooms', [], false) }}" class="h-11 flex-1 sm:mt-2 sm:flex-none bg-white border-2 border-gray-300 text-gray-700 px-5 py-2.5 rounded-lg font-bold text-sm hover:border-gray-400 hover:bg-gray-50 hover:shadow-md active:scale-95 transition-all duration-200 text-center whitespace-nowrap flex items-center justify-center gap-2">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                    </svg>
-                                    Clear Filters
-                                </a>
+                                Advanced Search
+                                @if($activeFilterLabels->isNotEmpty())
+                                    <span class="rounded-full bg-[#00491E] px-2 py-0.5 text-xs font-bold text-white">{{ $activeFilterLabels->count() }}</span>
+                                @endif
+                            </span>
+                            <svg class="h-4 w-4 transition group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </summary>
+
+                        <div class="border-t border-[#00491E]/10 p-4">
+                            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                <div>
+                                    <label for="room_sharing_type_filter" class="block text-xs font-medium text-gray-700 mb-1">Room setup</label>
+                                    <select id="room_sharing_type_filter" name="room_sharing_type" class="h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#02681E]">
+                                        <option value="">Any setup</option>
+                                        <option value="private" @selected($roomSharingType === 'private')>Private room</option>
+                                        <option value="public" @selected($roomSharingType === 'public')>Shared / dormitory</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="pricing_type_filter" class="block text-xs font-medium text-gray-700 mb-1">Pricing type</label>
+                                    <select id="pricing_type_filter" name="pricing_type" class="h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#02681E]">
+                                        <option value="">Any pricing</option>
+                                        <option value="flat_rate" @selected($pricingType === 'flat_rate')>Per room / night</option>
+                                        <option value="per_person" @selected($pricingType === 'per_person')>Per person / night</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="price_range_filter" class="block text-xs font-medium text-gray-700 mb-1">Budget</label>
+                                    <select id="price_range_filter" class="h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#02681E]">
+                                        @foreach($priceRangeOptions as $value => $label)
+                                            <option value="{{ $value }}" @selected($currentPriceRange === $value)>{!! $label !!}</option>
+                                        @endforeach
+                                        @if($currentPriceRange === 'custom')
+                                            <option value="custom" selected>Custom budget</option>
+                                        @endif
+                                    </select>
+                                    <input type="hidden" name="price_min" id="price_min_filter" value="{{ $priceMin !== null ? (int) $priceMin : '' }}">
+                                    <input type="hidden" name="price_max" id="price_max_filter" value="{{ $priceMax !== null ? (int) $priceMax : '' }}">
+                                </div>
+                                <div>
+                                    <label for="sort_filter" class="block text-xs font-medium text-gray-700 mb-1">Sort by</label>
+                                    <select id="sort_filter" name="sort" class="h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#02681E]">
+                                        <option value="recommended" @selected($sort === 'recommended')>Recommended</option>
+                                        <option value="price_low" @selected($sort === 'price_low')>Lowest price</option>
+                                        <option value="price_high" @selected($sort === 'price_high')>Highest price</option>
+                                        <option value="capacity" @selected($sort === 'capacity')>Largest capacity</option>
+                                        <option value="name" @selected($sort === 'name')>Name A-Z</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            @if($activeAmenities->isNotEmpty())
+                                <fieldset class="mt-4">
+                                    <legend class="mb-2 text-xs font-medium text-gray-700">Amenities</legend>
+                                    <div class="flex flex-wrap gap-2">
+                                        @foreach($activeAmenities as $amenity)
+                                            <label class="cursor-pointer" data-amenity-option>
+                                                <input type="checkbox" name="amenities[]" value="{{ $amenity->id }}" @checked(in_array($amenity->id, $selectedAmenityIds, true)) class="sr-only" data-amenity-checkbox>
+                                                <span class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold transition hover:border-[#00491E]/40 focus-visible:ring-2 focus-visible:ring-[#02681E] focus-visible:ring-offset-2" data-amenity-chip>
+                                                    {{ $amenity->name }}
+                                                </span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                </fieldset>
                             @endif
                         </div>
-                        <div class="sm:col-span-3">
-                            <label for="show_unavailable" class="flex h-11 w-full items-center justify-between gap-3 rounded-lg border border-[#00491E]/10 bg-[#00491E]/5 px-3 text-sm font-semibold text-[#00491E] sm:max-w-xs">
-                                <span class="min-w-0 truncate">Show Unavailable Rooms</span>
-                                <input type="hidden" name="show_unavailable" value="0">
-                                <input type="checkbox" id="show_unavailable" name="show_unavailable" value="1" @checked($showUnavailable) class="h-5 w-5 flex-shrink-0 rounded border-[#00491E]/30 text-[#00491E] focus:ring-[#00491E]">
-                            </label>
-                        </div>
-                    </form>
+                    </details>
                 </div>
-            </div>
+
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    @if($checkIn || $checkOut || $guests || $activeFilterLabels->isNotEmpty() || !$showUnavailable)
+                        <a href="{{ route('guest.rooms', [], false) }}" class="inline-flex h-11 items-center justify-center gap-2 rounded-lg border-2 border-gray-300 bg-white px-5 text-sm font-bold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 sm:w-auto">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                            Clear Filters
+                        </a>
+                    @endif
+
+                    <button type="submit" class="h-11 w-full bg-[#02681E] text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-[#00491E] hover:shadow-lg active:scale-95 transition-all duration-200 whitespace-nowrap flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                        Update Search
+                    </button>
+                </div>
+            </form>
         </div>
+
+        @if($activeFilterLabels->isNotEmpty())
+            <div class="mb-4 flex flex-wrap items-center gap-2 text-sm">
+                <span class="font-semibold text-gray-700">Active filters:</span>
+                @foreach($activeFilterLabels as $label)
+                    <span class="rounded-full bg-[#00491E]/10 px-3 py-1 font-semibold text-[#00491E]">{{ $label }}</span>
+                @endforeach
+            </div>
+        @endif
 
         <div class="mb-4 flex flex-col gap-2 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
             <p>
                 {{ $availableRoomTypesCount }} available {{ Str::plural('room type', $availableRoomTypesCount) }}
                 @if($showUnavailable && $unavailableRoomTypesCount > 0)
-                    <span class="text-gray-400">•</span> {{ $unavailableRoomTypesCount }} unavailable shown after available rooms
+                    <span class="text-gray-400">&bull;</span> {{ $unavailableRoomTypesCount }} unavailable shown after available rooms
                 @elseif(!$showUnavailable)
-                    <span class="text-[#02681E] font-semibold">• Showing available rooms only</span>
+                    <span class="text-[#02681E] font-semibold">&bull; Showing available rooms only</span>
                 @endif
             </p>
             @if(!$showUnavailable && $unavailableRoomTypesCount > 0)
-                <a href="{{ route('guest.rooms', array_filter([
-                    'check_in' => $checkIn?->format('Y-m-d'),
-                    'check_out' => $checkOut?->format('Y-m-d'),
-                    'guests' => $guests,
-                    'show_unavailable' => 1,
-                ], fn ($value) => filled($value)), false) }}" class="text-[#02681E] font-semibold hover:text-[#00491E]">
+                <a href="{{ route('guest.rooms', array_merge($filterQuery, ['show_unavailable' => 1]), false) }}" class="text-[#02681E] font-semibold hover:text-[#00491E]">
                     Show unavailable rooms
                 </a>
             @endif
@@ -130,19 +213,14 @@
                     $availableCount = $isPrivate ? $roomType->available_rooms_count : ($roomType->available_beds_count ?? 0);
                     $totalCount = $isPrivate ? $roomType->total_rooms_count : ($roomType->total_beds_count ?? 0);
                     $isAvailable = (bool) ($roomType->can_accommodate_requested_guests ?? false);
-                    $availabilityQuery = collect([
-                        'check_in' => $checkIn?->format('Y-m-d'),
-                        'check_out' => $checkOut?->format('Y-m-d'),
-                        'guests' => $guests,
-                    ])->filter(fn ($value) => filled($value))->all();
-                    $roomDetailUrl = route('guest.room-detail', array_merge(['roomType' => $roomType], $availabilityQuery), false);
-                    $cardClasses = $isAvailable 
-                        ? 'bg-white hover:shadow-lg cursor-pointer' 
+                    $roomDetailUrl = route('guest.room-detail', array_merge(['roomType' => $roomType], $filterQuery), false);
+                    $cardClasses = $isAvailable
+                        ? 'bg-white hover:shadow-lg cursor-pointer'
                         : 'bg-gray-50 opacity-75 cursor-default';
                 @endphp
-                <div role="link" tabindex="0" class="block rounded-xl shadow-md overflow-hidden transition group {{ $cardClasses }}" 
+                <div role="link" tabindex="0" class="block rounded-xl shadow-md overflow-hidden transition group {{ $cardClasses }}"
                      @if($isAvailable)
-                         onclick="window.location.href='{{ $roomDetailUrl }}'" 
+                         onclick="window.location.href='{{ $roomDetailUrl }}'"
                          onkeydown="if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); window.location.href='{{ $roomDetailUrl }}'; }"
                      @endif>
                     <div class="md:flex">
@@ -167,6 +245,7 @@
                                 @endif
                             </div>
                         @endif
+
                         <div class="p-6 md:w-2/3">
                             <div class="flex justify-between items-start mb-3">
                                 <h2 class="text-xl font-bold {{ $isAvailable ? 'text-[#00491E]' : 'text-gray-500' }}">{{ $roomType->name }}</h2>
@@ -226,16 +305,11 @@
                     @if(!$showUnavailable && $unavailableRoomTypesCount > 0)
                         <p class="mb-3 font-semibold text-gray-700">No available rooms match this search.</p>
                         <p class="mb-5 text-sm">Unavailable room types are currently hidden.</p>
-                        <a href="{{ route('guest.rooms', array_filter([
-                            'check_in' => $checkIn?->format('Y-m-d'),
-                            'check_out' => $checkOut?->format('Y-m-d'),
-                            'guests' => $guests,
-                            'show_unavailable' => 1,
-                        ], fn ($value) => filled($value)), false) }}" class="inline-flex items-center justify-center rounded-lg bg-[#FFC600] px-5 py-2.5 text-sm font-bold text-[#00491E] hover:bg-yellow-400">
+                        <a href="{{ route('guest.rooms', array_merge($filterQuery, ['show_unavailable' => 1]), false) }}" class="inline-flex items-center justify-center rounded-lg bg-[#FFC600] px-5 py-2.5 text-sm font-bold text-[#00491E] hover:bg-yellow-400">
                             Show unavailable rooms
                         </a>
                     @else
-                        <p>No room types available at the moment.</p>
+                        <p>No room types match the selected filters.</p>
                     @endif
                 </div>
             @endforelse
@@ -245,9 +319,12 @@
 
 @push('scripts')
 <script>
-    // Date validation for filter form
     const checkInFilter = document.getElementById('check_in_filter');
     const checkOutFilter = document.getElementById('check_out_filter');
+    const priceRangeFilter = document.getElementById('price_range_filter');
+    const priceMinFilter = document.getElementById('price_min_filter');
+    const priceMaxFilter = document.getElementById('price_max_filter');
+    const amenityCheckboxes = document.querySelectorAll('[data-amenity-checkbox]');
 
     if (checkInFilter && checkOutFilter) {
         const toDateString = (date) => {
@@ -269,8 +346,7 @@
 
             const minCheckOutStr = addDays(checkInFilter.value, 1);
             checkOutFilter.min = minCheckOutStr;
-            
-            // Update check-out if it's before the new minimum
+
             if (!checkOutFilter.value || checkOutFilter.value <= checkInFilter.value) {
                 checkOutFilter.value = minCheckOutStr;
             }
@@ -290,5 +366,29 @@
             }
         });
     }
+
+    if (priceRangeFilter && priceMinFilter && priceMaxFilter) {
+        priceRangeFilter.addEventListener('change', function() {
+            const [min, max] = this.value.split('-');
+            priceMinFilter.value = min || '';
+            priceMaxFilter.value = max || '';
+        });
+    }
+
+    amenityCheckboxes.forEach((checkbox) => {
+        const chip = checkbox.closest('[data-amenity-option]')?.querySelector('[data-amenity-chip]');
+        if (!chip) return;
+
+        const selectedClasses = ['border-[#00491E]', 'bg-[#00491E]', 'text-white'];
+        const unselectedClasses = ['border-[#00491E]/15', 'bg-white', 'text-[#00491E]'];
+
+        const syncAmenityChip = () => {
+            chip.classList.remove(...selectedClasses, ...unselectedClasses);
+            chip.classList.add(...(checkbox.checked ? selectedClasses : unselectedClasses));
+        };
+
+        checkbox.addEventListener('change', syncAmenityChip);
+        syncAmenityChip();
+    });
 </script>
 @endpush

@@ -54,6 +54,7 @@
             font-family: inherit;
         }
         /* Improve form input visibility */
+        input:not([type]),
         input[type="text"],
         input[type="email"],
         input[type="tel"],
@@ -88,6 +89,7 @@
             flex-shrink: 0;
             margin-left: 0.25rem;
         }
+        input:not([type]):focus,
         input[type="text"]:focus,
         input[type="email"]:focus,
         input[type="tel"]:focus,
@@ -139,6 +141,26 @@
         .tour-pill-dot {
             animation: tour-ping 1.8s ease-in-out infinite;
         }
+        .guest-desktop-nav {
+            gap: 1rem;
+        }
+        .guest-desktop-nav > a {
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        @media (min-width: 768px) and (max-width: 1180px) {
+            .guest-desktop-nav {
+                gap: 0.7rem;
+            }
+            .guest-desktop-nav > a {
+                font-size: 0.92rem;
+            }
+            .guest-desktop-nav .guest-nav-pill,
+            .guest-desktop-nav .guest-nav-cta {
+                padding-left: 0.85rem;
+                padding-right: 0.85rem;
+            }
+        }
         /* Accessibility: High Contrast */
         @if($highContrast)
         body {
@@ -175,23 +197,26 @@
     @endif
     {{-- Navigation --}}
     <nav class="bg-[#00491E] shadow-lg">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
+        <div class="mx-auto max-w-[1700px] px-3 sm:px-5 lg:px-6">
+            <div class="flex justify-between h-20">
                 <div class="flex items-center">
                     <a href="{{ route('guest.home', [], false) }}" class="flex items-center gap-3 group">
                         <div class="flex-shrink-0 bg-white rounded-lg p-1 shadow ring-2 ring-[#FFC600]/60 group-hover:ring-[#FFC600] transition">
-                            <img src="{{ $logoSrc }}" alt="{{ $siteTitle }}" class="h-9 w-9 object-cover rounded" />
+                            <img src="{{ $logoSrc }}" alt="{{ $siteTitle }}" class="h-12 w-12 object-cover rounded" />
                         </div>
                         <div class="hidden sm:flex flex-col leading-tight">
-                            <span class="guest-brand text-white font-semibold text-xs tracking-wide group-hover:text-yellow-100 transition drop-shadow">{{ $institutionName }}</span>
-                            <span class="guest-brand text-[#FFC600] font-extrabold text-lg tracking-wide group-hover:text-yellow-300 transition drop-shadow">{{ $brandName }}</span>
+                            <span class="guest-brand text-[#FFC600] font-extrabold text-xl tracking-wide group-hover:text-yellow-300 transition drop-shadow">{{ $brandName }}</span>
+                            <span class="guest-brand text-white font-semibold text-sm tracking-wide group-hover:text-yellow-100 transition drop-shadow">{{ $institutionName }}</span>
                         </div>
                     </a>
                 </div>
-                <div class="hidden md:flex items-center space-x-8">
+                <div class="hidden md:flex items-center guest-desktop-nav">
                     <a href="{{ route('guest.home', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.home') ? 'text-[#FFC600]' : '' }}">{{ $guestSite['guest_nav_home_label'] }}</a>
+                    <a href="{{ route('guest.about', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.about') ? 'text-[#FFC600]' : '' }}">{{ $guestSite['guest_nav_about_label'] }}</a>
                     <a href="{{ route('guest.rooms', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.rooms') ? 'text-[#FFC600]' : '' }}">{{ $guestSite['guest_nav_rooms_label'] }}</a>
-                    <a href="{{ route('guest.virtual-tours', [], false) }}" class="flex items-center gap-2 bg-[#FFC600] text-[#00491E] font-bold px-4 py-1.5 rounded-full shadow-[0_0_12px_rgba(255,198,0,0.45)] hover:shadow-[0_0_20px_rgba(255,198,0,0.7)] hover:bg-yellow-400 transition-all duration-200 {{ request()->routeIs('guest.virtual-tours') ? 'ring-2 ring-white' : '' }}">
+                    <a href="{{ route('guest.track', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.track') ? 'text-[#FFC600]' : '' }}">{{ $guestSite['guest_nav_track_label'] }}</a>
+                    <a href="{{ route('guest.support', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.support', 'guest.account.support.*') ? 'text-[#FFC600]' : '' }}">Support</a>
+                    <a href="{{ route('guest.virtual-tours', [], false) }}" class="guest-nav-pill flex items-center gap-2 bg-[#FFC600] text-[#00491E] font-bold px-4 py-1.5 rounded-full shadow-[0_0_12px_rgba(255,198,0,0.45)] hover:shadow-[0_0_20px_rgba(255,198,0,0.7)] hover:bg-yellow-400 transition-all duration-200 {{ request()->routeIs('guest.virtual-tours') ? 'ring-2 ring-white' : '' }}">
                         <span class="relative flex items-center justify-center w-2 h-2">
                             <span class="tour-pill-dot absolute inline-flex w-full h-full rounded-full bg-red-600 opacity-60"></span>
                             <span class="relative inline-flex w-2 h-2 rounded-full bg-red-600"></span>
@@ -199,8 +224,16 @@
                         <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                         {{ $guestSite['guest_nav_tour_label'] }}
                     </a>
-                    <a href="{{ route('guest.reserve', [], false) }}" class="bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold transition-all duration-200 hover:bg-white hover:text-[#00491E] hover:scale-105 active:scale-95 {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">{{ $guestSite['guest_nav_reserve_label'] }}</a>
-                    <a href="{{ route('guest.track', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.track') ? 'text-[#FFC600]' : '' }}">{{ $guestSite['guest_nav_track_label'] }}</a>
+                    <a href="{{ route('guest.reserve', [], false) }}" class="guest-nav-cta bg-[#FFC600] text-[#00491E] px-4 py-2 rounded-lg font-bold transition-all duration-200 hover:bg-white hover:text-[#00491E] hover:scale-105 active:scale-95 {{ request()->routeIs('guest.reserve') ? 'ring-2 ring-white' : '' }}">{{ $guestSite['guest_nav_reserve_label'] }}</a>
+                    @if(auth('guest')->check())
+                        <a href="{{ route('guest.account.dashboard', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.account.*') ? 'text-[#FFC600]' : '' }}">My Account</a>
+                        <form method="POST" action="{{ route('guest.account.logout', [], false) }}">
+                            @csrf
+                            <button class="text-white hover:text-[#FFC600] transition font-medium">Logout</button>
+                        </form>
+                    @else
+                        <a href="{{ route('guest.account.login', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.account.login') ? 'text-[#FFC600]' : '' }}">Login</a>
+                    @endif
                 </div>
                 {{-- Mobile menu button --}}
                 <div class="md:hidden flex items-center">
@@ -216,25 +249,32 @@
         <div id="mobile-menu" class="hidden md:hidden bg-[#02681E] border-t border-[#00491E]">
             <div class="px-4 py-3 space-y-2">
                 <a href="{{ route('guest.home', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">{{ $guestSite['guest_nav_home_label'] }}</a>
+                <a href="{{ route('guest.about', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">{{ $guestSite['guest_nav_about_label'] }}</a>
                 <a href="{{ route('guest.rooms', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">{{ $guestSite['guest_nav_rooms_label'] }}</a>
+                <a href="{{ route('guest.track', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">{{ $guestSite['guest_nav_track_label'] }}</a>
+                <a href="{{ route('guest.support', [], false) }}" class="block text-white hover:text-[#FFC600] py-2 {{ request()->routeIs('guest.account.support.*') ? 'text-[#FFC600]' : '' }}">Support</a>
                 <a href="{{ route('guest.virtual-tours', [], false) }}" class="flex items-center gap-2 text-[#FFC600] hover:text-yellow-400 py-2 font-medium">
                     <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                     {{ $guestSite['guest_nav_tour_label'] }}
                 </a>
                 <a href="{{ route('guest.reserve', [], false) }}" class="block text-[#FFC600] font-bold py-2">{{ $guestSite['guest_nav_reserve_label'] }}</a>
-                <a href="{{ route('guest.track', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">{{ $guestSite['guest_nav_track_label'] }}</a>
+                @if(auth('guest')->check())
+                    <a href="{{ route('guest.account.dashboard', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">My Account</a>
+                    <form method="POST" action="{{ route('guest.account.logout', [], false) }}">
+                        @csrf
+                        <button class="block w-full text-left text-white hover:text-[#FFC600] py-2">Logout</button>
+                    </form>
+                @else
+                    <a href="{{ route('guest.account.login', [], false) }}" class="block text-white hover:text-[#FFC600] py-2">Login</a>
+                @endif
             </div>
         </div>
     </nav>
 
     {{-- Flash Messages --}}
-    @if(session('success'))
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
-            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                <span class="block sm:inline">{{ session('success') }}</span>
-            </div>
-        </div>
-    @endif
+    @unless(trim($__env->yieldContent('suppressGlobalGuestFlashes')) === 'true')
+        @include('guest.partials.flash-messages')
+    @endunless
 
     {{-- Main Content --}}
     <main class="flex-1">
@@ -264,10 +304,14 @@
                 <div>
                     <h3 class="text-[#FFC600] font-bold text-lg mb-3">Quick Links</h3>
                     <ul class="space-y-2 text-sm">
+                        <li><a href="{{ route('guest.home', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_nav_home_label'] }}</a></li>
+                        <li><a href="{{ route('guest.about', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_footer_about_label'] }}</a></li>
                         <li><a href="{{ route('guest.rooms', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_footer_rooms_label'] }}</a></li>
+                        <li><a href="{{ route('guest.track', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_footer_track_label'] }}</a></li>
+                        <li><a href="{{ route('guest.support', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Support</a></li>
                         <li><a href="{{ route('guest.virtual-tours', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_footer_tour_label'] }}</a></li>
                         <li><a href="{{ route('guest.reserve', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_footer_reserve_label'] }}</a></li>
-                        <li><a href="{{ route('guest.track', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">{{ $guestSite['guest_footer_track_label'] }}</a></li>
+                        <li><a href="{{ auth('guest')->check() ? route('guest.account.dashboard', [], false) : route('guest.account.login', [], false) }}" class="text-gray-300 hover:text-[#FFC600] transition">Guest Account</a></li>
                     </ul>
                 </div>
             </div>
@@ -419,6 +463,13 @@
                         );
                     }
                 }
+
+                if (field.name === 'password_confirmation') {
+                    const password = form.querySelector('[name="password"]');
+                    if (password?.value && field.value && field.value !== password.value) {
+                        field.setCustomValidity('Password confirmation must match the password.');
+                    }
+                }
             };
 
             const validateField = (field, form, force = false) => {
@@ -461,6 +512,11 @@
                         if (field.name === 'check_in_date') {
                             const checkOut = form.querySelector('[name="check_out_date"]');
                             if (checkOut) validateField(checkOut, form, true);
+                        }
+
+                        if (field.name === 'password') {
+                            const confirmation = form.querySelector('[name="password_confirmation"]');
+                            if (confirmation) validateField(confirmation, form, confirmation.value !== '');
                         }
                     });
 

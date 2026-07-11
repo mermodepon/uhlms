@@ -20,7 +20,7 @@
 
             <h2 class="text-2xl font-bold text-gray-900 mb-3">This Payment Link Has Expired</h2>
             <p class="text-gray-600 mb-6">
-                For security reasons, payment links expire after 48 hours. Please contact our staff to receive a new payment link.
+                For security reasons, payment links expire after 48 hours or at the end of the reserved stay, whichever comes first. Please contact our staff to receive a new payment link.
             </p>
 
             @if($reservation)
@@ -37,9 +37,7 @@
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Status:</span>
-                            <span class="px-2 py-1 text-xs rounded-full {{ $reservation->status === 'cancelled' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800' }}">
-                                {{ ucfirst($reservation->status) }}
-                            </span>
+                            @include('guest.partials.reservation-status-badge', ['status' => $reservation->status])
                         </div>
                     </div>
                 </div>

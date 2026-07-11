@@ -167,6 +167,8 @@
                     @switch($reportType)
                         @case('monthly_or_report') LODGING MONTHLY REPORT @break
                         @case('reservation_summary') RESERVATION SUMMARY REPORT @break
+                        @case('gender_statistics') GENDER STATISTICS REPORT @break
+                        @case('feedback_analytics') FEEDBACK ANALYTICS REPORT @break
                         @case('occupancy') OCCUPANCY REPORT @break
                         @case('room_utilization') ROOM UTILIZATION REPORT @break
                         @case('stay_logs') STAY LOGS REPORT @break
@@ -238,7 +240,7 @@
                             <span wire:loading wire:target="downloadMonthlyReportExcel">Exporting...</span>
                         </button>
                     @endif
-                    @if(in_array($reportType, ['reservation_summary', 'occupancy', 'room_utilization'], true))
+                    @if(in_array($reportType, ['reservation_summary', 'gender_statistics', 'feedback_analytics', 'occupancy', 'room_utilization'], true))
                         <button onclick="(function(){ if(window.CMUCharts && window.CMUCharts.refreshAll){ window.CMUCharts.refreshAll(); } else if(window.location){ window.location.reload(); } })()" title="Refresh charts for the selected date range" style="background:#ffffff;color:#00491E;border:1px solid #00491E;border-radius:8px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.06);white-space:nowrap;">
                             Refresh Charts
                         </button>
@@ -386,6 +388,451 @@
                     </div>
                     <div style="position: relative; height: 280px;"><canvas></canvas></div>
                     <script type="application/json" data-chart>{!! $chartRoomTypeBar !!}</script>
+                </div>
+            </div>
+        @endif
+
+        {{-- Gender Statistics Report --}}
+        @if(($data['type'] ?? '') === 'gender_statistics')
+            @php
+                $chartGenderGrouped = json_encode([
+                    'type' => 'bar',
+                    'data' => [
+                        'labels' => $data['domestic_foreign_chart']['labels'],
+                        'datasets' => [
+                            [
+                                'label' => 'Male',
+                                'data' => $data['domestic_foreign_chart']['male'],
+                                'backgroundColor' => '#2563EB',
+                                'borderRadius' => 6,
+                            ],
+                            [
+                                'label' => 'Female',
+                                'data' => $data['domestic_foreign_chart']['female'],
+                                'backgroundColor' => '#DB2777',
+                                'borderRadius' => 6,
+                            ],
+                            [
+                                'label' => 'Other / Unspecified',
+                                'data' => $data['domestic_foreign_chart']['other_unspecified'],
+                                'backgroundColor' => '#919F02',
+                                'borderRadius' => 6,
+                            ],
+                        ],
+                    ],
+                    'options' => [
+                        'responsive' => true,
+                        'maintainAspectRatio' => false,
+                        'plugins' => [
+                            'legend' => ['position' => 'bottom'],
+                            'title' => ['display' => true, 'text' => $periodTitle],
+                        ],
+                        'scales' => [
+                            'y' => ['beginAtZero' => true, 'ticks' => ['stepSize' => 1]],
+                        ],
+                    ],
+                ]);
+
+                $chartOriginShare = json_encode([
+                    'type' => 'doughnut',
+                    'data' => [
+                        'labels' => $data['origin_share_chart']['labels'],
+                        'datasets' => [[
+                            'data' => $data['origin_share_chart']['data'],
+                            'backgroundColor' => ['#00491E', '#FFC600', '#9CA3AF'],
+                            'borderWidth' => 2,
+                            'borderColor' => '#fff',
+                        ]],
+                    ],
+                    'options' => [
+                        'responsive' => true,
+                        'maintainAspectRatio' => false,
+                        'plugins' => [
+                            'legend' => ['position' => 'bottom'],
+                            'title' => ['display' => true, 'text' => $periodTitle],
+                        ],
+                    ],
+                ]);
+            @endphp
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; align-items: stretch;">
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700" style="padding: 20px 24px; min-height: 108px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400" style="line-height: 1.3;">Total Guests</div>
+                    <div class="mt-2 text-3xl font-bold text-primary-700 dark:text-primary-300" style="line-height: 1.1;">{{ $data['total_guests'] }}</div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700" style="padding: 20px 24px; min-height: 108px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400" style="line-height: 1.3;">Domestic Guests</div>
+                    <div class="mt-2 text-3xl font-bold text-green-700 dark:text-green-300" style="line-height: 1.1;">{{ $data['domestic_total'] }}</div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700" style="padding: 20px 24px; min-height: 108px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400" style="line-height: 1.3;">Foreign Guests</div>
+                    <div class="mt-2 text-3xl font-bold text-amber-600 dark:text-amber-300" style="line-height: 1.1;">{{ $data['foreign_total'] }}</div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700" style="padding: 20px 24px; min-height: 108px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400" style="line-height: 1.3;">Male</div>
+                    <div class="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-300" style="line-height: 1.1;">{{ $data['male_total'] }}</div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700" style="padding: 20px 24px; min-height: 108px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400" style="line-height: 1.3;">Female</div>
+                    <div class="mt-2 text-3xl font-bold text-pink-600 dark:text-pink-300" style="line-height: 1.1;">{{ $data['female_total'] }}</div>
+                </div>
+            </div>
+
+            @if($data['unknown_nationality_total'] > 0 || ($data['other_total'] + $data['unspecified_total']) > 0)
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-100">
+                    {{ $data['unknown_nationality_total'] }} guest(s) have unknown nationality, and {{ $data['other_total'] + $data['unspecified_total'] }} guest(s) have other or unspecified gender. They are included in the totals and detail tables.
+                </div>
+            @endif
+
+            <div wire:key="gender-charts-{{ md5(json_encode($data)) }}">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div class="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Domestic and Foreign Gender Counts</h3>
+                            <button onclick="CMUCharts.print(this.closest('.chart-container'))" class="no-print" style="background:#00491E;color:#FFC600;border:1px solid #FFC600;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;" title="Print this chart">
+                                <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                Print
+                            </button>
+                        </div>
+                        <div style="position: relative; height: 320px;"><canvas></canvas></div>
+                        <script type="application/json" data-chart>{!! $chartGenderGrouped !!}</script>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Guest Origin Share</h3>
+                            <button onclick="CMUCharts.print(this.closest('.chart-container'))" class="no-print" style="background:#00491E;color:#FFC600;border:1px solid #FFC600;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;" title="Print this chart">
+                                <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                Print
+                            </button>
+                        </div>
+                        <div style="position: relative; height: 320px;"><canvas></canvas></div>
+                        <script type="application/json" data-chart>{!! $chartOriginShare !!}</script>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                <div class="xl:col-span-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Classification Summary</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-200 dark:border-gray-700">
+                                    <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Classification</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Male</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Female</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Other</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Unspecified</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Total</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Share</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($data['classification_rows'] as $row)
+                                    <tr class="border-b border-gray-100 dark:border-gray-700/50">
+                                        <td class="py-2 px-3 font-medium text-gray-800 dark:text-gray-100">{{ $row['label'] }}</td>
+                                        <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $row['male'] }}</td>
+                                        <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $row['female'] }}</td>
+                                        <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $row['other'] }}</td>
+                                        <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $row['unspecified'] }}</td>
+                                        <td class="py-2 px-3 text-center font-semibold text-gray-900 dark:text-gray-100">{{ $row['total'] }}</td>
+                                        <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ number_format($row['percentage'], 1) }}%</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="7" class="py-8 text-center text-gray-500">No checked-in guests found for this period.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Nationality Breakdown</h3>
+                    <div class="space-y-3">
+                        @forelse(array_slice($data['nationality_rows'] ?? [], 0, 8) as $row)
+                            <div class="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                                <div class="flex items-start gap-4">
+                                    <div>
+                                        <div class="font-semibold text-gray-800 dark:text-gray-100">{{ $row['nationality'] }}</div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">{{ $row['classification_label'] }}</div>
+                                    </div>
+                                    <div class="min-w-[2.5rem] rounded-lg bg-primary-50 px-3 py-1 text-center text-lg font-bold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">{{ $row['total'] }}</div>
+                                </div>
+                                <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                                    {{ $row['male'] }} male / {{ $row['female'] }} female / {{ $row['other'] + $row['unspecified'] }} other or unspecified
+                                </div>
+                            </div>
+                        @empty
+                            <div class="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700">
+                                No nationality data for this period.
+                            </div>
+                        @endforelse
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        {{-- Feedback Analytics Report --}}
+        @if(($data['type'] ?? '') === 'feedback_analytics')
+            @php
+                $chartRatingDistribution = json_encode([
+                    'type' => 'bar',
+                    'data' => [
+                        'labels' => array_map(fn ($rating) => $rating.' Star', array_keys($data['rating_distribution'])),
+                        'datasets' => [[
+                            'label' => 'Feedback',
+                            'data' => array_values($data['rating_distribution']),
+                            'backgroundColor' => ['#EF4444', '#F97316', '#F59E0B', '#919F02', '#00491E'],
+                            'borderRadius' => 6,
+                        ]],
+                    ],
+                    'options' => [
+                        'responsive' => true,
+                        'maintainAspectRatio' => false,
+                        'plugins' => [
+                            'legend' => ['display' => false],
+                            'title' => ['display' => true, 'text' => $periodTitle],
+                        ],
+                        'scales' => ['y' => ['beginAtZero' => true, 'ticks' => ['stepSize' => 1]]],
+                    ],
+                ]);
+
+                $chartCategoryAverages = json_encode([
+                    'type' => 'bar',
+                    'data' => [
+                        'labels' => array_column($data['category_rows'], 'label'),
+                        'datasets' => [[
+                            'label' => 'Average Rating',
+                            'data' => array_column($data['category_rows'], 'average'),
+                            'backgroundColor' => '#00491E',
+                            'borderRadius' => 6,
+                        ]],
+                    ],
+                    'options' => [
+                        'indexAxis' => 'y',
+                        'responsive' => true,
+                        'maintainAspectRatio' => false,
+                        'plugins' => [
+                            'legend' => ['display' => false],
+                            'title' => ['display' => true, 'text' => $periodTitle],
+                        ],
+                        'scales' => ['x' => ['beginAtZero' => true, 'max' => 5]],
+                    ],
+                ]);
+
+                $chartStayAgain = json_encode([
+                    'type' => 'doughnut',
+                    'data' => [
+                        'labels' => $data['stay_again_chart']['labels'],
+                        'datasets' => [[
+                            'data' => $data['stay_again_chart']['data'],
+                            'backgroundColor' => ['#00491E', '#EF4444', '#9CA3AF'],
+                            'borderWidth' => 2,
+                            'borderColor' => '#fff',
+                        ]],
+                    ],
+                    'options' => [
+                        'responsive' => true,
+                        'maintainAspectRatio' => false,
+                        'plugins' => [
+                            'legend' => ['position' => 'bottom'],
+                            'title' => ['display' => true, 'text' => $periodTitle],
+                        ],
+                    ],
+                ]);
+
+                $chartRatingTrend = json_encode([
+                    'type' => 'line',
+                    'data' => [
+                        'labels' => array_column($data['trend_rows'], 'label'),
+                        'datasets' => [[
+                            'label' => 'Average Overall Rating',
+                            'data' => array_column($data['trend_rows'], 'average'),
+                            'borderColor' => '#00491E',
+                            'backgroundColor' => 'rgba(0, 73, 30, 0.12)',
+                            'fill' => true,
+                            'tension' => 0.3,
+                            'pointBackgroundColor' => '#FFC600',
+                            'pointBorderColor' => '#00491E',
+                            'pointRadius' => 4,
+                            'borderWidth' => 2,
+                        ]],
+                    ],
+                    'options' => [
+                        'responsive' => true,
+                        'maintainAspectRatio' => false,
+                        'plugins' => [
+                            'legend' => ['display' => false],
+                            'title' => ['display' => true, 'text' => $periodTitle],
+                        ],
+                        'scales' => ['y' => ['beginAtZero' => true, 'max' => 5]],
+                    ],
+                ]);
+            @endphp
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; align-items: stretch;">
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700" style="padding: 20px 24px; min-height: 108px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400" style="line-height: 1.3;">Total Feedback</div>
+                    <div class="mt-2 text-3xl font-bold text-primary-700 dark:text-primary-300" style="line-height: 1.1;">{{ $data['total_feedback'] }}</div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700" style="padding: 20px 24px; min-height: 108px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400" style="line-height: 1.3;">Average Overall</div>
+                    <div class="mt-2 text-3xl font-bold text-green-700 dark:text-green-300" style="line-height: 1.1;">{{ number_format($data['average_overall'], 2) }}</div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700" style="padding: 20px 24px; min-height: 108px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400" style="line-height: 1.3;">Would Stay Again</div>
+                    <div class="mt-2 text-3xl font-bold text-lime-700 dark:text-lime-300" style="line-height: 1.1;">{{ number_format($data['stay_again_percent'], 1) }}%</div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700" style="padding: 20px 24px; min-height: 108px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400" style="line-height: 1.3;">Low Ratings</div>
+                    <div class="mt-2 text-3xl font-bold text-red-600 dark:text-red-300" style="line-height: 1.1;">{{ $data['low_rating_count'] }}</div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700" style="padding: 20px 24px; min-height: 108px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400" style="line-height: 1.3;">Unreviewed</div>
+                    <div class="mt-2 text-3xl font-bold text-amber-600 dark:text-amber-300" style="line-height: 1.1;">{{ $data['unreviewed_count'] }}</div>
+                </div>
+            </div>
+
+            <div wire:key="feedback-charts-{{ md5(json_encode($data)) }}">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Rating Distribution</h3>
+                            <button onclick="CMUCharts.print(this.closest('.chart-container'))" class="no-print" style="background:#00491E;color:#FFC600;border:1px solid #FFC600;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;" title="Print this chart">
+                                <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                Print
+                            </button>
+                        </div>
+                        <div style="position: relative; height: 300px;"><canvas></canvas></div>
+                        <script type="application/json" data-chart>{!! $chartRatingDistribution !!}</script>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Category Averages</h3>
+                            <button onclick="CMUCharts.print(this.closest('.chart-container'))" class="no-print" style="background:#00491E;color:#FFC600;border:1px solid #FFC600;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;" title="Print this chart">
+                                <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                Print
+                            </button>
+                        </div>
+                        <div style="position: relative; height: 300px;"><canvas></canvas></div>
+                        <script type="application/json" data-chart>{!! $chartCategoryAverages !!}</script>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Would Stay Again</h3>
+                            <button onclick="CMUCharts.print(this.closest('.chart-container'))" class="no-print" style="background:#00491E;color:#FFC600;border:1px solid #FFC600;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;" title="Print this chart">
+                                <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                Print
+                            </button>
+                        </div>
+                        <div style="position: relative; height: 300px;"><canvas></canvas></div>
+                        <script type="application/json" data-chart>{!! $chartStayAgain !!}</script>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Average Rating Trend</h3>
+                            <button onclick="CMUCharts.print(this.closest('.chart-container'))" class="no-print" style="background:#00491E;color:#FFC600;border:1px solid #FFC600;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;" title="Print this chart">
+                                <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                Print
+                            </button>
+                        </div>
+                        <div style="position: relative; height: 300px;"><canvas></canvas></div>
+                        <script type="application/json" data-chart>{!! $chartRatingTrend !!}</script>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Category Rating Details</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-200 dark:border-gray-700">
+                                    <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Category</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Responses</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Average</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Lowest</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($data['category_rows'] as $row)
+                                    <tr class="border-b border-gray-100 dark:border-gray-700/50">
+                                        <td class="py-2 px-3 font-medium text-gray-800 dark:text-gray-100">{{ $row['label'] }}</td>
+                                        <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $row['responses'] }}</td>
+                                        <td class="py-2 px-3 text-center font-semibold text-gray-900 dark:text-gray-100">{{ number_format($row['average'], 2) }}</td>
+                                        <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $row['lowest'] ?? '-' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Room Type Breakdown</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-200 dark:border-gray-700">
+                                    <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Room Type</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Feedback</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Average</th>
+                                    <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Low Ratings</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($data['room_type_rows'] as $row)
+                                    <tr class="border-b border-gray-100 dark:border-gray-700/50">
+                                        <td class="py-2 px-3 font-medium text-gray-800 dark:text-gray-100">{{ $row['room_type'] }}</td>
+                                        <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $row['feedback_count'] }}</td>
+                                        <td class="py-2 px-3 text-center font-semibold text-gray-900 dark:text-gray-100">{{ number_format($row['average_rating'], 2) }}</td>
+                                        <td class="py-2 px-3 text-center text-gray-700 dark:text-gray-300">{{ $row['low_ratings'] }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="4" class="py-8 text-center text-gray-500">No room type feedback for this period.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Low-Rating Feedback</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-200 dark:border-gray-700">
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Reservation</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Guest</th>
+                                <th class="text-center py-2 px-3 text-gray-600 dark:text-gray-400">Overall</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Category Lows</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Submitted</th>
+                                <th class="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Comment</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($data['low_rating_rows'] as $row)
+                                <tr class="border-b border-gray-100 dark:border-gray-700/50">
+                                    <td class="py-2 px-3 font-mono text-xs text-gray-700 dark:text-gray-300">{{ $row['reservation'] }}</td>
+                                    <td class="py-2 px-3 font-medium text-gray-800 dark:text-gray-100">{{ $row['guest'] }}</td>
+                                    <td class="py-2 px-3 text-center font-semibold text-red-600 dark:text-red-300">{{ $row['overall_rating'] }} / 5</td>
+                                    <td class="py-2 px-3 text-gray-700 dark:text-gray-300">{{ $row['category_lows'] }}</td>
+                                    <td class="py-2 px-3 text-xs text-gray-600 dark:text-gray-400">{{ $row['submitted_at'] }}</td>
+                                    <td class="py-2 px-3 text-gray-600 dark:text-gray-400">{{ $row['comment'] }}</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6" class="py-8 text-center text-gray-500">No low-rating feedback found for this period.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
                 </div>
             </div>
         @endif

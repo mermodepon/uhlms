@@ -312,6 +312,11 @@ class TourController extends Controller
         );
 
         $validated['status'] = 'pending';
+        $guestAccount = auth('guest')->user();
+
+        if ($guestAccount && \Illuminate\Support\Str::lower($guestAccount->email) === \Illuminate\Support\Str::lower($validated['guest_email'])) {
+            $validated['guest_account_id'] = $guestAccount->id;
+        }
 
         if (! empty($requestValidation['warnings'])) {
             $warning = implode(' ', $requestValidation['warnings'])

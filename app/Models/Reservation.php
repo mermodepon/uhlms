@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
@@ -14,6 +15,7 @@ class Reservation extends Model
 {
     protected $fillable = [
         'reference_number',
+        'guest_account_id',
         'guest_name',
         'guest_last_name',
         'guest_first_name',
@@ -111,6 +113,16 @@ class Reservation extends Model
         return $this->belongsTo(RoomType::class, 'preferred_room_type_id');
     }
 
+    public function guestAccount(): BelongsTo
+    {
+        return $this->belongsTo(GuestAccount::class);
+    }
+
+    public function feedback(): HasOne
+    {
+        return $this->hasOne(ReservationFeedback::class);
+    }
+
     public function reviewer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewed_by');
@@ -161,6 +173,11 @@ class Reservation extends Model
         return $this->hasMany(ReservationRoomRequest::class)->orderBy('sort_order');
     }
 
+    public function alternativeOffers(): HasMany
+    {
+        return $this->hasMany(ReservationAlternativeOffer::class);
+    }
+
     public function refreshFinancialSummary(): void
     {
         $chargesTotal = (float) $this->charges()->sum('amount');
@@ -194,6 +211,7 @@ class Reservation extends Model
     {
         return match ($this->status) {
             'pending' => 'warning',
+            'awaiting_alternative_confirmation' => 'warning',
             'approved' => 'info',
             'confirmed' => 'success',
             'declined' => 'danger',
@@ -202,6 +220,14 @@ class Reservation extends Model
             'checked_out' => 'gray',
             default => 'gray',
         };
+    }
+
+    public function canReceiveFeedbackFrom(GuestAccount $account): bool
+    {
+        return $account->hasVerifiedEmail()
+            && (int) $this->guest_account_id === (int) $account->id
+            && $this->status === 'checked_out'
+            && ! $this->feedback()->exists();
     }
 
     /**
@@ -273,9 +299,22 @@ class Reservation extends Model
             $this->payment_link_token = (string) Str::uuid();
         }
 
-        $this->payment_link_expires_at = $expiresAt ?? now()->addHours(48);
+        $this->payment_link_expires_at = $expiresAt ?? $this->resolvePaymentLinkExpiry();
 
         return $this;
+    }
+
+    protected function resolvePaymentLinkExpiry(): Carbon
+    {
+        $defaultExpiry = now()->addHours(48);
+
+        if (! $this->check_out_date) {
+            return $defaultExpiry;
+        }
+
+        $stayEnd = $this->check_out_date->copy()->endOfDay();
+
+        return $stayEnd->lessThan($defaultExpiry) ? $stayEnd : $defaultExpiry;
     }
 
     /**

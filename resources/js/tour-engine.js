@@ -13,6 +13,8 @@ const HOTSPOT_COLORS = {
     'external-link': '#10b981',
 };
 
+const TOUR_GUIDE_STORAGE_KEY = 'tour_guide_seen_v1';
+
 const AUTO_TOUR_PROFILES = {
     fast: { cycleMs: 12000, panMs: 10000, label: 'Fast' },
     normal: { cycleMs: 16000, panMs: 14000, label: 'Normal' },
@@ -79,6 +81,14 @@ class VirtualTourEngine {
         this.progressIndicator = document.getElementById('progress-indicator');
         this.navSceneName      = document.getElementById('nav-scene-name-text');
         this.roomInfoBtn       = document.getElementById('room-info-btn');
+        this.tourGuideLayer    = document.getElementById('tour-guide-layer');
+        this.tourGuideBubble   = document.getElementById('tour-guide-bubble');
+        this.tourGuideSpotlight = document.getElementById('tour-guide-spotlight');
+        this.tourGuideTitle    = document.getElementById('tour-guide-title');
+        this.tourGuideCopy     = document.getElementById('tour-guide-copy');
+        this.tourGuideStep     = document.getElementById('tour-guide-step');
+        this.tourGuideNextBtn  = document.getElementById('tour-guide-next');
+        this.tourGuideDismissBtn = document.getElementById('tour-guide-dismiss');
         this.autoTourHud       = document.getElementById('auto-tour-hud');
         this.autoTourCountdown = document.getElementById('auto-tour-countdown');
         this.autoTourFill      = document.getElementById('auto-tour-progress-fill');
@@ -91,6 +101,14 @@ class VirtualTourEngine {
         this._gazeActivationInFlight = false;
         this._navigationSequence = 0;
         this._focusedGazeMarkerId = null;
+        this._tourGuideActive = false;
+        this._tourGuideIndex = 0;
+        this._tourGuideSteps = [];
+        this._tourGuideAutoStarted = false;
+        this._tourGuideRepositionTimer = null;
+        this._tourGuideResizeHandler = () => this._scheduleTourGuideReposition();
+        this._mediaLightbox = null;
+        this._mediaLightboxKeyHandler = (event) => this._handleMediaLightboxKeydown(event);
 
         this._init();
     }
@@ -143,6 +161,7 @@ class VirtualTourEngine {
         });
 
         this._initAsync();
+        this._bindTourGuideControls();
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -188,6 +207,7 @@ class VirtualTourEngine {
 
         // Setup auto-hide UI controls
         this._setupAutoHideUI();
+        this._queueTourGuideAutoStart();
     }
 
     // ── URL deep linking ──────────────────────────────────────────────────────
@@ -612,7 +632,7 @@ class VirtualTourEngine {
         // Elements hidden only when the user manually toggles controls off.
         this._hidableElements = [
             document.querySelector('.vr-controls'),
-            ...(isMobileViewport ? [document.getElementById('minimap')] : []),
+            document.getElementById('minimap'),
             document.getElementById('help-btn'),
             document.getElementById('room-info-btn'),
             document.getElementById('mobile-settings-btn'),
@@ -641,6 +661,9 @@ class VirtualTourEngine {
     _showUI() {
         this._uiHidden = false;
         this._hidableElements.forEach(el => el?.classList.remove('ui-hidden'));
+        if (this._tourGuideActive) {
+            this._showTourGuideStep();
+        }
     }
 
     _hideUI() {
@@ -648,6 +671,7 @@ class VirtualTourEngine {
         this._hidableElements.forEach(el => el?.classList.add('ui-hidden'));
         window.closeMobileTourMap?.();
         document.querySelector('.vr-controls')?.classList.remove('mobile-open');
+        this.tourGuideLayer?.classList.remove('is-visible');
     }
 
     toggleUIVisibility() {
@@ -673,6 +697,311 @@ class VirtualTourEngine {
         if (hideIcon) hideIcon.style.display = hidden ? 'none' : '';
         if (showIcon) showIcon.style.display = hidden ? '' : 'none';
         if (btn) btn.title = hidden ? 'Show controls (H)' : 'Hide controls (H)';
+    }
+
+    // ── Floating tour guide ───────────────────────────────────────────────────
+
+    _bindTourGuideControls() {
+        this.tourGuideNextBtn?.addEventListener('click', () => this._advanceTourGuide());
+        this.tourGuideDismissBtn?.addEventListener('click', () => this.dismissTourGuide());
+        window.addEventListener('resize', this._tourGuideResizeHandler, { passive: true });
+        window.addEventListener('orientationchange', this._tourGuideResizeHandler, { passive: true });
+    }
+
+    _queueTourGuideAutoStart() {
+        if (this._tourGuideAutoStarted || !this.tourGuideLayer || this.previewMode) return;
+        this._tourGuideAutoStarted = true;
+
+        if (this._hasSeenTourGuide()) return;
+
+        window.setTimeout(() => {
+            this.startTourGuide({ force: false });
+        }, 850);
+    }
+
+    _hasSeenTourGuide() {
+        try {
+            return localStorage.getItem(TOUR_GUIDE_STORAGE_KEY) === '1';
+        } catch (_) {
+            return false;
+        }
+    }
+
+    _setTourGuideSeen() {
+        try {
+            localStorage.setItem(TOUR_GUIDE_STORAGE_KEY, '1');
+        } catch (_) {}
+    }
+
+    startTourGuide({ force = true } = {}) {
+        if (!this.tourGuideLayer || !this.tourGuideBubble || !this.currentWaypoint) return false;
+        if (!force && this._hasSeenTourGuide()) return false;
+
+        this._tourGuideSteps = this._buildTourGuideSteps();
+        if (!this._tourGuideSteps.length) return false;
+
+        this._tourGuideActive = true;
+        this._tourGuideIndex = 0;
+        this._showTourGuideStep();
+        return true;
+    }
+
+    dismissTourGuide({ persist = true } = {}) {
+        this._tourGuideActive = false;
+        this._tourGuideSteps = [];
+        this._tourGuideIndex = 0;
+        clearTimeout(this._tourGuideRepositionTimer);
+        this.tourGuideLayer?.classList.remove('is-visible');
+        this.tourGuideLayer?.setAttribute('aria-hidden', 'true');
+        this.tourGuideSpotlight?.classList.remove('is-visible');
+
+        if (persist) {
+            this._setTourGuideSeen();
+        }
+    }
+
+    _buildTourGuideSteps() {
+        const steps = [
+            {
+                key: 'look-around',
+                title: 'Look around freely',
+                copy: 'Drag with your mouse, swipe on your phone, or use the arrow keys to explore the 360 view.',
+                anchor: null,
+                placement: 'center',
+            },
+        ];
+
+        const firstHotspot = (this.currentWaypoint?.hotspots || []).find(h => h?.is_active !== false);
+        if (firstHotspot) {
+            steps.push({
+                key: 'hotspots',
+                title: 'Use markers to move and discover',
+                copy: 'Colored hotspots are the main way to move between scenes, open information, play media, or follow a link.',
+                anchor: () => document.getElementById(`psv-marker-hs-${firstHotspot.id}`),
+                placement: 'auto',
+            });
+        }
+
+        if (this.currentWaypoint?.is_room_related && this.currentWaypoint?.linked_room_type_id) {
+            steps.push({
+                key: 'room-info',
+                title: 'Rooms have their own details',
+                copy: 'Room Info shows pricing, amenities, availability, and reservation actions. You do not need to navigate every corner inside a room.',
+                anchor: () => document.getElementById('psv-marker-room-info-marker') || this.roomInfoBtn,
+                placement: 'auto',
+            });
+        }
+
+        steps.push(
+            {
+                key: 'quick-controls',
+                title: 'Quick controls live here',
+                copy: 'Open Help anytime, enter Fullscreen for a wider view, hide the interface with the eye button, or return Home when you are done.',
+                anchor: () => document.querySelector('.top-right-controls'),
+                placement: 'auto',
+            },
+            {
+                key: 'tour-map',
+                title: 'Jump with the Tour Map',
+                copy: 'Use the map or scene name control to search and jump directly to available rooms, hallways, and common areas.',
+                anchor: () => this._getTourMapGuideAnchor(),
+                placement: 'auto',
+            },
+            {
+                key: 'sequence-nav',
+                title: 'Previous and Next follow the tour order',
+                copy: 'These buttons move through the curated scene sequence. Hotspots are better when you want a specific doorway or room.',
+                anchor: () => document.querySelector('.nav-controls'),
+                placement: 'top',
+            },
+        );
+
+        return steps;
+    }
+
+    _getTourMapGuideAnchor() {
+        const isMobile = window.matchMedia?.('(max-width: 768px)')?.matches ?? window.innerWidth <= 768;
+        if (isMobile) {
+            return document.getElementById('nav-scene-name') || document.getElementById('minimap');
+        }
+
+        return document.querySelector('#minimap .minimap-toggle')
+            || document.getElementById('minimap')
+            || document.getElementById('nav-scene-name');
+    }
+
+    _advanceTourGuide() {
+        if (!this._tourGuideActive) return;
+
+        if (this._tourGuideIndex >= this._tourGuideSteps.length - 1) {
+            this.dismissTourGuide();
+            return;
+        }
+
+        this._tourGuideIndex += 1;
+        this._showTourGuideStep();
+    }
+
+    _showTourGuideStep() {
+        if (!this._tourGuideActive || !this.tourGuideLayer) return;
+
+        const step = this._tourGuideSteps[this._tourGuideIndex];
+        if (!step) {
+            this.dismissTourGuide();
+            return;
+        }
+
+        if (this._isTourGuideSuppressed()) {
+            this.tourGuideLayer.classList.remove('is-visible');
+            this.tourGuideLayer.setAttribute('aria-hidden', 'true');
+            return;
+        }
+
+        if (this.tourGuideStep) {
+            this.tourGuideStep.textContent = `Guide ${this._tourGuideIndex + 1} of ${this._tourGuideSteps.length}`;
+        }
+        if (this.tourGuideTitle) this.tourGuideTitle.textContent = step.title;
+        if (this.tourGuideCopy) this.tourGuideCopy.textContent = step.copy;
+        if (this.tourGuideNextBtn) {
+            this.tourGuideNextBtn.textContent = this._tourGuideIndex >= this._tourGuideSteps.length - 1 ? 'Done' : 'Next';
+        }
+
+        this.tourGuideLayer.classList.add('is-visible');
+        this.tourGuideLayer.setAttribute('aria-hidden', 'false');
+        this._scheduleTourGuideReposition();
+    }
+
+    _scheduleTourGuideReposition() {
+        if (!this._tourGuideActive) return;
+
+        clearTimeout(this._tourGuideRepositionTimer);
+        this._tourGuideRepositionTimer = window.setTimeout(() => {
+            this._positionTourGuide();
+        }, 20);
+    }
+
+    _positionTourGuide() {
+        if (!this._tourGuideActive || !this.tourGuideLayer || !this.tourGuideBubble) return;
+
+        const step = this._tourGuideSteps[this._tourGuideIndex];
+        if (!step || this._isTourGuideSuppressed()) {
+            this.tourGuideLayer.classList.remove('is-visible');
+            return;
+        }
+
+        this.tourGuideLayer.classList.add('is-visible');
+
+        const layerRect = this.tourGuideLayer.getBoundingClientRect();
+        const targetEl = typeof step.anchor === 'function' ? step.anchor() : null;
+        const targetRect = this._getUsableGuideTargetRect(targetEl, layerRect);
+
+        if (!targetRect || step.placement === 'center') {
+            this.tourGuideSpotlight?.classList.remove('is-visible');
+            this._placeTourGuideBubble({
+                x: layerRect.width / 2,
+                y: Math.max(96, layerRect.height * 0.42),
+                placement: 'center',
+                layerRect,
+            });
+            return;
+        }
+
+        this._placeTourGuideSpotlight(targetRect);
+
+        const preferredPlacement = step.placement === 'top' || step.placement === 'bottom'
+            ? step.placement
+            : (targetRect.top < layerRect.height * 0.52 ? 'bottom' : 'top');
+        const gap = 20;
+        const bubbleRect = this.tourGuideBubble.getBoundingClientRect();
+        const bubbleHeight = bubbleRect.height || 150;
+        const targetCenterX = targetRect.left + targetRect.width / 2;
+        let y = preferredPlacement === 'bottom'
+            ? targetRect.bottom + gap
+            : targetRect.top - bubbleHeight - gap;
+        let placement = preferredPlacement;
+
+        if (y < 12) {
+            y = targetRect.bottom + gap;
+            placement = 'bottom';
+        }
+        if (y + bubbleHeight > layerRect.height - 12) {
+            y = Math.max(12, targetRect.top - bubbleHeight - gap);
+            placement = 'top';
+        }
+
+        this._placeTourGuideBubble({
+            x: targetCenterX,
+            y,
+            placement,
+            layerRect,
+        });
+    }
+
+    _getUsableGuideTargetRect(targetEl, layerRect) {
+        if (!targetEl || typeof targetEl.getBoundingClientRect !== 'function') return null;
+
+        const rect = targetEl.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2) return null;
+        if (rect.bottom < layerRect.top || rect.top > layerRect.bottom) return null;
+        if (rect.right < layerRect.left || rect.left > layerRect.right) return null;
+
+        return {
+            left: rect.left - layerRect.left,
+            top: rect.top - layerRect.top,
+            right: rect.right - layerRect.left,
+            bottom: rect.bottom - layerRect.top,
+            width: rect.width,
+            height: rect.height,
+        };
+    }
+
+    _placeTourGuideSpotlight(rect) {
+        if (!this.tourGuideSpotlight) return;
+
+        const pad = Math.max(10, Math.min(18, Math.max(rect.width, rect.height) * 0.18));
+        this.tourGuideSpotlight.style.left = `${Math.max(8, rect.left - pad)}px`;
+        this.tourGuideSpotlight.style.top = `${Math.max(8, rect.top - pad)}px`;
+        this.tourGuideSpotlight.style.width = `${rect.width + pad * 2}px`;
+        this.tourGuideSpotlight.style.height = `${rect.height + pad * 2}px`;
+        this.tourGuideSpotlight.classList.add('is-visible');
+    }
+
+    _placeTourGuideBubble({ x, y, placement, layerRect }) {
+        const bubbleRect = this.tourGuideBubble.getBoundingClientRect();
+        const halfWidth = (bubbleRect.width || 330) / 2;
+        const safeX = Math.min(Math.max(x, halfWidth + 12), Math.max(halfWidth + 12, layerRect.width - halfWidth - 12));
+        const maxY = Math.max(12, layerRect.height - (bubbleRect.height || 150) - 12);
+        const safeY = Math.min(Math.max(y, 12), maxY);
+
+        this.tourGuideBubble.style.left = `${safeX}px`;
+        this.tourGuideBubble.style.top = `${safeY}px`;
+        this.tourGuideBubble.dataset.placement = placement || 'center';
+    }
+
+    _isTourGuideSuppressed() {
+        if (!this.tourGuideLayer) return true;
+        if (this.loadingIndicator && !this.loadingIndicator.classList.contains('hidden')) return true;
+        if (this._webXRTest || this._roomInfoCardOpen || this._infoCardHotspotId) return true;
+        if (this._uiHidden || this._uiManuallyHidden) return true;
+
+        const viewer = document.getElementById('tour-viewer');
+        if (viewer?.classList.contains('room-card-open')
+            || viewer?.classList.contains('mobile-map-open')
+            || viewer?.classList.contains('mobile-settings-open')) {
+            return true;
+        }
+
+        return this._isElementDisplayed(document.getElementById('tour-help-modal'))
+            || this._isElementDisplayed(document.getElementById('tour-media-lightbox'))
+            || this._isElementDisplayed(this.reservationModal)
+            || this._isElementDisplayed(document.getElementById('reservation-success-modal'));
+    }
+
+    _isElementDisplayed(el) {
+        if (!el) return false;
+        if (el.hidden || el.classList.contains('hidden')) return false;
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
     }
 
     async loadWaypoints() {
@@ -1061,6 +1390,7 @@ class VirtualTourEngine {
 
     _openInfoCard(hs) {
         this._infoCardHotspotId = hs.id;
+        this.tourGuideLayer?.classList.remove('is-visible');
         
         // Pause gaze detection indefinitely while info card is open
         this._pauseGazeDetection(Infinity);
@@ -1070,6 +1400,7 @@ class VirtualTourEngine {
         const imageUrls = this._mediaImageUrls(hs);
         const spriteOpts = {
             style: 'card',
+            hotspotId: hs.id,
             title: hs.title || '',
             body:  hs.description || '',
             closeAction: 'tourEngine._closeInfoCard()',
@@ -1077,6 +1408,7 @@ class VirtualTourEngine {
         if (hs.media_type === 'video' && hs.media_url) {
             const vid = this._extractYouTubeId(hs.media_url);
             if (vid) spriteOpts.mediaYouTubeId = vid;
+            else spriteOpts.mediaVideoUrl = this._normalizeHttpUrl(hs.media_url, { allowRelative: true });
         } else if (imageUrls.length === 1) {
             spriteOpts.mediaUrl = imageUrls[0];
         } else if (imageUrls.length > 1) {
@@ -1093,11 +1425,15 @@ class VirtualTourEngine {
 
     _closeInfoCard() {
         this._infoCardHotspotId = null;
+        this.closeMediaLightbox();
         
         // Resume gaze detection when info card is closed
         this._resumeGazeDetection();
         
         try { this.viewer.removeMarker('info-card'); } catch (e) {}
+        if (this._tourGuideActive) {
+            this._showTourGuideStep();
+        }
     }
 
     _mediaImageUrls(hs) {
@@ -1106,7 +1442,7 @@ class VirtualTourEngine {
         }
 
         return String(hs.media_url)
-            .split('\n')
+            .split(/\r?\n|\|/)
             .map(u => this._normalizeHttpUrl(u, { allowRelative: true }))
             .filter(Boolean);
     }
@@ -1115,6 +1451,216 @@ class VirtualTourEngine {
         try {
             this.viewer?.cancelPointerInteraction?.();
         } catch (_) {}
+    }
+
+    _findCurrentHotspot(hotspotId) {
+        const target = String(hotspotId ?? '');
+
+        return (this.currentWaypoint?.hotspots || []).find((hotspot) => String(hotspot?.id) === target) || null;
+    }
+
+    _buildHotspotMediaItems(hs) {
+        if (!hs?.media_type || !hs?.media_url) return [];
+
+        if (hs.media_type === 'video') {
+            const youtubeId = this._extractYouTubeId(hs.media_url);
+            if (youtubeId) {
+                return [{
+                    type: 'youtube',
+                    src: this._buildYouTubeEmbedUrl(youtubeId, { autoplay: true }),
+                    title: hs.title || 'Video',
+                }];
+            }
+
+            const safeVideoUrl = this._normalizeHttpUrl(hs.media_url, { allowRelative: true });
+            return safeVideoUrl ? [{
+                type: 'video',
+                src: safeVideoUrl,
+                title: hs.title || 'Video',
+            }] : [];
+        }
+
+        return this._mediaImageUrls(hs).map((url, index) => ({
+            type: 'image',
+            src: url,
+            title: hs.title || `Image ${index + 1}`,
+        }));
+    }
+
+    _ensureMediaLightbox() {
+        let lightbox = document.getElementById('tour-media-lightbox');
+        if (lightbox) return lightbox;
+
+        lightbox = document.createElement('div');
+        lightbox.id = 'tour-media-lightbox';
+        lightbox.className = 'tour-media-lightbox';
+        lightbox.setAttribute('aria-hidden', 'true');
+        lightbox.innerHTML = `
+            <div class="tour-media-lightbox-backdrop" data-tour-media-close></div>
+            <div class="tour-media-lightbox-panel" role="dialog" aria-modal="true" aria-label="Media preview">
+                <div class="tour-media-lightbox-header">
+                    <div>
+                        <h2 class="tour-media-lightbox-title"></h2>
+                        <p class="tour-media-lightbox-counter"></p>
+                    </div>
+                    <button type="button" class="tour-media-lightbox-close" data-tour-media-close aria-label="Close media preview">&times;</button>
+                </div>
+                <div class="tour-media-lightbox-stage">
+                    <button type="button" class="tour-media-lightbox-nav tour-media-lightbox-prev" data-tour-media-prev aria-label="Previous media"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+                    <div class="tour-media-lightbox-body"></div>
+                    <button type="button" class="tour-media-lightbox-nav tour-media-lightbox-next" data-tour-media-next aria-label="Next media"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button>
+                </div>
+            </div>
+        `;
+
+        (document.getElementById('tour-viewer') || document.body).appendChild(lightbox);
+        lightbox.querySelectorAll('[data-tour-media-close]').forEach((el) => {
+            el.addEventListener('click', () => this.closeMediaLightbox());
+        });
+        lightbox.querySelector('[data-tour-media-prev]')?.addEventListener('click', () => this.showPreviousMediaItem());
+        lightbox.querySelector('[data-tour-media-next]')?.addEventListener('click', () => this.showNextMediaItem());
+
+        return lightbox;
+    }
+
+    openHotspotMediaLightbox(hotspotId, index = 0) {
+        const hotspot = this._findCurrentHotspot(hotspotId);
+        const items = this._buildHotspotMediaItems(hotspot);
+        if (!items.length) {
+            this._showToast('This media is unavailable.', 'error');
+            return false;
+        }
+
+        this.openMediaLightbox(items, index, hotspot?.title || 'Media preview');
+        return true;
+    }
+
+    openMediaLightbox(items, index = 0, title = 'Media preview') {
+        const normalizedItems = Array.isArray(items) ? items.filter(item => item?.type && item?.src) : [];
+        if (!normalizedItems.length) return false;
+
+        const lightbox = this._ensureMediaLightbox();
+        this._mediaLightbox = {
+            items: normalizedItems,
+            index: Math.min(Math.max(parseInt(index, 10) || 0, 0), normalizedItems.length - 1),
+            title,
+            lightbox,
+        };
+
+        this.tourGuideLayer?.classList.remove('is-visible');
+        lightbox.classList.add('is-open');
+        lightbox.setAttribute('aria-hidden', 'false');
+        window.addEventListener('keydown', this._mediaLightboxKeyHandler);
+        this._renderMediaLightbox();
+        return true;
+    }
+
+    closeMediaLightbox() {
+        const lightbox = this._mediaLightbox?.lightbox || document.getElementById('tour-media-lightbox');
+        if (lightbox) {
+            lightbox.classList.remove('is-open');
+            lightbox.setAttribute('aria-hidden', 'true');
+            const body = lightbox.querySelector('.tour-media-lightbox-body');
+            if (body) body.innerHTML = '';
+        }
+
+        this._mediaLightbox = null;
+        window.removeEventListener('keydown', this._mediaLightboxKeyHandler);
+        if (this._tourGuideActive) {
+            this._showTourGuideStep();
+        }
+    }
+
+    showPreviousMediaItem() {
+        if (!this._mediaLightbox || this._mediaLightbox.items.length <= 1) return;
+        const total = this._mediaLightbox.items.length;
+        this._mediaLightbox.index = (this._mediaLightbox.index - 1 + total) % total;
+        this._renderMediaLightbox();
+    }
+
+    showNextMediaItem() {
+        if (!this._mediaLightbox || this._mediaLightbox.items.length <= 1) return;
+        const total = this._mediaLightbox.items.length;
+        this._mediaLightbox.index = (this._mediaLightbox.index + 1) % total;
+        this._renderMediaLightbox();
+    }
+
+    _renderMediaLightbox() {
+        if (!this._mediaLightbox) return;
+
+        const { items, index, title, lightbox } = this._mediaLightbox;
+        const item = items[index];
+        const body = lightbox.querySelector('.tour-media-lightbox-body');
+        const titleEl = lightbox.querySelector('.tour-media-lightbox-title');
+        const counterEl = lightbox.querySelector('.tour-media-lightbox-counter');
+        const prevBtn = lightbox.querySelector('[data-tour-media-prev]');
+        const nextBtn = lightbox.querySelector('[data-tour-media-next]');
+        const hasMany = items.length > 1;
+
+        if (titleEl) titleEl.textContent = item.title || title || 'Media preview';
+        if (counterEl) counterEl.textContent = hasMany ? `${index + 1} / ${items.length}` : '';
+        prevBtn?.classList.toggle('is-hidden', !hasMany);
+        nextBtn?.classList.toggle('is-hidden', !hasMany);
+
+        if (!body) return;
+
+        if (item.type === 'image') {
+            body.innerHTML = `<img src="${this._escapeHtml(item.src)}" alt="${this._escapeHtml(item.title || title || 'Media preview')}" loading="eager">`;
+        } else if (item.type === 'youtube') {
+            body.innerHTML = `<div class="tour-media-lightbox-video"><iframe src="${this._escapeHtml(item.src)}" allow="autoplay;encrypted-media;fullscreen" allowfullscreen></iframe></div>`;
+        } else if (item.type === 'video') {
+            body.innerHTML = `<div class="tour-media-lightbox-video"><video src="${this._escapeHtml(item.src)}" controls autoplay playsinline></video></div>`;
+        }
+    }
+
+    _handleMediaLightboxKeydown(event) {
+        if (!this._mediaLightbox) return;
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            this.closeMediaLightbox();
+        } else if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            this.showPreviousMediaItem();
+        } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            this.showNextMediaItem();
+        }
+    }
+
+    scrollInfoGallery(trackId, direction) {
+        const track = document.getElementById(trackId);
+        if (!track) return;
+
+        const distance = Math.max(220, Math.round(track.clientWidth * 0.9));
+        track.scrollBy({
+            left: direction === 'prev' ? -distance : distance,
+            behavior: 'smooth',
+        });
+    }
+
+    updateInfoGalleryCounter(trackId, counterId) {
+        const track = document.getElementById(trackId);
+        const counter = document.getElementById(counterId);
+        if (!track || !counter) return;
+
+        const slides = Array.from(track.querySelectorAll('[data-gallery-slide]'));
+        if (!slides.length) return;
+
+        const trackCenter = track.scrollLeft + (track.clientWidth / 2);
+        let activeIndex = 0;
+        let activeDistance = Infinity;
+
+        slides.forEach((slide, index) => {
+            const slideCenter = slide.offsetLeft + (slide.offsetWidth / 2);
+            const distance = Math.abs(slideCenter - trackCenter);
+            if (distance < activeDistance) {
+                activeDistance = distance;
+                activeIndex = index;
+            }
+        });
+
+        counter.textContent = `${activeIndex + 1} / ${slides.length}`;
     }
 
     _infoCardHtml(hs) {
@@ -1140,21 +1686,41 @@ class VirtualTourEngine {
                     const src = this._buildYouTubeEmbedUrl(vid);
                     mediaHtml = `<div onmouseenter="tourEngine._cancelViewerPointerState();event.stopPropagation()" onpointerenter="tourEngine._cancelViewerPointerState();event.stopPropagation()" onmousemove="event.stopPropagation()" onmousedown="tourEngine._cancelViewerPointerState();event.stopPropagation()" onpointerdown="tourEngine._cancelViewerPointerState();event.stopPropagation()" ontouchstart="tourEngine._cancelViewerPointerState();event.stopPropagation()" style="position:relative;padding-top:${videoMediaPaddingTop};background:#000;overflow:hidden;flex-shrink:0">`
                         + `<iframe src="${src}" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media;fullscreen" allowfullscreen loading="lazy"></iframe>`
+                        + `<button type="button" onclick="tourEngine.openHotspotMediaLightbox(${parseInt(hs.id, 10)},0);event.stopPropagation()" style="position:absolute;right:12px;bottom:12px;background:rgba(15,23,42,.86);color:white;border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.28)">View larger</button>`
                         + `</div>`;
+                } else {
+                    const safeVideoUrl = this._normalizeHttpUrl(hs.media_url, { allowRelative: true });
+                    if (safeVideoUrl) {
+                        mediaHtml = `<div onmouseenter="tourEngine._cancelViewerPointerState();event.stopPropagation()" onpointerenter="tourEngine._cancelViewerPointerState();event.stopPropagation()" onmousemove="event.stopPropagation()" onmousedown="tourEngine._cancelViewerPointerState();event.stopPropagation()" onpointerdown="tourEngine._cancelViewerPointerState();event.stopPropagation()" ontouchstart="tourEngine._cancelViewerPointerState();event.stopPropagation()" style="position:relative;padding-top:${videoMediaPaddingTop};background:#000;overflow:hidden;flex-shrink:0">`
+                            + `<video src="${this._escapeHtml(safeVideoUrl)}" controls playsinline style="position:absolute;inset:0;width:100%;height:100%;background:#000"></video>`
+                            + `<button type="button" onclick="tourEngine.openHotspotMediaLightbox(${parseInt(hs.id, 10)},0);event.stopPropagation()" style="position:absolute;right:12px;bottom:12px;background:rgba(15,23,42,.86);color:white;border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.28)">View larger</button>`
+                            + `</div>`;
+                    }
                 }
             } else if (imageUrls.length === 1) {
-                mediaHtml = `<div style="flex-shrink:0;overflow:hidden">`
-                    + `<img class="pv-info-media-img" src="${imageUrls[0]}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? 'min(56vh,520px)' : '240px'};object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                mediaHtml = `<div style="position:relative;flex-shrink:0;overflow:hidden;background:#111827">`
+                    + `<button type="button" onclick="tourEngine.openHotspotMediaLightbox(${parseInt(hs.id, 10)},0);event.stopPropagation()" style="display:block;width:100%;border:0;background:transparent;padding:0;cursor:zoom-in">`
+                    + `<img class="pv-info-media-img" src="${imageUrls[0]}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? 'min(56vh,520px)' : '240px'};object-fit:cover" onerror="this.closest('div').style.display='none'" loading="lazy">`
+                    + `</button>`
+                    + `<button type="button" onclick="tourEngine.openHotspotMediaLightbox(${parseInt(hs.id, 10)},0);event.stopPropagation()" style="position:absolute;right:12px;bottom:12px;background:rgba(15,23,42,.86);color:white;border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.28)">View larger</button>`
                     + `</div>`;
             } else if (imageUrls.length > 1) {
-                const imgs = imageUrls.map(url =>
-                    `<div style="min-width:${hasExpandedMediaCard ? 'calc(100% - 8px)' : '220px'};scroll-snap-align:center;scroll-snap-stop:always;flex:0 0 auto">`
-                    + `<img class="pv-info-gallery-img" src="${url}" style="width:100%;height:${hasExpandedMediaCard ? 'min(52vh,420px)' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.parentElement.style.display='none'" loading="lazy">`
+                const trackId = `info-gallery-track-${String(hs.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
+                const counterId = `info-gallery-counter-${String(hs.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
+                const imgs = imageUrls.map((url, index) =>
+                    `<div data-gallery-slide style="min-width:${hasExpandedMediaCard ? 'calc(100% - 8px)' : '220px'};scroll-snap-align:center;scroll-snap-stop:always;flex:0 0 auto">`
+                    + `<button type="button" onclick="tourEngine.openHotspotMediaLightbox(${parseInt(hs.id, 10)},${index});event.stopPropagation()" style="display:block;width:100%;border:0;background:transparent;padding:0;cursor:zoom-in">`
+                    + `<img class="pv-info-gallery-img" src="${url}" style="width:100%;height:${hasExpandedMediaCard ? 'min(52vh,420px)' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.closest('[data-gallery-slide]').style.display='none'" loading="lazy">`
+                    + `</button>`
                     + `</div>`
                 ).join('');
                 mediaHtml = `<div style="background:#f9fafb;padding:12px 14px 10px">`
-                    + `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase"><span>Image Gallery</span><span>Wheel or swipe</span></div>`
-                    + `<div data-gallery-track onwheel="event.stopPropagation();event.preventDefault();const delta=((event.deltaX||0)+(event.deltaY||0))*(event.deltaMode===1?16:1);this.scrollBy({left:delta,behavior:'auto'});return false;" style="display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:2px 0 6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin">${imgs}</div>`
+                    + `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase"><span>Image Gallery</span><span id="${counterId}">1 / ${imageUrls.length}</span></div>`
+                    + `<div style="position:relative">`
+                    + `<button type="button" onclick="tourEngine.scrollInfoGallery('${trackId}','prev');event.stopPropagation()" aria-label="Previous image" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:2;width:44px;height:44px;border-radius:999px;border:1px solid rgba(255,255,255,.45);background:rgba(15,23,42,.78);color:white;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 12px 26px rgba(0,0,0,.32)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>`
+                    + `<div id="${trackId}" data-gallery-track onscroll="tourEngine.updateInfoGalleryCounter('${trackId}','${counterId}')" onwheel="event.stopPropagation();event.preventDefault();const delta=((event.deltaX||0)+(event.deltaY||0))*(event.deltaMode===1?16:1);this.scrollBy({left:delta,behavior:'auto'});tourEngine.updateInfoGalleryCounter('${trackId}','${counterId}');return false;" style="display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:2px 0 6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin">${imgs}</div>`
+                    + `<button type="button" onclick="tourEngine.scrollInfoGallery('${trackId}','next');event.stopPropagation()" aria-label="Next image" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:2;width:44px;height:44px;border-radius:999px;border:1px solid rgba(255,255,255,.45);background:rgba(15,23,42,.78);color:white;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 12px 26px rgba(0,0,0,.32)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button>`
+                    + `</div>`
                     + `</div>`;
             }
         }
@@ -1330,6 +1896,7 @@ class VirtualTourEngine {
         url.searchParams.set('check_in', this._checkIn);
         url.searchParams.set('check_out', this._checkOut);
         url.searchParams.set('guests', String(this._guests));
+        url.searchParams.set('source', 'virtual_tour');
 
         return `${url.pathname}${url.search}${url.hash}`;
     }
@@ -1431,11 +1998,41 @@ class VirtualTourEngine {
              + `</div>`;
     }
 
-    async _checkDateAvailability(rtId) {
+    _setAvailabilityButtonLoading(button, isLoading) {
+        if (!button) return;
+
+        if (isLoading) {
+            if (button.disabled) return;
+            button.dataset.originalHtml = button.innerHTML;
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+            button.style.opacity = '0.82';
+            button.style.cursor = 'wait';
+            button.innerHTML = `<span style="display:inline-flex;align-items:center;justify-content:center;gap:7px">`
+                + `<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true" style="animation:tour-check-spin .75s linear infinite">`
+                + `<circle cx="12" cy="12" r="9" fill="none" stroke="rgba(255,255,255,.34)" stroke-width="3"></circle>`
+                + `<path d="M21 12a9 9 0 0 1-9 9" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"></path>`
+                + `</svg><span>Checking...</span></span>`;
+            return;
+        }
+
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+        button.style.opacity = '';
+        button.style.cursor = '';
+        if (button.dataset.originalHtml) {
+            button.innerHTML = button.dataset.originalHtml;
+            delete button.dataset.originalHtml;
+        }
+    }
+
+    async _checkDateAvailability(rtId, trigger = null) {
+        if (trigger?.disabled) return;
         if (!this._checkIn || !this._checkOut) {
             this._showToast('Please select check-in and check-out dates.', 'error');
             return;
         }
+        this._setAvailabilityButtonLoading(trigger, true);
         try {
             const url = new URL(`${this.apiBase}/room-type/${rtId}/availability`, window.location.href);
             url.searchParams.set('check_in',  this._checkIn);
@@ -1455,12 +2052,14 @@ class VirtualTourEngine {
             }
         } catch (e) {
             this._showToast('Network error. Please try again.', 'error');
+        } finally {
+            this._setAvailabilityButtonLoading(trigger, false);
         }
     }
 
-    async _checkSpecificRoomAvailability() {
+    async _checkSpecificRoomAvailability(trigger = null) {
         if (this.currentRoomType?.id) {
-            return this._checkDateAvailability(this.currentRoomType.id);
+            return this._checkDateAvailability(this.currentRoomType.id, trigger);
         }
     }
 
@@ -1573,13 +2172,13 @@ class VirtualTourEngine {
             // For private rooms: full-width Check button. For dorm rooms: show Guests input
             if (isPrivateRoom) {
                 availWidget += `<div style="margin-bottom:6px">`
-                  +   `<button onclick="tourEngine.${hasSpecificRoom ? '_checkSpecificRoomAvailability()' : `_checkDateAvailability(${roomTypeId})`};event.stopPropagation()" style="width:100%;${checkButtonStyle}">🔍 Check</button>`
+                  +   `<button onclick="tourEngine.${hasSpecificRoom ? '_checkSpecificRoomAvailability(this)' : `_checkDateAvailability(${roomTypeId}, this)`};event.stopPropagation()" style="width:100%;${checkButtonStyle}">🔍 Check</button>`
                   + `</div>`;
             } else {
                 availWidget += `<div style="display:grid;grid-template-columns:minmax(92px,110px) minmax(0,1fr);gap:8px;align-items:end;margin-bottom:6px">`
                   +   `<div style="min-width:0"><div style="${availabilityLabelStyle}">Guests</div>`
                   +   `<input type="number" value="${this._guests}" min="1" max="20" onclick="event.stopPropagation()" onchange="tourEngine._setGuests(this.value)" style="${inputStyle}"></div>`
-                  +   `<button onclick="tourEngine.${hasSpecificRoom ? '_checkSpecificRoomAvailability()' : `_checkDateAvailability(${roomTypeId})`};event.stopPropagation()" style="flex:1;${checkButtonStyle}">🔍 Check</button>`
+                  +   `<button onclick="tourEngine.${hasSpecificRoom ? '_checkSpecificRoomAvailability(this)' : `_checkDateAvailability(${roomTypeId}, this)`};event.stopPropagation()" style="flex:1;${checkButtonStyle}">🔍 Check</button>`
                   + `</div>`;
             }
             
@@ -1644,7 +2243,8 @@ class VirtualTourEngine {
           + `<div style="display:flex;flex-direction:column;gap:5px;align-items:center;margin-top:4px">`
           +   `<button onclick="tourEngine.openReservationModal();event.stopPropagation()" style="${buttonStyle}">${buttonText}</button>`
           +   exploreButtonHtml
-          +   `<button onclick="tourEngine.goToReservationPage();event.stopPropagation()" style="width:100%;background:#00491E;color:white;border:none;padding:8px;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer">📝 Full Reservation Form</button>`
+          +   `<button onclick="tourEngine.goToReservationPage();event.stopPropagation()" style="width:100%;background:#00491E;color:white;border:none;padding:8px;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer">📝 Reserve Multiple Room Types</button>`
+          +   `<div style="font-size:10px;color:#6b7280;line-height:1.35;text-align:center">Use the full form when one reservation needs different room types.</div>`
           + `</div>`
           + disclaimer
           + `</div>`;
@@ -1698,6 +2298,9 @@ class VirtualTourEngine {
         if (isOpen) {
             window.closeMobileTourSettings?.();
             window.closeMobileTourMap?.();
+            this.tourGuideLayer?.classList.remove('is-visible');
+        } else if (this._tourGuideActive) {
+            this._showTourGuideStep();
         }
     }
 
@@ -1737,8 +2340,9 @@ class VirtualTourEngine {
 
         const buttons = this.previewMode ? '' : `
             <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;align-items:center">
-                <button onclick="tourEngine.openReservationModal()" style="width:85%;background:#FFC600;color:#00491E;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83C\uDFE8 Request Reservation</button>
-                <button onclick="tourEngine.goToReservationPage()" style="width:85%;background:#00491E;color:white;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83D\uDCDD Full Reservation Form</button>
+                <button onclick="tourEngine.openReservationModal()" style="width:85%;background:#FFC600;color:#00491E;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83C\uDFE8 Request This Room Type</button>
+                <button onclick="tourEngine.goToReservationPage()" style="width:85%;background:#00491E;color:white;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83D\uDCDD Reserve Multiple Room Types</button>
+                <div style="width:85%;font-size:10px;color:#6b7280;line-height:1.35;text-align:center">Use the full form when one reservation needs different room types.</div>
             </div>`;
 
         return `<div style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:360px;font-family:var(--guest-font-body);display:flex;flex-direction:column;max-height:90vh">
@@ -1771,6 +2375,7 @@ class VirtualTourEngine {
         }
 
         if (this._webXRTest) await this.stopWebXRTest();
+        this.tourGuideLayer?.classList.remove('is-visible');
 
         let session;
         try {
@@ -2942,6 +3547,9 @@ class VirtualTourEngine {
             if (cleanup) {
                 cleanup();
             }
+            if (this._tourGuideActive) {
+                window.setTimeout(() => this._showTourGuideStep(), 500);
+            }
         }
     }
 
@@ -3010,9 +3618,9 @@ class VirtualTourEngine {
             
             // Update check button onclick handler
             if (isSpecificRoom) {
-                checkButton.setAttribute('onclick', 'tourEngine._checkSpecificRoomAvailability()');
+                checkButton.setAttribute('onclick', 'tourEngine._checkSpecificRoomAvailability(this)');
             } else {
-                checkButton.setAttribute('onclick', `tourEngine._checkDateAvailability(${data.id})`);
+                checkButton.setAttribute('onclick', `tourEngine._checkDateAvailability(${data.id}, this)`);
             }
         }
 
@@ -3181,6 +3789,7 @@ class VirtualTourEngine {
 
     openReservationModal() {
         this._ensureDefaultAvailabilityDates();
+        this.tourGuideLayer?.classList.remove('is-visible');
 
         if (this.reservationModal) {
             this.reservationModal.removeAttribute('hidden');
@@ -3240,6 +3849,9 @@ class VirtualTourEngine {
             this.reservationModal.style.pointerEvents = 'none';
             this.reservationModal.classList.add('hidden');
             this.reservationModal.setAttribute('hidden', 'hidden');
+        }
+        if (this._tourGuideActive) {
+            this._showTourGuideStep();
         }
     }
 
@@ -3439,8 +4051,7 @@ class VirtualTourEngine {
 
     setupKeyboardControls() {
         const held = new Set();
-        const SPEED = 0.02; // radians per frame for A/D rotation
-        let _navCooldown = false;
+        const SPEED = 0.02; // radians per frame for A/D/W/S rotation
         let _focusedHotspotIdx = -1;
         const isTyping = () => ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
 
@@ -3462,19 +4073,10 @@ class VirtualTourEngine {
                 held.add(k);
             }
 
-            // W / S / ↑ / ↓ — navigate to nearest marker in facing / opposite direction
+            // W / S / ↑ / ↓ — smooth pitch pan (tilt up / down)
             if (['ArrowUp', 'ArrowDown', 'w', 'W', 's', 'S'].includes(k)) {
                 e.preventDefault();
-                if (!_navCooldown) {
-                    _navCooldown = true;
-                    setTimeout(() => _navCooldown = false, 600);
-                    const forward = k === 'ArrowUp' || k === 'w' || k === 'W';
-                    if (!forward && this._roomInfoCardOpen) {
-                        this._closeInSceneCard();
-                        return;
-                    }
-                    this._navigateToNearest(forward);
-                }
+                held.add(k);
             }
 
             // +/- zoom
@@ -3522,8 +4124,10 @@ class VirtualTourEngine {
             if (held.size && this.viewer) {
                 const pos = this.viewer.getPosition();
                 let { yaw, pitch } = pos;
-                if (held.has('ArrowLeft')  || held.has('a') || held.has('A')) yaw -= SPEED;
-                if (held.has('ArrowRight') || held.has('d') || held.has('D')) yaw += SPEED;
+                if (held.has('ArrowLeft')  || held.has('a') || held.has('A')) yaw   -= SPEED;
+                if (held.has('ArrowRight') || held.has('d') || held.has('D')) yaw   += SPEED;
+                if (held.has('ArrowUp')    || held.has('w') || held.has('W')) pitch += SPEED;
+                if (held.has('ArrowDown')  || held.has('s') || held.has('S')) pitch -= SPEED;
                 this.viewer.rotate({ yaw, pitch });
             }
             requestAnimationFrame(loop);

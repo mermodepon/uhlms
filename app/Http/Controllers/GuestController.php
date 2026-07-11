@@ -54,17 +54,88 @@ class GuestController extends Controller
     }
 
     /**
+     * About page - configurable guest-facing property information.
+     */
+    public function about()
+    {
+        return view('guest.about');
+    }
+
+    /**
      * Room catalog - browse all room types
      */
     public function rooms(Request $request)
     {
-        $checkIn = $request->check_in ? Carbon::parse($request->check_in) : null;
-        $checkOut = $request->check_out ? Carbon::parse($request->check_out) : null;
-        $guests = $request->guests ? (int) $request->guests : null;
-        $showUnavailable = $request->boolean('show_unavailable', true);
+        $validated = $request->validate([
+            'check_in' => ['nullable', 'date'],
+            'check_out' => ['nullable', 'date', 'after:check_in'],
+            'guests' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'show_unavailable' => ['nullable', 'boolean'],
+            'amenities' => ['nullable', 'array'],
+            'amenities.*' => ['integer'],
+            'room_sharing_type' => ['nullable', 'in:private,public'],
+            'pricing_type' => ['nullable', 'in:flat_rate,per_person'],
+            'price_min' => ['nullable', 'numeric', 'min:0'],
+            'price_max' => ['nullable', 'numeric', 'min:0'],
+            'sort' => ['nullable', 'in:recommended,price_low,price_high,capacity,name'],
+        ]);
 
-        $roomTypes = RoomType::where('is_active', true)
-            ->with('amenities')
+        $checkIn = filled($validated['check_in'] ?? null) ? Carbon::parse($validated['check_in']) : null;
+        $checkOut = filled($validated['check_out'] ?? null) ? Carbon::parse($validated['check_out']) : null;
+        $guests = filled($validated['guests'] ?? null) ? (int) $validated['guests'] : null;
+        $showUnavailable = $request->boolean('show_unavailable', true);
+        $roomSharingType = $validated['room_sharing_type'] ?? null;
+        $pricingType = $validated['pricing_type'] ?? null;
+        $priceMin = filled($validated['price_min'] ?? null) ? (float) $validated['price_min'] : null;
+        $priceMax = filled($validated['price_max'] ?? null) ? (float) $validated['price_max'] : null;
+        $sort = $validated['sort'] ?? 'recommended';
+
+        if ($priceMin !== null && $priceMax !== null && $priceMin > $priceMax) {
+            [$priceMin, $priceMax] = [$priceMax, $priceMin];
+        }
+
+        $activeAmenities = Amenity::query()
+            ->where('is_active', true)
+            ->whereHas('roomTypes', fn ($query) => $query->where('room_types.is_active', true))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $activeAmenityIds = $activeAmenities->pluck('id')->all();
+        $selectedAmenityIds = collect($validated['amenities'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->intersect($activeAmenityIds)
+            ->unique()
+            ->values()
+            ->all();
+
+        $roomTypesQuery = RoomType::query()
+            ->where('is_active', true)
+            ->with(['amenities' => fn ($query) => $query->where('amenities.is_active', true)]);
+
+        foreach ($selectedAmenityIds as $amenityId) {
+            $roomTypesQuery->whereHas(
+                'amenities',
+                fn ($query) => $query->where('amenities.id', $amenityId)->where('amenities.is_active', true)
+            );
+        }
+
+        if ($roomSharingType) {
+            $roomTypesQuery->where('room_sharing_type', $roomSharingType);
+        }
+
+        if ($pricingType) {
+            $roomTypesQuery->where('pricing_type', $pricingType);
+        }
+
+        if ($priceMin !== null) {
+            $roomTypesQuery->where('base_rate', '>=', $priceMin);
+        }
+
+        if ($priceMax !== null) {
+            $roomTypesQuery->where('base_rate', '<=', $priceMax);
+        }
+
+        $roomTypes = $roomTypesQuery
             ->get();
 
         $roomHoldService = app(RoomHoldService::class);
@@ -85,13 +156,34 @@ class GuestController extends Controller
             }
         }
 
-        $roomTypes = $roomTypes
-            ->sortBy([
+        $roomTypes = match ($sort) {
+            'price_low' => $roomTypes->sortBy([
+                fn (RoomType $roomType): int => ($roomType->can_accommodate_requested_guests ?? false) ? 0 : 1,
+                fn (RoomType $roomType): float => (float) $roomType->base_rate,
+                fn (RoomType $roomType): string => Str::lower($roomType->name),
+            ]),
+            'price_high' => $roomTypes->sortBy([
+                fn (RoomType $roomType): int => ($roomType->can_accommodate_requested_guests ?? false) ? 0 : 1,
+                fn (RoomType $roomType): float => -1 * (float) $roomType->base_rate,
+                fn (RoomType $roomType): string => Str::lower($roomType->name),
+            ]),
+            'capacity' => $roomTypes->sortBy([
+                fn (RoomType $roomType): int => ($roomType->can_accommodate_requested_guests ?? false) ? 0 : 1,
+                fn (RoomType $roomType): int => -1 * (int) $roomType->capacity,
+                fn (RoomType $roomType): string => Str::lower($roomType->name),
+            ]),
+            'name' => $roomTypes->sortBy([
+                fn (RoomType $roomType): string => Str::lower($roomType->name),
+                fn (RoomType $roomType): int => $roomType->id,
+            ]),
+            default => $roomTypes->sortBy([
                 fn (RoomType $roomType): int => ($roomType->can_accommodate_requested_guests ?? false) ? 0 : 1,
                 fn (RoomType $roomType): string => Str::lower($roomType->name),
                 fn (RoomType $roomType): int => $roomType->id,
-            ])
-            ->values();
+            ]),
+        };
+
+        $roomTypes = $roomTypes->values();
 
         $availableRoomTypesCount = $roomTypes
             ->filter(fn (RoomType $roomType): bool => (bool) ($roomType->can_accommodate_requested_guests ?? false))
@@ -104,6 +196,59 @@ class GuestController extends Controller
                 ->values();
         }
 
+        $filterQuery = collect([
+            'check_in' => $checkIn?->format('Y-m-d'),
+            'check_out' => $checkOut?->format('Y-m-d'),
+            'guests' => $guests,
+            'amenities' => $selectedAmenityIds,
+            'room_sharing_type' => $roomSharingType,
+            'pricing_type' => $pricingType,
+            'price_min' => $priceMin !== null ? (int) $priceMin : null,
+            'price_max' => $priceMax !== null ? (int) $priceMax : null,
+            'sort' => $sort !== 'recommended' ? $sort : null,
+        ])->filter(function ($value) {
+            if (is_array($value)) {
+                return ! empty($value);
+            }
+
+            return filled($value);
+        })->all();
+
+        $activeFilterLabels = collect();
+
+        foreach ($activeAmenities->whereIn('id', $selectedAmenityIds) as $amenity) {
+            $activeFilterLabels->push($amenity->name);
+        }
+
+        if ($roomSharingType) {
+            $activeFilterLabels->push($roomSharingType === 'private' ? 'Private rooms' : 'Shared / dormitory');
+        }
+
+        if ($pricingType) {
+            $activeFilterLabels->push($pricingType === 'flat_rate' ? 'Per room/night' : 'Per person/night');
+        }
+
+        if ($priceMin !== null || $priceMax !== null) {
+            $activeFilterLabels->push(match (true) {
+                $priceMin !== null && $priceMax !== null => 'PHP '.number_format($priceMin, 0).' - PHP '.number_format($priceMax, 0),
+                $priceMin !== null => 'PHP '.number_format($priceMin, 0).'+',
+                default => 'Up to PHP '.number_format($priceMax, 0),
+            });
+        }
+
+        if ($sort !== 'recommended') {
+            $activeFilterLabels->push(match ($sort) {
+                'price_low' => 'Lowest price first',
+                'price_high' => 'Highest price first',
+                'capacity' => 'Largest capacity first',
+                'name' => 'Name A-Z',
+                default => null,
+            });
+        }
+
+        $activeFilterLabels = $activeFilterLabels->filter()->values();
+        $hasAdvancedFilters = $activeFilterLabels->isNotEmpty();
+
         return view('guest.rooms', compact(
             'roomTypes',
             'checkIn',
@@ -111,7 +256,17 @@ class GuestController extends Controller
             'guests',
             'showUnavailable',
             'availableRoomTypesCount',
-            'unavailableRoomTypesCount'
+            'unavailableRoomTypesCount',
+            'activeAmenities',
+            'selectedAmenityIds',
+            'roomSharingType',
+            'pricingType',
+            'priceMin',
+            'priceMax',
+            'sort',
+            'filterQuery',
+            'activeFilterLabels',
+            'hasAdvancedFilters'
         ));
     }
 
@@ -175,6 +330,7 @@ class GuestController extends Controller
      */
     public function reserveForm()
     {
+        $guestAccount = auth('guest')->user();
         $roomTypes = RoomType::where('is_active', true)
             ->with('rooms')
             ->get()
@@ -182,7 +338,7 @@ class GuestController extends Controller
                 $this->applyAvailabilitySummary($roomType, app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType));
             });
 
-        return view('guest.reserve', compact('roomTypes'));
+        return view('guest.reserve', compact('roomTypes', 'guestAccount'));
     }
 
     /**
@@ -243,6 +399,11 @@ class GuestController extends Controller
 
         $validated['status'] = 'pending';
         $validated['discount_declared'] = $request->has('discount_declared');
+        $guestAccount = auth('guest')->user();
+
+        if ($guestAccount && Str::lower($guestAccount->email) === Str::lower($validated['guest_email'])) {
+            $validated['guest_account_id'] = $guestAccount->id;
+        }
 
         if (! empty($requestValidation['warnings'])) {
             $warning = implode(' ', $requestValidation['warnings'])
@@ -274,7 +435,8 @@ class GuestController extends Controller
         return redirect()->route('guest.track')
             ->with('success', 'Your reservation request has been submitted successfully!')
             ->with('reference_number', $reservation->reference_number)
-            ->with('guest_email', $reservation->guest_email);
+            ->with('guest_email', $reservation->guest_email)
+            ->with('guest_account_prompt', ! $guestAccount);
     }
 
     /**

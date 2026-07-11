@@ -60,7 +60,7 @@ class RoomResource extends Resource
                                 'available' => 'Available',
                                 'reserved' => 'Reserved',
                                 'occupied' => 'Occupied',
-                                'maintenance' => 'Under Maintenance',
+                                'maintenance' => 'Out of Order',
                                 'inactive' => 'Inactive',
                             ])
                             ->default('available')
@@ -104,7 +104,7 @@ class RoomResource extends Resource
                         'available' => 'Available',
                         'reserved' => 'Reserved',
                         'occupied' => 'Occupied',
-                        'maintenance' => 'Under Maintenance',
+                        'maintenance' => 'Out of Order',
                         'inactive' => 'Inactive',
                         default => ucfirst($state),
                     })
@@ -140,7 +140,7 @@ class RoomResource extends Resource
                         'available' => 'Available',
                         'reserved' => 'Reserved',
                         'occupied' => 'Occupied',
-                        'maintenance' => 'Under Maintenance',
+                        'maintenance' => 'Out of Order',
                         'inactive' => 'Inactive',
                         'checked_out' => 'Checked out',
                     ]),
@@ -226,7 +226,7 @@ class RoomResource extends Resource
                         ->visible(fn () => auth()->user()->isAdmin())
                         ->requiresConfirmation()
                         ->modalHeading('Set selected rooms to available')
-                        ->modalDescription('Only rooms with status "Under Maintenance" will be changed. Others will be skipped.')
+                        ->modalDescription('Only rooms with status "Out of Order" will be changed. Others will be skipped.')
                         ->deselectRecordsAfterCompletion()
                         ->action(function (Collection $records) {
                             $count = 0;

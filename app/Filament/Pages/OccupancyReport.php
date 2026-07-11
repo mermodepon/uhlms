@@ -10,5 +10,5 @@ class OccupancyReport extends Reports
 
     protected static ?string $navigationLabel = 'Occupancy Report';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 6;
 }

@@ -25,6 +25,14 @@ class ReservationWorkflowService
             throw new \RuntimeException('Only pending reservations can be approved.');
         }
 
+        $roomIdsByType = $this->normalizeAssignedRoomsByType($reservation, $data);
+        foreach ($reservation->getEffectiveRoomRequests() as $requestLine) {
+            $selectedRoomIds = $roomIdsByType[(int) $requestLine->room_type_id] ?? [];
+            if (count($selectedRoomIds) !== (int) $requestLine->requested_room_count) {
+                throw new \RuntimeException('Select all requested rooms before approving, or send the guest an alternative room offer.');
+            }
+        }
+
         $reservation->update([
             'status' => 'approved',
             'approved_at' => now(),
@@ -35,22 +43,7 @@ class ReservationWorkflowService
             'reviewed_at' => now(),
         ]);
 
-        $roomIdsByType = $this->normalizeAssignedRoomsByType($reservation, $data);
         $roomIds = collect($roomIdsByType)->flatten()->filter()->values()->all();
-
-        if (empty($roomIds)) {
-            ReservationLog::record(
-                $reservation,
-                'approved_without_rooms',
-                'Approved without room assignment. Rooms will be assigned during check-in.'
-            );
-
-            return [
-                'reservation' => $reservation->fresh(),
-                'room_count' => 0,
-                'hold_error' => null,
-            ];
-        }
 
         try {
             $result = count($roomIdsByType) > 1 || ! empty($data['assigned_room_ids_by_type'])
@@ -86,6 +79,11 @@ class ReservationWorkflowService
                 'hold_error' => null,
             ];
         } catch (\RuntimeException $e) {
+            $reservation->update([
+                'status' => 'pending',
+                'approved_at' => null,
+            ]);
+
             return [
                 'reservation' => $reservation->fresh(),
                 'room_count' => 0,

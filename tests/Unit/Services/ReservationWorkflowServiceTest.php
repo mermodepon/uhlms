@@ -296,6 +296,32 @@ class ReservationWorkflowServiceTest extends TestCase
         $this->assertTrue($fresh->payment_link_expires_at?->equalTo($approvalTime->copy()->addHours(48)));
     }
 
+    public function test_approve_with_room_hold_caps_payment_link_expiry_at_checkout_end(): void
+    {
+        $this->actingAs($this->createUser());
+
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType);
+        $reservation = $this->createReservation($roomType);
+        $reservation->update([
+            'check_in_date' => '2026-05-01',
+            'check_out_date' => '2026-05-02',
+        ]);
+
+        $approvalTime = Carbon::parse('2026-05-02 10:00:00');
+        $this->travelTo($approvalTime);
+
+        $this->service->approve($reservation, [
+            'admin_notes' => 'Approved for payment',
+            'assigned_room_ids' => [$room->id],
+        ]);
+
+        $fresh = $reservation->fresh();
+
+        $this->assertSame('confirmed', $fresh->status);
+        $this->assertTrue($fresh->payment_link_expires_at?->equalTo(Carbon::parse('2026-05-02 23:59:59')));
+    }
+
     public function test_refresh_guest_payment_link_rotates_token_and_can_email_guest(): void
     {
         Mail::fake();
@@ -333,6 +359,33 @@ class ReservationWorkflowServiceTest extends TestCase
             'reservation_id' => $reservation->id,
             'event' => 'payment_link_resent',
         ]);
+    }
+
+    public function test_refresh_guest_payment_link_caps_expiry_at_checkout_end(): void
+    {
+        $this->actingAs($this->createUser());
+
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType);
+        $reservation = $this->createReservation($roomType, 'approved');
+        $reservation->update([
+            'approved_at' => now(),
+            'check_in_date' => '2026-05-01',
+            'check_out_date' => '2026-05-02',
+        ]);
+        RoomHold::create([
+            'room_id' => $room->id,
+            'reservation_id' => $reservation->id,
+            'hold_from' => $reservation->check_in_date,
+            'hold_to' => $reservation->check_out_date,
+            'hold_type' => 'advance',
+        ]);
+
+        $this->travelTo(Carbon::parse('2026-05-02 10:00:00'));
+
+        $result = $this->service->refreshGuestPaymentLink($reservation);
+
+        $this->assertTrue($result['reservation']->payment_link_expires_at?->equalTo(Carbon::parse('2026-05-02 23:59:59')));
     }
 
     public function test_refresh_guest_payment_link_rejects_reservations_without_room_holds(): void

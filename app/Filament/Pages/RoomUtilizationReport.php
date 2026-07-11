@@ -10,5 +10,5 @@ class RoomUtilizationReport extends Reports
 
     protected static ?string $navigationLabel = 'Room Utilization';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 7;
 }

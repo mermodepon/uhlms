@@ -61,6 +61,12 @@ h6 {
 .fi-sidebar-header {
     background-color: #003615 !important;
     border-bottom: 2px solid rgba(255, 198, 0, 0.4) !important;
+    min-height: 4.5rem !important;
+    padding: 0.85rem 1.25rem !important;
+}
+
+.uh-brand-logo {
+    padding: 0.15rem 0.25rem !important;
 }
 
 /* Sidebar brand name */
@@ -69,6 +75,16 @@ h6 {
 .fi-sidebar-header div {
     color: #FFFFFF !important;
     font-weight: 700;
+}
+
+.fi-sidebar-header .uh-brand-title,
+.fi-topbar .uh-brand-title {
+    color: #FFC600 !important;
+}
+
+.fi-sidebar-header .uh-brand-subtitle,
+.fi-topbar .uh-brand-subtitle {
+    color: rgba(255, 255, 255, 0.8) !important;
 }
 
 /* Sidebar nav */
@@ -245,11 +261,14 @@ h6 {
     background-color: #003615 !important;
     border-bottom: 3px solid #FFC600 !important;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15) !important;
+    min-height: 4.5rem !important;
 }
 
 /* Remove default ring/shadow on topbar nav */
 .fi-topbar > nav > div {
     background-color: transparent !important;
+    min-height: 4.5rem !important;
+    padding-block: 0.85rem !important;
 }
 
 /* Topbar buttons (hamburger, close sidebar) */
@@ -303,16 +322,109 @@ h6 {
 
 /* ===== Login / Auth Pages ===== */
 .fi-simple-layout {
-    background: linear-gradient(145deg, #003615 0%, #02681E 60%, #003315 100%) !important;
+    background:
+        radial-gradient(circle at 50% 8%, rgba(255, 198, 0, 0.16) 0, rgba(255, 198, 0, 0) 26rem),
+        linear-gradient(145deg, #003615 0%, #02681E 58%, #002f13 100%) !important;
+    min-height: 100vh !important;
+}
+
+.fi-simple-layout::before {
+    content: '' !important;
+    position: fixed !important;
+    inset: 0 !important;
+    pointer-events: none !important;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px) !important;
+    background-size: 4rem 4rem !important;
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.65), transparent 70%) !important;
 }
 
 .fi-simple-main {
     border-top: 4px solid #FFC600 !important;
+    border-radius: 0.875rem !important;
+    background: rgba(255, 255, 255, 0.98) !important;
+    box-shadow:
+        0 1.5rem 4rem rgba(0, 0, 0, 0.32),
+        0 0.5rem 1.5rem rgba(0, 54, 21, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    outline: 1px solid rgba(255, 255, 255, 0.65) !important;
+    overflow: hidden !important;
+    position: relative !important;
+}
+
+.fi-simple-main::before {
+    content: '' !important;
+    position: absolute !important;
+    inset: 0 0 auto !important;
+    height: 5rem !important;
+    pointer-events: none !important;
+    background: linear-gradient(180deg, rgba(255, 198, 0, 0.08), transparent) !important;
 }
 
 /* Auth page heading */
 .fi-simple-layout .fi-logo {
     color: #003615 !important;
+    margin-bottom: 2rem !important;
+}
+
+.fi-simple-layout .uh-brand-logo {
+    justify-content: center !important;
+    gap: 1rem !important;
+    margin-bottom: 0 !important;
+}
+
+.fi-simple-layout .uh-brand-logo img {
+    border-radius: 0.55rem !important;
+    box-shadow:
+        0 0.6rem 1.4rem rgba(0, 54, 21, 0.16),
+        0 0 0 1px rgba(0, 54, 21, 0.08) !important;
+}
+
+.fi-simple-layout .uh-brand-title {
+    color: #E7A900 !important;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+}
+
+.fi-simple-layout .uh-brand-subtitle {
+    color: rgba(0, 54, 21, 0.72) !important;
+    font-family: var(--admin-font-body) !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.04em !important;
+    margin-top: 0.2rem !important;
+    text-transform: uppercase !important;
+}
+
+.fi-simple-main .fi-input-wrp {
+    background-color: #F8FBF8 !important;
+    border-color: rgba(0, 54, 21, 0.42) !important;
+    box-shadow:
+        0 0.25rem 0.75rem rgba(0, 54, 21, 0.08),
+        inset 0 0 0 1px rgba(0, 54, 21, 0.1) !important;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease !important;
+}
+
+.fi-simple-main .fi-input {
+    background-color: transparent !important;
+}
+
+.fi-simple-main .fi-input-wrp:focus-within {
+    border-color: rgba(0, 73, 30, 0.55) !important;
+    box-shadow:
+        0 0 0 3px rgba(255, 198, 0, 0.24),
+        0 0.45rem 1rem rgba(0, 54, 21, 0.08) !important;
+}
+
+.fi-simple-main .fi-btn-primary {
+    background: linear-gradient(180deg, #006326 0%, #00491E 100%) !important;
+    box-shadow: 0 0.7rem 1.3rem rgba(0, 73, 30, 0.24) !important;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease !important;
+}
+
+.fi-simple-main .fi-btn-primary:hover {
+    filter: brightness(1.04) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 0.9rem 1.5rem rgba(0, 73, 30, 0.3) !important;
 }
 
 /* ===== Global accent overrides ===== */
@@ -414,6 +526,21 @@ h6 {
 
 .dark .fi-simple-main {
     background-color: #18181b !important;
+    border-color: #FFC600 !important;
+    box-shadow:
+        0 1.5rem 4rem rgba(0, 0, 0, 0.42),
+        0 0.5rem 1.5rem rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    outline-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.dark .fi-simple-layout .uh-brand-title {
+    color: #FFD43B !important;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45) !important;
+}
+
+.dark .fi-simple-layout .uh-brand-subtitle {
+    color: rgba(255, 255, 255, 0.72) !important;
 }
 
 .dark .fi-header-heading {

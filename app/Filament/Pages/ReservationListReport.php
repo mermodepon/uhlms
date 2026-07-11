@@ -10,5 +10,5 @@ class ReservationListReport extends Reports
 
     protected static ?string $navigationLabel = 'Reservation List';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 5;
 }

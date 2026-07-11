@@ -2,6 +2,8 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Auth\EditProfile;
+use App\Filament\Pages\Auth\PasswordReset\RequestPasswordReset;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -29,7 +31,8 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->profile()
+            ->passwordReset(RequestPasswordReset::class)
+            ->profile(EditProfile::class)
             ->brandName('UH Lodging Management System')
             ->favicon(asset('images/uh_logo.jpg'))
             ->brandLogo(fn () => view('filament.brand-logo'))
@@ -41,13 +44,13 @@ class AdminPanelProvider extends PanelProvider
                     x-data="{}"
                     x-show="! $store.sidebar.isOpen"
                     x-cloak
-                    class="fi-topbar-brand hidden items-center gap-2 lg:flex"
+                    class="fi-topbar-brand hidden items-center gap-3 lg:flex"
                 >
-                    <a href="/admin" class="flex items-center gap-2">
-                        <img src="/images/uh_logo.jpg" alt="UH Lodging Management System" style="height:1.5rem; width:auto;" />
+                    <a href="/admin" class="uh-brand-logo flex items-center gap-3">
+                        <img src="/images/uh_logo.jpg" alt="UH Lodging Management System" style="height:2rem; width:auto;" />
                         <span class="filament-brand-text font-semibold whitespace-nowrap leading-tight" style="color:white !important;">
-                            <span style="display:block;font-size:0.5rem;line-height:1.1;">Central Mindanao University</span>
-                            <span style="display:block;font-size:0.875rem;line-height:1.2;">UH Lodging Management System</span>
+                            <span class="uh-brand-title" style="display:block;font-size:1.1rem;line-height:1.2;color:#FFC600 !important;">UH Lodging Management System</span>
+                            <span class="uh-brand-subtitle" style="display:block;font-size:0.65rem;line-height:1.1;color:rgba(255,255,255,0.8) !important;">Central Mindanao University</span>
                         </span>
                     </a>
                 </div>

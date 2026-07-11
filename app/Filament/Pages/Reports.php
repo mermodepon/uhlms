@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Models\Reservation;
+use App\Models\ReservationFeedback;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
@@ -424,6 +425,8 @@ class Reports extends Page
     {
         return match ($this->reportType) {
             'reservation_summary' => $this->getReservationSummary(),
+            'gender_statistics' => $this->getGenderStatistics(),
+            'feedback_analytics' => $this->getFeedbackAnalytics(),
             'occupancy' => $this->getOccupancyReport(),
             'room_utilization' => $this->getRoomUtilization(),
             'stay_logs' => $this->getStayLogs(),
@@ -759,6 +762,271 @@ class Reports extends Page
             'by_room_type' => $byRoomType,
             'total_guest_nights' => $totalNights,
             'avg_occupants' => round($reservations->avg('number_of_occupants') ?? 0, 1),
+        ];
+    }
+
+    protected function getGenderStatistics(): array
+    {
+        $from = Carbon::parse($this->dateFrom)->startOfDay();
+        $to = Carbon::parse($this->dateTo)->endOfDay();
+
+        $assignments = RoomAssignment::query()
+            ->whereNotNull('checked_in_at')
+            ->whereBetween('checked_in_at', [$from, $to])
+            ->get(['guest_gender', 'nationality', 'checked_in_at']);
+
+        $classificationRows = [
+            'domestic' => $this->emptyGenderStatRow('Domestic'),
+            'foreign' => $this->emptyGenderStatRow('Foreign'),
+            'unknown' => $this->emptyGenderStatRow('Unknown Nationality'),
+        ];
+
+        $nationalityRows = [];
+
+        foreach ($assignments as $assignment) {
+            $classification = $this->classifyGuestNationality($assignment->nationality);
+            $gender = $this->normalizeGuestGender($assignment->guest_gender);
+            $nationality = trim((string) $assignment->nationality);
+            $nationalityKey = $nationality !== '' ? mb_strtolower($nationality) : 'unspecified';
+            $nationalityLabel = $nationality !== '' ? $nationality : 'Unspecified';
+
+            $classificationRows[$classification][$gender]++;
+            $classificationRows[$classification]['total']++;
+
+            if (! isset($nationalityRows[$nationalityKey])) {
+                $nationalityRows[$nationalityKey] = [
+                    'nationality' => $nationalityLabel,
+                    'classification' => $classification,
+                    'classification_label' => $classificationRows[$classification]['label'],
+                    'male' => 0,
+                    'female' => 0,
+                    'other' => 0,
+                    'unspecified' => 0,
+                    'total' => 0,
+                ];
+            }
+
+            $nationalityRows[$nationalityKey][$gender]++;
+            $nationalityRows[$nationalityKey]['total']++;
+        }
+
+        $totalGuests = $assignments->count();
+        $classificationRows = collect($classificationRows)
+            ->map(function (array $row) use ($totalGuests) {
+                $row['percentage'] = $totalGuests > 0 ? round(($row['total'] / $totalGuests) * 100, 1) : 0;
+
+                return $row;
+            })
+            ->values()
+            ->toArray();
+
+        $nationalityRows = collect($nationalityRows)
+            ->sortByDesc('total')
+            ->values()
+            ->toArray();
+
+        $domestic = collect($classificationRows)->firstWhere('key', 'domestic') ?? $this->emptyGenderStatRow('Domestic');
+        $foreign = collect($classificationRows)->firstWhere('key', 'foreign') ?? $this->emptyGenderStatRow('Foreign');
+        $unknown = collect($classificationRows)->firstWhere('key', 'unknown') ?? $this->emptyGenderStatRow('Unknown Nationality');
+
+        return [
+            'type' => 'gender_statistics',
+            'total_guests' => $totalGuests,
+            'domestic_total' => $domestic['total'],
+            'foreign_total' => $foreign['total'],
+            'unknown_nationality_total' => $unknown['total'],
+            'male_total' => collect($classificationRows)->sum('male'),
+            'female_total' => collect($classificationRows)->sum('female'),
+            'other_total' => collect($classificationRows)->sum('other'),
+            'unspecified_total' => collect($classificationRows)->sum('unspecified'),
+            'classification_rows' => $classificationRows,
+            'nationality_rows' => $nationalityRows,
+            'domestic_foreign_chart' => [
+                'labels' => ['Domestic', 'Foreign'],
+                'male' => [$domestic['male'], $foreign['male']],
+                'female' => [$domestic['female'], $foreign['female']],
+                'other_unspecified' => [
+                    $domestic['other'] + $domestic['unspecified'],
+                    $foreign['other'] + $foreign['unspecified'],
+                ],
+            ],
+            'origin_share_chart' => [
+                'labels' => ['Domestic', 'Foreign', 'Unknown'],
+                'data' => [$domestic['total'], $foreign['total'], $unknown['total']],
+            ],
+        ];
+    }
+
+    protected function emptyGenderStatRow(string $label): array
+    {
+        return [
+            'key' => match ($label) {
+                'Domestic' => 'domestic',
+                'Foreign' => 'foreign',
+                default => 'unknown',
+            },
+            'label' => $label,
+            'male' => 0,
+            'female' => 0,
+            'other' => 0,
+            'unspecified' => 0,
+            'total' => 0,
+            'percentage' => 0,
+        ];
+    }
+
+    protected function classifyGuestNationality(?string $nationality): string
+    {
+        $nationality = trim((string) $nationality);
+
+        if ($nationality === '') {
+            return 'unknown';
+        }
+
+        return preg_match('/filipino|philippine/i', $nationality) ? 'domestic' : 'foreign';
+    }
+
+    protected function normalizeGuestGender(?string $gender): string
+    {
+        return match (mb_strtolower(trim((string) $gender))) {
+            'male' => 'male',
+            'female' => 'female',
+            'other' => 'other',
+            default => 'unspecified',
+        };
+    }
+
+    protected function getFeedbackAnalytics(): array
+    {
+        $from = Carbon::parse($this->dateFrom)->startOfDay();
+        $to = Carbon::parse($this->dateTo)->endOfDay();
+
+        $feedback = ReservationFeedback::query()
+            ->with(['reservation.preferredRoomType', 'guestAccount'])
+            ->whereNotNull('submitted_at')
+            ->whereBetween('submitted_at', [$from, $to])
+            ->get();
+
+        $total = $feedback->count();
+        $averageOverall = $total > 0 ? round((float) $feedback->avg('overall_rating'), 2) : 0;
+        $stayAgainYes = $feedback->filter(fn (ReservationFeedback $item) => $item->would_stay_again === true)->count();
+        $stayAgainNo = $feedback->filter(fn (ReservationFeedback $item) => $item->would_stay_again === false)->count();
+        $stayAgainUnknown = $feedback->filter(fn (ReservationFeedback $item) => is_null($item->would_stay_again))->count();
+        $answeredStayAgain = $stayAgainYes + $stayAgainNo;
+        $stayAgainPercent = $answeredStayAgain > 0 ? round(($stayAgainYes / $answeredStayAgain) * 100, 1) : 0;
+        $lowRatings = $feedback->where('overall_rating', '<=', 2);
+
+        $ratingDistribution = collect(range(1, 5))
+            ->mapWithKeys(fn (int $rating) => [(string) $rating => $feedback->where('overall_rating', $rating)->count()])
+            ->toArray();
+
+        $categoryDefinitions = [
+            'cleanliness_rating' => 'Cleanliness',
+            'comfort_rating' => 'Comfort',
+            'service_rating' => 'Staff / Service',
+            'value_rating' => 'Value',
+            'booking_experience_rating' => 'Booking Experience',
+        ];
+
+        $categoryRows = collect($categoryDefinitions)
+            ->map(function (string $label, string $field) use ($feedback): array {
+                $ratings = $feedback->pluck($field)->filter(fn ($rating) => filled($rating))->map(fn ($rating) => (int) $rating);
+
+                return [
+                    'field' => $field,
+                    'label' => $label,
+                    'responses' => $ratings->count(),
+                    'average' => $ratings->isNotEmpty() ? round((float) $ratings->avg(), 2) : 0,
+                    'lowest' => $ratings->isNotEmpty() ? (int) $ratings->min() : null,
+                ];
+            })
+            ->values()
+            ->toArray();
+
+        $periodDays = max(1, (int) $from->diffInDays($to) + 1);
+        $trendFormat = $periodDays > 62 ? 'Y-m' : 'Y-m-d';
+        $trendLabelFormat = $periodDays > 62 ? 'M Y' : 'M d';
+        $trendRows = $feedback
+            ->groupBy(fn (ReservationFeedback $item) => $item->submitted_at?->format($trendFormat) ?? 'unknown')
+            ->map(function ($items, string $key) use ($trendLabelFormat): array {
+                return [
+                    'key' => $key,
+                    'label' => $key === 'unknown' ? 'Unknown' : Carbon::parse($key.'-01')->format($trendLabelFormat),
+                    'average' => round((float) $items->avg('overall_rating'), 2),
+                    'count' => $items->count(),
+                ];
+            })
+            ->sortBy('key')
+            ->values()
+            ->toArray();
+
+        if ($periodDays <= 62) {
+            $trendRows = $feedback
+                ->groupBy(fn (ReservationFeedback $item) => $item->submitted_at?->toDateString() ?? 'unknown')
+                ->map(function ($items, string $key): array {
+                    return [
+                        'key' => $key,
+                        'label' => $key === 'unknown' ? 'Unknown' : Carbon::parse($key)->format('M d'),
+                        'average' => round((float) $items->avg('overall_rating'), 2),
+                        'count' => $items->count(),
+                    ];
+                })
+                ->sortBy('key')
+                ->values()
+                ->toArray();
+        }
+
+        $roomTypeRows = $feedback
+            ->groupBy(fn (ReservationFeedback $item) => $item->reservation?->preferredRoomType?->name ?? 'Unspecified')
+            ->map(function ($items, string $roomType): array {
+                return [
+                    'room_type' => $roomType,
+                    'feedback_count' => $items->count(),
+                    'average_rating' => round((float) $items->avg('overall_rating'), 2),
+                    'low_ratings' => $items->where('overall_rating', '<=', 2)->count(),
+                ];
+            })
+            ->sortByDesc('feedback_count')
+            ->values()
+            ->toArray();
+
+        $lowRatingRows = $lowRatings
+            ->sortByDesc('submitted_at')
+            ->take(10)
+            ->map(function (ReservationFeedback $item) use ($categoryDefinitions): array {
+                $categoryLows = collect($categoryDefinitions)
+                    ->filter(fn (string $label, string $field) => filled($item->{$field}) && (int) $item->{$field} <= 2)
+                    ->values()
+                    ->implode(', ');
+
+                return [
+                    'reservation' => $item->reservation?->reference_number ?? '-',
+                    'guest' => $item->guestAccount?->name ?? $item->reservation?->guest_name ?? '-',
+                    'overall_rating' => $item->overall_rating,
+                    'category_lows' => $categoryLows !== '' ? $categoryLows : '-',
+                    'submitted_at' => $item->submitted_at?->format('M d, Y g:i A') ?? '-',
+                    'comment' => filled($item->comments) ? str($item->comments)->limit(120)->toString() : '-',
+                ];
+            })
+            ->values()
+            ->toArray();
+
+        return [
+            'type' => 'feedback_analytics',
+            'total_feedback' => $total,
+            'average_overall' => $averageOverall,
+            'stay_again_percent' => $stayAgainPercent,
+            'low_rating_count' => $lowRatings->count(),
+            'unreviewed_count' => $feedback->where('status', 'new')->count(),
+            'rating_distribution' => $ratingDistribution,
+            'category_rows' => $categoryRows,
+            'stay_again_chart' => [
+                'labels' => ['Yes', 'No', 'Not Answered'],
+                'data' => [$stayAgainYes, $stayAgainNo, $stayAgainUnknown],
+            ],
+            'trend_rows' => $trendRows,
+            'room_type_rows' => $roomTypeRows,
+            'low_rating_rows' => $lowRatingRows,
         ];
     }
 

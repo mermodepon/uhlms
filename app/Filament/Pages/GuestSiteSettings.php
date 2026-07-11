@@ -193,6 +193,23 @@ class GuestSiteSettings extends Page implements HasForms
                             ->rows(2)
                             ->required()
                             ->maxLength(400),
+                        Forms\Components\TextInput::make('guest_about_heading')
+                            ->label('About Us Heading')
+                            ->required()
+                            ->maxLength(120),
+                        Forms\Components\Textarea::make('guest_about_intro')
+                            ->label('About Us Intro')
+                            ->rows(2)
+                            ->required()
+                            ->maxLength(400)
+                            ->columnSpanFull(),
+                        Forms\Components\Textarea::make('guest_about_body')
+                            ->label('About Us Body')
+                            ->helperText('Use separate paragraphs for easier reading on the public About Us page.')
+                            ->rows(6)
+                            ->required()
+                            ->maxLength(2500)
+                            ->columnSpanFull(),
                         Forms\Components\Toggle::make('guest_show_stay_guide')
                             ->label('Show Stay Guide')
                             ->inline(false),
@@ -266,18 +283,20 @@ class GuestSiteSettings extends Page implements HasForms
                     ->columns(2)
                     ->schema([
                         Forms\Components\TextInput::make('guest_nav_home_label')->label('Home Label')->required()->maxLength(40),
+                        Forms\Components\TextInput::make('guest_nav_about_label')->label('About Label')->required()->maxLength(40),
                         Forms\Components\TextInput::make('guest_nav_rooms_label')->label('Rooms Label')->required()->maxLength(40),
+                        Forms\Components\TextInput::make('guest_nav_track_label')->label('Track Label')->required()->maxLength(40),
                         Forms\Components\TextInput::make('guest_nav_tour_label')->label('Tour Label')->required()->maxLength(40),
                         Forms\Components\TextInput::make('guest_nav_reserve_label')->label('Reserve Label')->required()->maxLength(40),
-                        Forms\Components\TextInput::make('guest_nav_track_label')->label('Track Label')->required()->maxLength(40),
                         Forms\Components\Textarea::make('guest_footer_address')->label('Address')->rows(3)->columnSpanFull(),
                         Forms\Components\TextInput::make('guest_footer_phone')->label('Phone')->maxLength(120),
                         Forms\Components\TextInput::make('guest_footer_email')->label('Email')->email()->maxLength(160),
                         Forms\Components\TextInput::make('guest_footer_copyright_name')->label('Copyright Name')->required()->maxLength(180),
+                        Forms\Components\TextInput::make('guest_footer_about_label')->label('Footer About Label')->required()->maxLength(60),
                         Forms\Components\TextInput::make('guest_footer_rooms_label')->label('Footer Rooms Label')->required()->maxLength(60),
+                        Forms\Components\TextInput::make('guest_footer_track_label')->label('Footer Track Label')->required()->maxLength(80),
                         Forms\Components\TextInput::make('guest_footer_tour_label')->label('Footer Tour Label')->required()->maxLength(60),
                         Forms\Components\TextInput::make('guest_footer_reserve_label')->label('Footer Reserve Label')->required()->maxLength(80),
-                        Forms\Components\TextInput::make('guest_footer_track_label')->label('Footer Track Label')->required()->maxLength(80),
                     ]),
             ])
             ->statePath('data');

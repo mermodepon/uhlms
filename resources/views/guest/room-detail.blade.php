@@ -177,8 +177,9 @@
                     <p class="text-gray-200 text-sm mb-4">
                         {{ $tourWaypointSlug ? 'Jump straight into this room in the interactive virtual tour before you book.' : 'Explore the establishment in an interactive virtual tour before you book.' }}
                     </p>
-                    <a href="{{ route('guest.tour.viewer', $tourWaypointSlug ? ['slug' => $tourWaypointSlug] : [], false) }}" class="inline-block w-full bg-[#FFC600] text-[#00491E] font-bold py-2.5 px-4 rounded-lg hover:bg-yellow-400 transition text-sm">
-                        {{ $tourWaypointSlug ? 'View This Room in 360° →' : 'Start Virtual Tour →' }}
+                    <a href="{{ route('guest.tour.viewer', $tourWaypointSlug ? ['slug' => $tourWaypointSlug] : [], false) }}" class="inline-flex w-full items-center justify-center gap-2 bg-[#FFC600] text-[#00491E] font-bold py-2.5 px-4 rounded-lg hover:bg-yellow-400 transition text-sm">
+                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        <span>{{ $tourWaypointSlug ? 'View This Room in 360°' : 'Start Virtual Tour' }}</span>
                     </a>
                 </div>
             </div>

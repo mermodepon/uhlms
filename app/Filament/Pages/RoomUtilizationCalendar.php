@@ -58,13 +58,13 @@ class RoomUtilizationCalendar extends Page implements HasTable
     public function updatedDateFrom(): void
     {
         $this->normalizeDateRange();
-        $this->resetTablePage();
+        $this->resetPage();
     }
 
     public function updatedDateTo(): void
     {
         $this->normalizeDateRange();
-        $this->resetTablePage();
+        $this->resetPage();
     }
 
     public function previousRange(): void
@@ -75,7 +75,7 @@ class RoomUtilizationCalendar extends Page implements HasTable
 
         $this->dateFrom = $from->subDays($days)->toDateString();
         $this->dateTo = $to->subDays($days)->toDateString();
-        $this->resetTablePage();
+        $this->resetPage();
     }
 
     public function nextRange(): void
@@ -86,7 +86,7 @@ class RoomUtilizationCalendar extends Page implements HasTable
 
         $this->dateFrom = $from->addDays($days)->toDateString();
         $this->dateTo = $to->addDays($days)->toDateString();
-        $this->resetTablePage();
+        $this->resetPage();
     }
 
     public function resetFilters(): void
@@ -97,7 +97,7 @@ class RoomUtilizationCalendar extends Page implements HasTable
         $this->roomTypeId = null;
         $this->roomStatus = null;
         $this->visibleTypes = ['holds', 'assignments', 'room_states', 'unassigned'];
-        $this->resetTablePage();
+        $this->resetPage();
     }
 
     public function table(Table $table): Table

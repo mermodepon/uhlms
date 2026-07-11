@@ -191,6 +191,26 @@ class GuestControllerTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_rooms_page_collapses_advanced_search_by_default(): void
+    {
+        $response = $this->get(route('guest.rooms'));
+
+        $response->assertStatus(200);
+        $response->assertSee('Advanced Search');
+        $response->assertDontSee('<details class="group rounded-lg border border-[#00491E]/15 bg-[#00491E]/5"  open >', false);
+    }
+
+    public function test_rooms_page_opens_advanced_search_when_advanced_filter_is_active(): void
+    {
+        $response = $this->get(route('guest.rooms', [
+            'sort' => 'price_low',
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertSee('<details class="group rounded-lg border border-[#00491E]/15 bg-[#00491E]/5"  open >', false);
+        $response->assertSee('Lowest price first');
+    }
+
     public function test_rooms_page_shows_only_active_room_types(): void
     {
         $this->createRoomType(['name' => 'Visible Dorm', 'is_active' => true]);
@@ -200,6 +220,122 @@ class GuestControllerTest extends TestCase
 
         $response->assertSee('Visible Dorm');
         $response->assertDontSee('Inactive Dorm');
+    }
+
+    public function test_rooms_page_filters_by_all_selected_amenities(): void
+    {
+        $wifi = Amenity::create(['name' => 'Wi-Fi', 'is_active' => true]);
+        $privateCr = Amenity::create(['name' => 'Private CR', 'is_active' => true]);
+        $ceilingFan = Amenity::create(['name' => 'Ceiling Fan', 'is_active' => true]);
+
+        $deluxe = $this->createRoomType(['name' => 'Amenity Deluxe']);
+        $basic = $this->createRoomType(['name' => 'Amenity Basic']);
+        $fanRoom = $this->createRoomType(['name' => 'Amenity Fan Room']);
+
+        $deluxe->amenities()->attach([$wifi->id, $privateCr->id]);
+        $basic->amenities()->attach([$wifi->id]);
+        $fanRoom->amenities()->attach([$wifi->id, $ceilingFan->id]);
+        $this->createRoom($deluxe);
+        $this->createRoom($basic);
+        $this->createRoom($fanRoom);
+
+        $response = $this->get(route('guest.rooms', [
+            'amenities' => [$wifi->id, $privateCr->id],
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertSee('Amenity Deluxe');
+        $response->assertDontSee('Amenity Basic');
+        $response->assertDontSee('Amenity Fan Room');
+        $response->assertSee('Active filters:');
+        $response->assertSee('Wi-Fi');
+        $response->assertSee('Private CR');
+    }
+
+    public function test_rooms_page_filters_by_setup_pricing_type_and_budget(): void
+    {
+        $matching = $this->createRoomType([
+            'name' => 'Filtered Private Room',
+            'base_rate' => 1200,
+            'pricing_type' => 'flat_rate',
+            'room_sharing_type' => 'private',
+        ]);
+        $shared = $this->createRoomType([
+            'name' => 'Filtered Shared Dorm',
+            'base_rate' => 1200,
+            'pricing_type' => 'flat_rate',
+            'room_sharing_type' => 'public',
+        ]);
+        $perPerson = $this->createRoomType([
+            'name' => 'Filtered Per Person',
+            'base_rate' => 1200,
+            'pricing_type' => 'per_person',
+            'room_sharing_type' => 'private',
+        ]);
+        $expensive = $this->createRoomType([
+            'name' => 'Filtered Expensive Room',
+            'base_rate' => 1700,
+            'pricing_type' => 'flat_rate',
+            'room_sharing_type' => 'private',
+        ]);
+
+        foreach ([$matching, $shared, $perPerson, $expensive] as $roomType) {
+            $this->createRoom($roomType);
+        }
+
+        $response = $this->get(route('guest.rooms', [
+            'room_sharing_type' => 'private',
+            'pricing_type' => 'flat_rate',
+            'price_min' => 1000,
+            'price_max' => 1300,
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertSee('Filtered Private Room');
+        $response->assertDontSee('Filtered Shared Dorm');
+        $response->assertDontSee('Filtered Per Person');
+        $response->assertDontSee('Filtered Expensive Room');
+        $response->assertSee('Private rooms');
+        $response->assertSee('Per room/night');
+        $response->assertSee('PHP 1,000 - PHP 1,300');
+    }
+
+    public function test_rooms_page_sorts_by_price_capacity_and_name(): void
+    {
+        $alpha = $this->createRoomType(['name' => 'Alpha Sort Room', 'base_rate' => 1500]);
+        $bravo = $this->createRoomType(['name' => 'Bravo Sort Room', 'base_rate' => 800]);
+        $charlie = $this->createRoomType(['name' => 'Charlie Sort Room', 'base_rate' => 1200]);
+        $this->createRoom($alpha)->update(['capacity' => 2]);
+        $this->createRoom($bravo)->update(['capacity' => 6]);
+        $this->createRoom($charlie)->update(['capacity' => 4]);
+
+        $lowest = $this->get(route('guest.rooms', ['sort' => 'price_low']));
+        $lowest->assertViewHas('roomTypes', fn ($roomTypes): bool => $roomTypes->pluck('name')->values()->all() === [
+            'Bravo Sort Room',
+            'Charlie Sort Room',
+            'Alpha Sort Room',
+        ]);
+
+        $highest = $this->get(route('guest.rooms', ['sort' => 'price_high']));
+        $highest->assertViewHas('roomTypes', fn ($roomTypes): bool => $roomTypes->pluck('name')->values()->all() === [
+            'Alpha Sort Room',
+            'Charlie Sort Room',
+            'Bravo Sort Room',
+        ]);
+
+        $capacity = $this->get(route('guest.rooms', ['sort' => 'capacity']));
+        $capacity->assertViewHas('roomTypes', fn ($roomTypes): bool => $roomTypes->pluck('name')->values()->all() === [
+            'Bravo Sort Room',
+            'Charlie Sort Room',
+            'Alpha Sort Room',
+        ]);
+
+        $name = $this->get(route('guest.rooms', ['sort' => 'name']));
+        $name->assertViewHas('roomTypes', fn ($roomTypes): bool => $roomTypes->pluck('name')->values()->all() === [
+            'Alpha Sort Room',
+            'Bravo Sort Room',
+            'Charlie Sort Room',
+        ]);
     }
 
     public function test_rooms_page_keeps_shared_room_type_available_when_remaining_beds_cover_requested_guests(): void

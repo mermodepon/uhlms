@@ -5,17 +5,21 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ReservationResource\Pages;
 use App\Models\ForceDeletionLog;
 use App\Models\Guest;
+use App\Models\GuestAccount;
 use App\Models\Reservation;
+use App\Models\RoomType;
 use App\Models\ReservationLog;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\Service;
 use App\Models\Setting;
 use App\Services\CheckInService;
+use App\Services\AlternativeRoomOfferService;
 use App\Services\RoomHoldService;
 use App\Services\ReservationWorkflowService;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Infolists;
 use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
@@ -45,6 +49,15 @@ class ReservationResource extends Resource
             ->schema([
                 Forms\Components\Section::make('Guest Information')
                     ->schema([
+                        Forms\Components\Select::make('guest_account_id')
+                            ->label('Linked Guest Account')
+                            ->relationship('guestAccount', 'email')
+                            ->getOptionLabelFromRecordUsing(fn (GuestAccount $record) => $record->name.' <'.$record->email.'>')
+                            ->searchable(['name', 'email'])
+                            ->preload()
+                            ->helperText('Optional account link. Reservation guest fields remain the submitted snapshot.')
+                            ->visible(fn () => auth()->user()?->hasPermission('guest_accounts_edit') ?? false)
+                            ->columnSpanFull(),
                         Forms\Components\TextInput::make('guest_last_name')
                             ->label('Last Name')
                             ->required()
@@ -136,6 +149,7 @@ class ReservationResource extends Resource
                         Forms\Components\Select::make('status')
                             ->options([
                                 'pending' => 'Pending',
+                                'awaiting_alternative_confirmation' => 'Awaiting Alternative Confirmation',
                                 'approved' => 'Approved',
                                 'confirmed' => 'Confirmed',
                                 'declined' => 'Declined',
@@ -533,6 +547,11 @@ class ReservationResource extends Resource
                                 Infolists\Components\Section::make('Primary Guest Information')
                                     ->description('Main contact and profile details for this reservation.')
                                     ->schema([
+                                        Infolists\Components\TextEntry::make('guestAccount.email')
+                                            ->label('Linked Guest Account')
+                                            ->placeholder('No linked account')
+                                            ->url(fn (Reservation $record) => $record->guestAccount ? GuestAccountResource::getUrl('view', ['record' => $record->guestAccount]) : null)
+                                            ->openUrlInNewTab(),
                                         Infolists\Components\TextEntry::make('guest_last_name')
                                             ->label('Last Name'),
                                         Infolists\Components\TextEntry::make('guest_first_name')
@@ -614,6 +633,7 @@ class ReservationResource extends Resource
                                             ->formatStateUsing(fn ($state) => str_replace('_', ' ', ucfirst((string) $state)))
                                             ->color(fn ($state) => match ((string) $state) {
                                                 'pending' => 'warning',
+                                                'awaiting_alternative_confirmation' => 'warning',
                                                 'approved' => 'info',
                                                 'confirmed' => 'primary',
 
@@ -623,6 +643,13 @@ class ReservationResource extends Resource
                                                 'checked_out' => 'gray',
                                                 default => 'gray',
                                             }),
+                                        Infolists\Components\TextEntry::make('feedback_status')
+                                            ->label('Guest Feedback')
+                                            ->default(fn (Reservation $record) => $record->feedback ? 'Submitted' : 'Not submitted')
+                                            ->badge()
+                                            ->color(fn (Reservation $record) => $record->feedback ? 'success' : 'gray')
+                                            ->url(fn (Reservation $record) => $record->feedback ? ReservationFeedbackResource::getUrl('view', ['record' => $record->feedback]) : null)
+                                            ->openUrlInNewTab(),
                                         Infolists\Components\TextEntry::make('checked_in_guests')
                                             ->label('Checked-In Guests')
                                             ->default(function (Reservation $record) {
@@ -883,6 +910,13 @@ class ReservationResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->wrap(),
+                Tables\Columns\TextColumn::make('guestAccount.email')
+                    ->label('Account')
+                    ->badge()
+                    ->placeholder('Unlinked')
+                    ->color(fn ($state) => filled($state) ? 'success' : 'gray')
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('preferredRoomType.name')
                     ->label('Room Type')
                     ->searchable()
@@ -975,6 +1009,7 @@ class ReservationResource extends Resource
                     ->formatStateUsing(fn ($state) => str_replace('_', ' ', ucfirst($state)))
                     ->color(fn ($state): array => match ((string) $state) {
                         'pending' => Color::hex('#fbbf24'),
+                        'awaiting_alternative_confirmation' => Color::hex('#f59e0b'),
                         'approved' => Color::hex('#919F02'),
                         'confirmed' => Color::hex('#10B981'),
                         'declined' => Color::hex('#EF4444'),
@@ -983,6 +1018,13 @@ class ReservationResource extends Resource
                         'checked_out' => Color::hex('#94a3b8'),
                         default => Color::hex('#6B7280'),
                     }),
+                Tables\Columns\TextColumn::make('feedback.id')
+                    ->label('Feedback')
+                    ->badge()
+                    ->getStateUsing(fn (Reservation $record) => $record->feedback ? 'Submitted' : 'None')
+                    ->color(fn (string $state) => $state === 'Submitted' ? 'success' : 'gray')
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->url(fn (Reservation $record) => $record->feedback ? ReservationFeedbackResource::getUrl('view', ['record' => $record->feedback]) : null),
                 Tables\Columns\TextColumn::make('payment_gateway_status')
                     ->label('Payment')
                     ->badge()
@@ -1012,6 +1054,8 @@ class ReservationResource extends Resource
                 'charges',
                 'payments',
                 'billingGuest',
+                'guestAccount',
+                'feedback',
                 'roomHolds.room', // For room display info
                 'roomRequests.roomType',
             ]))
@@ -1019,6 +1063,7 @@ class ReservationResource extends Resource
                 Tables\Filters\SelectFilter::make('status')
                     ->options([
                         'pending' => 'Pending',
+                        'awaiting_alternative_confirmation' => 'Awaiting Alternative Confirmation',
                         'approved' => 'Approved',
                         'confirmed' => 'Confirmed',
                         'declined' => 'Declined',
@@ -1030,6 +1075,16 @@ class ReservationResource extends Resource
                     ->relationship('preferredRoomType', 'name')
                     ->label('Room Type')
                     ->preload(),
+                Tables\Filters\TernaryFilter::make('guest_account_id')
+                    ->label('Guest Account')
+                    ->placeholder('All reservations')
+                    ->trueLabel('Linked to account')
+                    ->falseLabel('Unlinked')
+                    ->queries(
+                        true: fn (Builder $query) => $query->whereNotNull('guest_account_id'),
+                        false: fn (Builder $query) => $query->whereNull('guest_account_id'),
+                        blank: fn (Builder $query) => $query,
+                    ),
                 Tables\Filters\Filter::make('check_in_date')
                     ->form([
                         Forms\Components\DatePicker::make('from'),
@@ -1089,7 +1144,7 @@ class ReservationResource extends Resource
                         ->color('success')
                         ->modalHeading('Approve Reservation')
                         ->successNotificationTitle('Reservation approved')
-                        ->modalDescription('Approve this reservation. You may optionally assign specific rooms now to hold them for the guest\'s arrival.')
+                        ->modalDescription('Approve this reservation only after every requested room has been selected and can be held.')
                         ->modalWidth('4xl')
                         ->visible(fn (Reservation $record) => $record->status === 'pending')
                         ->form(fn (Reservation $record) => [
@@ -1100,8 +1155,8 @@ class ReservationResource extends Resource
                                         ->rows(2),
                                 ]),
 
-                            Forms\Components\Section::make('Room Assignment (Optional)')
-                                ->description('Assigning rooms now will hold them exclusively for this reservation. If you skip this, rooms can be assigned later during check-in.')
+                            Forms\Components\Section::make('Room Assignment')
+                                ->description('Select every requested room to secure this reservation. If any requested type is unavailable, cancel and use Propose Alternative instead.')
                                 ->schema(self::makeApprovalRoomAssignmentSchema($record))
                                 ->collapsible(),
                         ])
@@ -1110,7 +1165,7 @@ class ReservationResource extends Resource
 
                             if ($result['hold_error']) {
                                 Notification::make()
-                                    ->title('Reservation approved, but room holds failed: '.$result['hold_error'])
+                                    ->title('Reservation was not approved because room holds failed: '.$result['hold_error'])
                                     ->warning()
                                     ->send();
                             } elseif ($result['room_count'] > 0) {
@@ -1123,6 +1178,31 @@ class ReservationResource extends Resource
                                     ->title('Reservation approved')
                                     ->success()
                                     ->send();
+                            }
+                        }),
+
+                    Tables\Actions\Action::make('propose_alternative')
+                        ->label('Propose Alternative')
+                        ->icon('heroicon-o-arrow-path-rounded-square')
+                        ->color('warning')
+                        ->modalHeading('Propose Alternative Room')
+                        ->modalDescription('The guest must explicitly accept this offer. Selected rooms are held for 24 hours only.')
+                        ->visible(fn (Reservation $record) => $record->status === 'pending')
+                        ->form(fn (Reservation $record) => static::makeAlternativeOfferSchema($record))
+                        ->action(function (Reservation $record, array $data): void {
+                            try {
+                                $offer = app(AlternativeRoomOfferService::class)->propose($record, $data);
+                                app(AlternativeRoomOfferService::class)->sendOfferEmail($offer, request());
+
+                                Notification::make()
+                                    ->success()
+                                    ->title('Alternative offer sent and rooms held for 24 hours.')
+                                    ->send();
+                            } catch (\RuntimeException $exception) {
+                                Notification::make()->danger()->title($exception->getMessage())->send();
+                            } catch (\Throwable $exception) {
+                                report($exception);
+                                Notification::make()->warning()->title('Offer created, but the email could not be sent. Reopen the reservation and try again.')->send();
                             }
                         }),
 
@@ -1157,7 +1237,7 @@ class ReservationResource extends Resource
                         ->color('warning')
                         ->requiresConfirmation()
                         ->modalHeading('Check Out Guest')
-                        ->visible(fn (Reservation $record) => in_array($record->status, ['checked_in', 'checked_out'], true))
+                        ->visible(fn (Reservation $record) => $record->status === 'checked_in')
                         ->form([
                             Forms\Components\DatePicker::make('checked_out_at')
                                 ->label('Check-out Date')
@@ -1665,6 +1745,7 @@ class ReservationResource extends Resource
                 return Forms\Components\Select::make("assigned_room_ids_by_type.{$roomType->id}")
                     ->label("{$roomType->name} ({$requestedRooms} room(s), {$occupants} guest(s))")
                     ->multiple()
+                    ->required()
                     ->searchable()
                     ->preload()
                     ->options($options)
@@ -1676,6 +1757,54 @@ class ReservationResource extends Resource
             ->filter()
             ->values()
             ->all();
+    }
+
+    protected static function makeAlternativeOfferSchema(Reservation $record): array
+    {
+        $checkIn = Carbon::parse($record->check_in_date);
+        $checkOut = Carbon::parse($record->check_out_date);
+        $requests = $record->getEffectiveRoomRequests()->loadMissing('roomType');
+
+        return [
+            Forms\Components\Select::make('reservation_room_request_id')
+                ->label('Unavailable requested room type')
+                ->options($requests->mapWithKeys(fn ($line) => [
+                    $line->id => ($line->roomType?->name ?? 'Unknown').' ('.$line->requested_room_count.' room(s), '.$line->occupant_count.' guest(s))',
+                ])->all())
+                ->required()
+                ->live(),
+            Forms\Components\Select::make('offered_room_type_id')
+                ->label('Alternative room type')
+                ->options(function (Get $get) use ($requests, $checkIn, $checkOut): array {
+                    $requestLine = $requests->firstWhere('id', (int) $get('reservation_room_request_id'));
+                    if (! $requestLine) return [];
+
+                    return RoomType::query()->where('is_active', true)->get()
+                        ->filter(function (RoomType $roomType) use ($requestLine, $checkIn, $checkOut): bool {
+                            $summary = app(RoomHoldService::class)->getDateAvailabilitySummary($roomType, $checkIn, $checkOut, (int) $requestLine->occupant_count);
+                            return $summary['available_rooms_count'] >= (int) $requestLine->requested_room_count
+                                && (bool) $summary['can_accommodate_requested_guests'];
+                        })
+                        ->mapWithKeys(fn (RoomType $roomType) => [$roomType->id => $roomType->name.' - PHP '.number_format((float) $roomType->base_rate, 2).' per night'])
+                        ->all();
+                })
+                ->required()
+                ->live(),
+            Forms\Components\Select::make('room_ids')
+                ->label('Rooms to hold for 24 hours')
+                ->multiple()
+                ->searchable()
+                ->options(function (Get $get) use ($checkIn, $checkOut): array {
+                    $roomType = RoomType::find($get('offered_room_type_id'));
+                    if (! $roomType) return [];
+
+                    return app(RoomHoldService::class)->getAvailableRooms($roomType, $checkIn, $checkOut)
+                        ->mapWithKeys(fn (Room $room) => [$room->id => $room->room_number.($room->floor?->name ? ' - '.$room->floor->name : '')])
+                        ->all();
+                })
+                ->required(),
+            Forms\Components\Textarea::make('message')->label('Message to guest (optional)')->rows(3),
+        ];
     }
 
     /**

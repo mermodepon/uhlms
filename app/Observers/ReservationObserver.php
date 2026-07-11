@@ -56,6 +56,15 @@ class ReservationObserver
                 ]);
         }
 
+        if (array_key_exists('guest_account_id', $changes)) {
+            ReservationLog::record(
+                $reservation,
+                'guest_account_link_updated',
+                'Linked guest account changed from '.($reservation->getOriginal('guest_account_id') ?: 'none').' to '.($reservation->guest_account_id ?: 'none').'.',
+                ['changed_by' => auth()->id()]
+            );
+        }
+
         // Only notify if status changed
         if (array_key_exists('status', $changes)) {
             $newStatus = $changes['status'];

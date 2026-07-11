@@ -32,32 +32,32 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label for="guest_last_name" class="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
-                        <input type="text" name="guest_last_name" id="guest_last_name" value="{{ old('guest_last_name') }}" required maxlength="255"
+                        <input type="text" name="guest_last_name" id="guest_last_name" value="{{ old('guest_last_name', $guestAccount?->last_name) }}" required maxlength="255"
                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                         @error('guest_last_name') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>
                         <label for="guest_first_name" class="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
-                        <input type="text" name="guest_first_name" id="guest_first_name" value="{{ old('guest_first_name') }}" required maxlength="255"
+                        <input type="text" name="guest_first_name" id="guest_first_name" value="{{ old('guest_first_name', $guestAccount?->first_name) }}" required maxlength="255"
                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                         @error('guest_first_name') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>
                         <label for="guest_middle_initial" class="block text-sm font-medium text-gray-700 mb-1">Middle Initial</label>
-                        <input type="text" name="guest_middle_initial" id="guest_middle_initial" value="{{ old('guest_middle_initial') }}" 
+                        <input type="text" name="guest_middle_initial" id="guest_middle_initial" value="{{ old('guest_middle_initial', $guestAccount?->middle_initial) }}" 
                                maxlength="10"
                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                         @error('guest_middle_initial') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>
                         <label for="guest_email" class="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
-                        <input type="email" name="guest_email" id="guest_email" value="{{ old('guest_email') }}" required maxlength="255"
+                        <input type="email" name="guest_email" id="guest_email" value="{{ old('guest_email', $guestAccount?->email) }}" required maxlength="255"
                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                         @error('guest_email') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>
                         <label for="guest_phone" class="block text-sm font-medium text-gray-700 mb-1">Mobile Number *</label>
-                        <input type="tel" name="guest_phone" id="guest_phone" value="{{ old('guest_phone') }}" maxlength="20"
+                        <input type="tel" name="guest_phone" id="guest_phone" value="{{ old('guest_phone', $guestAccount?->phone) }}" maxlength="20"
                                required
                                pattern="^(09[0-9]{9}|\+639[0-9]{9}|639[0-9]{9})$"
                                data-validation-pattern-message="Enter a valid Philippine mobile number, e.g. 09171234567 or +639171234567."
@@ -66,7 +66,7 @@
                     </div>
                     <div>
                         <label for="guest_age" class="block text-sm font-medium text-gray-700 mb-1">Age *</label>
-                        <input type="number" name="guest_age" id="guest_age" value="{{ old('guest_age') }}" data-integer="true" step="1"
+                        <input type="number" name="guest_age" id="guest_age" value="{{ old('guest_age', $guestAccount?->age) }}" data-integer="true" step="1"
                                required min="18" max="120" data-validation-min-message="Guest age must be at least 18."
                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                         @error('guest_age') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
@@ -76,16 +76,16 @@
                         <select name="guest_gender" id="guest_gender" required
                                 class="guest-select w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                             <option value="">Select gender...</option>
-                            <option value="Male" {{ old('guest_gender') == 'Male' ? 'selected' : '' }}>Male</option>
-                            <option value="Female" {{ old('guest_gender') == 'Female' ? 'selected' : '' }}>Female</option>
-                            <option value="Other" {{ old('guest_gender') == 'Other' ? 'selected' : '' }}>Other</option>
+                            <option value="Male" {{ old('guest_gender', $guestAccount?->gender) == 'Male' ? 'selected' : '' }}>Male</option>
+                            <option value="Female" {{ old('guest_gender', $guestAccount?->gender) == 'Female' ? 'selected' : '' }}>Female</option>
+                            <option value="Other" {{ old('guest_gender', $guestAccount?->gender) == 'Other' ? 'selected' : '' }}>Other</option>
                         </select>
                         @error('guest_gender') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div class="md:col-span-2">
                         <label for="guest_address" class="block text-sm font-medium text-gray-700 mb-1">Address</label>
                         <textarea name="guest_address" id="guest_address" rows="2" maxlength="1000"
-                                  class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">{{ old('guest_address') }}</textarea>
+                                  class="w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">{{ old('guest_address', $guestAccount?->address) }}</textarea>
                         @error('guest_address') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                 </div>
@@ -118,6 +118,7 @@
                                 </option>
                             @endforeach
                         </select>
+                        <div id="primary-room-preview"></div>
                         @error('preferred_room_type_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>
@@ -266,6 +267,51 @@
     const addRoomRequestButton = document.getElementById('add-room-request');
     const roomTypeAvailabilityUrlTemplate = @json(route('api.tour.room-type-availability', ['id' => '__ROOM_TYPE_ID__'], false));
 
+    @php
+        $roomTypePreviewData = collect($roomTypes)->keyBy('id')->map(fn ($rt) => [
+            'name'         => $rt->name,
+            'price'        => $rt->getFormattedPrice(),
+            'description'  => $rt->description,
+            'sharing_type' => $rt->room_sharing_type,
+            'image'        => !empty($rt->images) ? \App\Support\MediaUrl::url(collect($rt->images)->first()) : null,
+            'detail_url'   => route('guest.room-detail', ['roomType' => $rt->id], false),
+        ]);
+    @endphp
+    const roomTypePreviews = @json($roomTypePreviewData);
+
+    const escapeHtml = (value) => String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    const buildRoomPreviewHtml = (typeId) => {
+        const preview = roomTypePreviews[typeId];
+        if (!preview) return '';
+        const imgHtml = preview.image
+            ? `<img src="${escapeHtml(preview.image)}" alt="${escapeHtml(preview.name)}" style="height:5rem;width:7rem;object-fit:cover;border-radius:0.5rem;flex-shrink:0">`
+            : `<div style="height:5rem;width:7rem;border-radius:0.5rem;flex-shrink:0;background:rgba(0,73,30,0.08);display:flex;align-items:center;justify-content:center"><svg width="32" height="32" fill="none" stroke="rgba(0,73,30,0.4)" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg></div>`;
+        const badge = preview.sharing_type === 'public'
+            ? '<span style="display:inline-flex;align-items:center;padding:0.125rem 0.5rem;border-radius:0.25rem;font-size:0.75rem;font-weight:500;background:#dbeafe;color:#1e40af">Dormitory</span>'
+            : '<span style="display:inline-flex;align-items:center;padding:0.125rem 0.5rem;border-radius:0.25rem;font-size:0.75rem;font-weight:500;background:#dcfce7;color:#166534">Private</span>';
+        const desc = preview.description
+            ? escapeHtml(preview.description.length > 130 ? preview.description.substring(0, 130) + '\u2026' : preview.description)
+            : '';
+        return `<div style="display:flex;align-items:flex-start;gap:0.75rem;border-radius:0.5rem;border:1px solid #e5e7eb;background:#f9fafb;padding:0.75rem;margin-top:0.5rem">
+            ${imgHtml}
+            <div style="flex:1;min-width:0">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem;margin-bottom:0.25rem">
+                    <span style="font-weight:600;color:#111827;font-size:0.875rem">${escapeHtml(preview.name)}</span>
+                    ${badge}
+                </div>
+                <div style="font-weight:700;font-size:0.875rem;margin-bottom:0.25rem;color:#00491E">${escapeHtml(preview.price)}</div>
+                ${desc ? `<p style="color:#6b7280;font-size:0.75rem;line-height:1.5;margin-bottom:0.25rem">${desc}</p>` : ''}
+                <a href="${escapeHtml(preview.detail_url)}" target="_blank" rel="noopener" style="font-size:0.75rem;font-weight:500;color:#00491E;text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">View room details \u2192</a>
+            </div>
+        </div>`;
+    };
+
     if (checkInDateInput && checkOutDateInput) {
         const toDateString = (date) => {
             const y = date.getFullYear();
@@ -389,6 +435,13 @@
         });
 
         syncOccupantLimit();
+
+        const primaryPreviewContainer = document.getElementById('primary-room-preview');
+        const updatePrimaryPreview = () => {
+            if (primaryPreviewContainer) primaryPreviewContainer.innerHTML = buildRoomPreviewHtml(roomTypeInput.value);
+        };
+        roomTypeInput.addEventListener('change', updatePrimaryPreview);
+        updatePrimaryPreview();
     }
 
     if (additionalRoomRequests && addRoomRequestButton && roomTypeInput && checkInDateInput && checkOutDateInput) {
@@ -479,14 +532,20 @@
                     <p class="text-xs text-gray-500" data-extra-availability></p>
                     <button type="button" class="text-sm font-semibold text-red-600 hover:text-red-700" data-remove-room-request>Remove</button>
                 </div>
+                <div data-extra-preview></div>
             `;
 
             additionalRoomRequests.appendChild(row);
-            row.querySelector('[data-extra-room-type]')?.addEventListener('change', () => refreshExtraAvailability(row));
+            const extraPreview = row.querySelector('[data-extra-preview]');
+            const updateExtraPreview = () => {
+                if (extraPreview) extraPreview.innerHTML = buildRoomPreviewHtml(row.querySelector('[data-extra-room-type]')?.value);
+            };
+            row.querySelector('[data-extra-room-type]')?.addEventListener('change', () => { refreshExtraAvailability(row); updateExtraPreview(); });
             row.querySelector('[data-extra-room-count]')?.addEventListener('input', () => refreshExtraAvailability(row));
             row.querySelector('[data-extra-occupants]')?.addEventListener('input', () => refreshExtraAvailability(row));
             row.querySelector('[data-remove-room-request]')?.addEventListener('click', () => row.remove());
             refreshExtraAvailability(row);
+            updateExtraPreview();
         };
 
         addRoomRequestButton.addEventListener('click', addRoomRequestRow);

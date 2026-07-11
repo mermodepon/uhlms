@@ -10,5 +10,5 @@ class StayLogsReport extends Reports
 
     protected static ?string $navigationLabel = 'Stay Logs';
 
-    protected static ?int $navigationSort = 6;
+    protected static ?int $navigationSort = 8;
 }

@@ -79,10 +79,7 @@ class CheckInGuest extends Page
                         ->label('Gender')
                         ->required()
                         ->default(fn () => $this->record->guest_gender)
-                        ->options([
-                            'Male' => 'Male',
-                            'Female' => 'Female',
-                        ])
+                        ->options(fn () => $this->getGenderOptions())
                         ->native(false),
                     Forms\Components\Textarea::make('guest_full_address')
                         ->label('Complete Address')
@@ -291,10 +288,7 @@ class CheckInGuest extends Page
                                     Forms\Components\Select::make('gender')
                                         ->label('Gender')
                                         ->required()
-                                        ->options([
-                                            'Male' => 'Male',
-                                            'Female' => 'Female',
-                                        ])
+                                        ->options(fn () => $this->getGenderOptions())
                                         ->native(false),
                                 ])
                                 ->columns(5)
@@ -1386,6 +1380,15 @@ class CheckInGuest extends Page
             'Yemeni' => 'Yemeni',
             'Zambian' => 'Zambian',
             'Zimbabwean' => 'Zimbabwean',
+        ];
+    }
+
+    protected function getGenderOptions(): array
+    {
+        return [
+            'Male' => 'Male',
+            'Female' => 'Female',
+            'Other' => 'Other',
         ];
     }
 }

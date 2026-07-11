@@ -46,7 +46,12 @@ class UserResource extends Resource
                             ->email()
                             ->required()
                             ->maxLength(255)
-                            ->unique(ignoreRecord: true),
+                            ->unique(ignoreRecord: true)
+                            ->disabled(fn (string $operation): bool => $operation === 'edit' && ! auth()->user()?->isSuperAdmin())
+                            ->dehydrated(fn (string $operation): bool => $operation !== 'edit' || (auth()->user()?->isSuperAdmin() ?? false))
+                            ->helperText(fn (string $operation): ?string => ($operation === 'edit' && ! auth()->user()?->isSuperAdmin())
+                                ? 'Only a Super Administrator can change login emails.'
+                                : null),
                         Forms\Components\TextInput::make('password')
                             ->password()
                             ->required(fn (string $operation): bool => $operation === 'create')
@@ -145,6 +150,25 @@ class UserResource extends Resource
                                         Forms\Components\Toggle::make('permissions.users_edit')->label('Edit')->inline(false),
                                         Forms\Components\Toggle::make('permissions.users_delete')->label('Delete')->inline(false),
                                     ])->columns(4),
+
+                                Forms\Components\Fieldset::make('Guest Accounts')
+                                    ->schema([
+                                        Forms\Components\Toggle::make('permissions.guest_accounts_view')->label('View')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.guest_accounts_edit')->label('Edit')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.guest_accounts_disable')->label('Disable / Enable')->inline(false),
+                                    ])->columns(3),
+
+                                Forms\Components\Fieldset::make('Guest Feedback')
+                                    ->schema([
+                                        Forms\Components\Toggle::make('permissions.guest_feedback_view')->label('View')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.guest_feedback_edit')->label('Review / Notes')->inline(false),
+                                    ])->columns(2),
+
+                                Forms\Components\Fieldset::make('Support Inquiries')
+                                    ->schema([
+                                        Forms\Components\Toggle::make('permissions.support_inquiries_view')->label('View')->inline(false),
+                                        Forms\Components\Toggle::make('permissions.support_inquiries_edit')->label('Triage / Notes')->inline(false),
+                                    ])->columns(2),
 
                                 Forms\Components\Fieldset::make('Stay Logs')
                                     ->schema([

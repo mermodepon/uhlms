@@ -54,6 +54,7 @@ class PanoramaViewer {
             navbar: false,
             touchmoveTwoFingers: false,
             mousewheelCtrlKey: false,
+            mousewheel: false,
             plugins,
         };
 
@@ -366,15 +367,22 @@ class PanoramaViewer {
             ? sprite.mediaGallery.map(url => this._sanitizeMediaUrl(url)).filter(Boolean)
             : [];
         const safeMediaUrl = this._sanitizeMediaUrl(sprite.mediaUrl);
+        const safeVideoUrl = this._sanitizeMediaUrl(sprite.mediaVideoUrl);
+        const hasVideoMedia = hasYouTubeVideo || !!safeVideoUrl;
         const hasImageMedia = !!(safeGallery.length || safeMediaUrl);
-        const hasExpandedMediaCard = hasYouTubeVideo || hasImageMedia;
-        const cardWidth = hasYouTubeVideo
+        const hasExpandedMediaCard = hasVideoMedia || hasImageMedia;
+        const cardWidth = hasVideoMedia
             ? 'min(620px,calc(100vw - 32px))'
             : (hasImageMedia ? 'min(760px,calc(100vw - 32px))' : 'min(380px,calc(100vw - 32px))');
-        const videoMediaPaddingTop = hasYouTubeVideo ? '62.5%' : '56.25%';
-        const cardMaxHeight = hasYouTubeVideo
+        const videoMediaPaddingTop = hasVideoMedia ? '62.5%' : '56.25%';
+        const cardMaxHeight = hasVideoMedia
             ? 'min(94vh,860px)'
             : (hasImageMedia ? 'min(92vh,820px)' : 'min(90vh,calc(100dvh - 24px))');
+        const hotspotArg = parseInt(sprite.hotspotId, 10) || 0;
+        const canOpenLightbox = String(sprite.hotspotId ?? '') !== '';
+        const viewLargerButton = canOpenLightbox
+            ? `<button type="button" onclick="tourEngine.openHotspotMediaLightbox(${hotspotArg},0);event.stopPropagation()" style="position:absolute;right:12px;bottom:12px;background:rgba(15,23,42,.86);color:white;border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.28)">View larger</button>`
+            : '';
 
         // Media
         let mediaHtml = '';
@@ -382,20 +390,38 @@ class PanoramaViewer {
             const src = this._buildYouTubeEmbedUrl(sprite.mediaYouTubeId);
             mediaHtml = `<div style="position:relative;padding-top:${videoMediaPaddingTop};background:#000;overflow:hidden;flex-shrink:0">`
                 + `<iframe src="${src}" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media;fullscreen" allowfullscreen loading="lazy"></iframe>`
+                + viewLargerButton
+                + `</div>`;
+        } else if (safeVideoUrl) {
+            mediaHtml = `<div style="position:relative;padding-top:${videoMediaPaddingTop};background:#000;overflow:hidden;flex-shrink:0">`
+                + `<video src="${safeVideoUrl}" controls playsinline style="position:absolute;inset:0;width:100%;height:100%;background:#000"></video>`
+                + viewLargerButton
                 + `</div>`;
         } else if (safeGallery.length > 0) {
-            const imgs = safeGallery.map(url =>
-                `<div style="min-width:${hasExpandedMediaCard ? 'calc(100% - 8px)' : '220px'};scroll-snap-align:center;scroll-snap-stop:always;flex:0 0 auto">`
-                + `<img class="pv-info-gallery-img" src="${url}" style="width:100%;height:${hasExpandedMediaCard ? 'min(52vh,420px)' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.parentElement.style.display='none'" loading="lazy">`
+            const safeId = String(sprite.hotspotId ?? 'gallery').replace(/[^a-zA-Z0-9_-]/g, '');
+            const trackId = `info-gallery-track-${safeId}`;
+            const counterId = `info-gallery-counter-${safeId}`;
+            const imgs = safeGallery.map((url, index) =>
+                `<div data-gallery-slide style="min-width:${hasExpandedMediaCard ? 'calc(100% - 8px)' : '220px'};scroll-snap-align:center;scroll-snap-stop:always;flex:0 0 auto">`
+                + `<button type="button" onclick="tourEngine.openHotspotMediaLightbox(${hotspotArg},${index});event.stopPropagation()" style="display:block;width:100%;border:0;background:transparent;padding:0;cursor:zoom-in">`
+                + `<img class="pv-info-gallery-img" src="${url}" style="width:100%;height:${hasExpandedMediaCard ? 'min(52vh,420px)' : '160px'};display:block;border-radius:10px;object-fit:cover;box-shadow:0 10px 24px rgba(17,24,39,.12)" onerror="this.closest('[data-gallery-slide]').style.display='none'" loading="lazy">`
+                + `</button>`
                 + `</div>`
             ).join('');
             mediaHtml = `<div style="background:#f9fafb;padding:12px 14px 10px">`
-                + `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase"><span>Image Gallery</span><span>Wheel or swipe</span></div>`
-                + `<div data-gallery-track onwheel="event.stopPropagation();event.preventDefault();const delta=((event.deltaX||0)+(event.deltaY||0))*(event.deltaMode===1?16:1);this.scrollBy({left:delta,behavior:'auto'});return false;" style="display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:2px 0 6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin">${imgs}</div>`
+                + `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase"><span>Image Gallery</span><span id="${counterId}">1 / ${safeGallery.length}</span></div>`
+                + `<div style="position:relative">`
+                + `<button type="button" onclick="tourEngine.scrollInfoGallery('${trackId}','prev');event.stopPropagation()" aria-label="Previous image" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:2;width:44px;height:44px;border-radius:999px;border:1px solid rgba(255,255,255,.45);background:rgba(15,23,42,.78);color:white;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 12px 26px rgba(0,0,0,.32)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>`
+                + `<div id="${trackId}" data-gallery-track onscroll="tourEngine.updateInfoGalleryCounter('${trackId}','${counterId}')" onwheel="event.stopPropagation();event.preventDefault();const delta=((event.deltaX||0)+(event.deltaY||0))*(event.deltaMode===1?16:1);this.scrollBy({left:delta,behavior:'auto'});tourEngine.updateInfoGalleryCounter('${trackId}','${counterId}');return false;" style="display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:2px 0 6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin">${imgs}</div>`
+                + `<button type="button" onclick="tourEngine.scrollInfoGallery('${trackId}','next');event.stopPropagation()" aria-label="Next image" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:2;width:44px;height:44px;border-radius:999px;border:1px solid rgba(255,255,255,.45);background:rgba(15,23,42,.78);color:white;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 12px 26px rgba(0,0,0,.32)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button>`
+                + `</div>`
                 + `</div>`;
         } else if (safeMediaUrl) {
-            mediaHtml = `<div style="flex-shrink:0;overflow:hidden">`
-                + `<img class="pv-info-media-img" src="${safeMediaUrl}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? 'min(56vh,520px)' : '240px'};object-fit:cover" onerror="this.parentElement.style.display='none'" loading="lazy">`
+            mediaHtml = `<div style="position:relative;flex-shrink:0;overflow:hidden;background:#111827">`
+                + `<button type="button" onclick="tourEngine.openHotspotMediaLightbox(${hotspotArg},0);event.stopPropagation()" style="display:block;width:100%;border:0;background:transparent;padding:0;cursor:zoom-in">`
+                + `<img class="pv-info-media-img" src="${safeMediaUrl}" style="width:100%;display:block;max-height:${hasExpandedMediaCard ? 'min(56vh,520px)' : '240px'};object-fit:cover" onerror="this.closest('div').style.display='none'" loading="lazy">`
+                + `</button>`
+                + viewLargerButton
                 + `</div>`;
         }
 

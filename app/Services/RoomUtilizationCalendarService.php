@@ -257,7 +257,7 @@ class RoomUtilizationCalendarService
         return [
             'type' => 'room_state',
             'status' => $room->status,
-            'label' => $room->status === 'maintenance' ? 'Maintenance' : 'Inactive',
+            'label' => $room->status === 'maintenance' ? 'Out of Order' : 'Inactive',
             'slots' => max(1, (int) ($room->capacity ?? 1)),
             'color' => $room->status === 'maintenance' ? '#f59e0b' : '#6b7280',
             'url' => RoomResource::getUrl('edit', ['record' => $room]),
