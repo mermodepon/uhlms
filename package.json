@@ -2,19 +2,22 @@
     "private": true,
     "type": "module",
     "scripts": {
+        "audit:security": "npm audit --include=dev --audit-level=high",
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:browser-security": "playwright test --project=chromium"
     },
     "devDependencies": {
+        "@playwright/test": "^1.61.1",
         "@tailwindcss/forms": "^0.5.11",
         "@tailwindcss/typography": "^0.5.19",
         "autoprefixer": "^10.4.20",
         "axios": "^1.7.4",
-        "concurrently": "^9.0.1",
+        "concurrently": "^9.2.4",
         "laravel-vite-plugin": "^1.2.0",
         "postcss": "^8.4.47",
         "tailwindcss": "^3.4.13",
-        "vite": "^6.0.11"
+        "vite": "^6.4.3"
     },
     "dependencies": {
         "@photo-sphere-viewer/core": "^5.11.5",

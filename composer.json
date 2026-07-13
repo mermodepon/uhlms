@@ -9,7 +9,8 @@
         "php": "^8.2",
         "endroid/qr-code": "5.1",
         "filament/filament": "^3.2",
-        "laravel/framework": "^11.31",
+        "laravel/fortify": "^1.37.2",
+        "laravel/framework": "^12.61.1",
         "laravel/tinker": "^2.9",
         "phpoffice/phpspreadsheet": "^5.8",
         "saade/filament-fullcalendar": "^3.2",
@@ -55,11 +56,11 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,logs,vite"
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74\" \"php -d expose_php=Off artisan serve\" \"php -d expose_php=Off artisan queue:listen --tries=1\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,logs,vite"
         ],
         "tunnel": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd\" \"php artisan serve\" \"php artisan queue:listen --tries=1\" --names=server,queue"
+            "npx concurrently -c \"#93c5fd,#c4b5fd\" \"php -d expose_php=Off artisan serve\" \"php -d expose_php=Off artisan queue:listen --tries=1\" --names=server,queue"
         ],
         "prod:optimize": [
             "@php artisan config:cache",

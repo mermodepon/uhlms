@@ -8,6 +8,12 @@ echo ============================================
 echo   UH Lodging System — Production Deploy
 echo ============================================
 
+REM Fail before installation when the locked PHP graph has a known advisory.
+echo.
+echo [preflight] Auditing locked composer dependencies...
+call composer audit --locked --abandoned=report
+if %errorlevel% neq 0 goto :error
+
 REM 1. Install PHP dependencies (production-only, optimized autoloader)
 echo.
 echo [1/9] Installing composer dependencies...
@@ -58,7 +64,10 @@ call php artisan storage:link 2>nul
 REM 9. Build frontend assets
 echo.
 echo [9/9] Building frontend assets...
-call npm ci --production=false
+call npm ci --include=dev
+if %errorlevel% neq 0 goto :error
+call npm run audit:security
+if %errorlevel% neq 0 goto :error
 call npm run build
 if %errorlevel% neq 0 goto :error
 

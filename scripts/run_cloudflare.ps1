@@ -3,7 +3,8 @@ param(
     [string]$ProjectPath = 'd:\xampp\htdocs\MIS\uhlms',
     [string]$LocalUrl = 'http://127.0.0.1:8000',
     [string]$PublicUrl = '',
-    [int]$StartupTimeoutSeconds = 45
+    [int]$StartupTimeoutSeconds = 45,
+    [switch]$EnforceCsp
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +31,48 @@ function Get-UrlStatusCode {
         $parsed = 0
         if ([int]::TryParse(($status.Trim()), [ref]$parsed)) {
             return $parsed
+        }
+    } catch {
+    }
+
+    return $null
+}
+
+function Get-UrlRedirectProbe {
+    param([string]$Url)
+
+    try {
+        $result = & curl.exe -k -sS --max-time 10 -o NUL -w '%{http_code}|%{redirect_url}' $Url
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($result)) {
+            return $null
+        }
+
+        $parts = $result.Trim() -split '\|', 2
+        return [pscustomobject]@{
+            status_code  = [int]$parts[0]
+            redirect_url = if ($parts.Count -gt 1) { $parts[1] } else { '' }
+        }
+    } catch {
+        return $null
+    }
+}
+
+function Get-ResponseHeader {
+    param(
+        [string]$Url,
+        [string]$Name
+    )
+
+    try {
+        $headers = & curl.exe -k -sS -I --max-time 10 $Url
+        if ($LASTEXITCODE -ne 0) {
+            return $null
+        }
+
+        foreach ($line in $headers) {
+            if ($line -match "^$([regex]::Escape($Name)):\s*(.+)$") {
+                return $Matches[1].Trim()
+            }
         }
     } catch {
     }
@@ -131,24 +174,117 @@ function Get-EnvValueFromFile {
     return $value
 }
 
-function Update-AppUrl {
+function Set-EnvValue {
     param(
         [string]$EnvPath,
-        [string]$NewUrl,
-        [string]$ProjectRoot
+        [string]$Key,
+        [string]$Value
     )
 
     if (-not (Test-Path $EnvPath)) {
-        return
+        throw "Environment file not found: $EnvPath"
     }
 
     $content = Get-Content $EnvPath -Raw
-    $updated = [regex]::Replace($content, '(?m)^APP_URL=.*$', "APP_URL=$NewUrl")
+    $pattern = "(?m)^(?:\uFEFF)?$([regex]::Escape($Key))=.*$"
+    $line = "$Key=$Value"
+    $updated = if ([regex]::IsMatch($content, $pattern)) {
+        [regex]::Replace($content, $pattern, $line)
+    } else {
+        $content.TrimEnd() + [Environment]::NewLine + $line + [Environment]::NewLine
+    }
+
     if ($updated -ne $content) {
         Set-Content -Path $EnvPath -Value $updated -Encoding UTF8
     }
+}
 
-    & php artisan config:clear | Out-Null
+function Update-RuntimeEnvironment {
+    param(
+        [string]$EnvPath,
+        [string]$AppUrl,
+        [string]$TrustedHosts,
+        [string]$ProjectRoot,
+        [ValidateSet('report-only', 'enforce')]
+        [string]$CspMode
+    )
+
+    Set-EnvValue -EnvPath $EnvPath -Key 'APP_URL' -Value $AppUrl
+    Set-EnvValue -EnvPath $EnvPath -Key 'TRUSTED_HOSTS' -Value $TrustedHosts
+    Set-EnvValue -EnvPath $EnvPath -Key 'PUBLIC_HTTPS_ENFORCED' -Value 'true'
+    Set-EnvValue -EnvPath $EnvPath -Key 'CONTENT_SECURITY_POLICY_MODE' -Value $CspMode
+    Set-EnvValue -EnvPath $EnvPath -Key 'LOG_CHANNEL' -Value 'stack'
+    Set-EnvValue -EnvPath $EnvPath -Key 'LOG_STACK' -Value 'daily'
+    Set-EnvValue -EnvPath $EnvPath -Key 'LOG_LEVEL' -Value 'info'
+    Set-EnvValue -EnvPath $EnvPath -Key 'LOG_DAILY_DAYS' -Value '14'
+
+    Push-Location $ProjectRoot
+    try {
+        & php artisan config:clear | Out-Null
+        & php artisan view:clear | Out-Null
+    } finally {
+        Pop-Location
+    }
+
+    $savedAppUrl = Get-EnvValueFromFile -EnvPath $EnvPath -Key 'APP_URL'
+    $savedTrustedHosts = Get-EnvValueFromFile -EnvPath $EnvPath -Key 'TRUSTED_HOSTS'
+    $savedHttpsEnforced = Get-EnvValueFromFile -EnvPath $EnvPath -Key 'PUBLIC_HTTPS_ENFORCED'
+    $savedCspMode = Get-EnvValueFromFile -EnvPath $EnvPath -Key 'CONTENT_SECURITY_POLICY_MODE'
+    $savedLogChannel = Get-EnvValueFromFile -EnvPath $EnvPath -Key 'LOG_CHANNEL'
+    $savedLogStack = Get-EnvValueFromFile -EnvPath $EnvPath -Key 'LOG_STACK'
+    $savedLogLevel = Get-EnvValueFromFile -EnvPath $EnvPath -Key 'LOG_LEVEL'
+    $savedLogDailyDays = Get-EnvValueFromFile -EnvPath $EnvPath -Key 'LOG_DAILY_DAYS'
+    if (
+        $savedAppUrl -ne $AppUrl `
+        -or $savedTrustedHosts -ne $TrustedHosts `
+        -or $savedHttpsEnforced -ne 'true' `
+        -or $savedCspMode -ne $CspMode `
+        -or $savedLogChannel -ne 'stack' `
+        -or $savedLogStack -ne 'daily' `
+        -or $savedLogLevel -ne 'info' `
+        -or $savedLogDailyDays -ne '14'
+    ) {
+        throw 'Failed to verify canonical URL, trusted hosts, HTTPS/CSP, and safe logging settings after updating the environment.'
+    }
+}
+
+function Invoke-CspEnforcementChecks {
+    param([string]$ProjectRoot)
+
+    Push-Location $ProjectRoot
+    try {
+        & composer audit --locked --abandoned=report
+        if ($LASTEXITCODE -ne 0) {
+            throw 'The locked Composer dependency security audit failed; CSP enforcement was not enabled.'
+        }
+
+        & npm.cmd ci --include=dev
+        if ($LASTEXITCODE -ne 0) {
+            throw 'The clean frontend dependency install failed; CSP enforcement was not enabled.'
+        }
+
+        & npm.cmd run audit:security
+        if ($LASTEXITCODE -ne 0) {
+            throw 'The frontend dependency security audit failed; CSP enforcement was not enabled.'
+        }
+
+        & php artisan test
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Laravel tests failed; CSP enforcement was not enabled.'
+        }
+
+        & npm.cmd run build
+        if ($LASTEXITCODE -ne 0) {
+            throw 'The frontend production build failed; CSP enforcement was not enabled.'
+        }
+
+        & npm.cmd run test:browser-security
+        if ($LASTEXITCODE -ne 0) {
+            throw 'The Chromium security smoke suite failed; CSP enforcement was not enabled.'
+        }
+    } finally {
+        Pop-Location
+    }
 }
 
 function Stop-LegacyQuickTunnel {
@@ -313,7 +449,7 @@ function Ensure-QueueWorker {
     $workerOut = Join-Path $LogsRoot 'codex-queue-work.out.log'
     $workerErr = Join-Path $LogsRoot 'codex-queue-work.err.log'
     $process = Start-Process -FilePath 'php' `
-        -ArgumentList @('artisan', 'queue:work', 'database', '--queue=default', '--sleep=1', '--tries=3', '--timeout=120') `
+        -ArgumentList @('-d', 'expose_php=Off', 'artisan', 'queue:work', 'database', '--queue=default', '--sleep=1', '--tries=3', '--timeout=120') `
         -WorkingDirectory $ProjectRoot `
         -RedirectStandardOutput $workerOut `
         -RedirectStandardError $workerErr `
@@ -337,9 +473,6 @@ if (-not (Test-Path $logsDir)) {
 
 $envPath = Join-Path $ProjectPath '.env'
 if ([string]::IsNullOrWhiteSpace($PublicUrl)) {
-    $PublicUrl = Get-EnvValueFromFile -EnvPath $envPath -Key 'APP_URL'
-}
-if ([string]::IsNullOrWhiteSpace($PublicUrl)) {
     $PublicUrl = 'https://app.uhlms.uk'
 }
 
@@ -351,7 +484,21 @@ if (-not $mysqlUp.TcpTestSucceeded) {
     }
 }
 
+$targetCspMode = if ($EnforceCsp) { 'enforce' } else { 'report-only' }
+if ($EnforceCsp) {
+    Invoke-CspEnforcementChecks -ProjectRoot $ProjectPath
+}
+
 $lanIp = Get-LanIp
+$publicUri = [Uri]$PublicUrl
+if (-not $publicUri.IsAbsoluteUri -or $publicUri.Scheme -ne 'https' -or [string]::IsNullOrWhiteSpace($publicUri.Host)) {
+    throw 'Cloudflare PublicUrl must be an absolute HTTPS URL.'
+}
+$trustedHostValues = @($publicUri.Host, 'localhost', '127.0.0.1', '::1')
+if ($lanIp) {
+    $trustedHostValues += $lanIp
+}
+$trustedHosts = (($trustedHostValues | Select-Object -Unique) -join ',')
 $firewallReady = Ensure-FirewallRule
 
 $ngrok = Get-Process ngrok -ErrorAction SilentlyContinue
@@ -375,7 +522,7 @@ if (-not (Test-HttpOk -Url $LocalUrl)) {
     $laravelOut = Join-Path $logsDir 'codex-artisan-serve.out.log'
     $laravelErr = Join-Path $logsDir 'codex-artisan-serve.err.log'
     Start-Process -FilePath 'php' `
-        -ArgumentList @('artisan', 'serve', '--host=0.0.0.0', '--port=8000') `
+        -ArgumentList @('-d', 'expose_php=Off', 'artisan', 'serve', '--host=0.0.0.0', '--port=8000') `
         -WorkingDirectory $ProjectPath `
         -RedirectStandardOutput $laravelOut `
         -RedirectStandardError $laravelErr `
@@ -433,7 +580,7 @@ $http2ConnectorRunning = [bool]$http2Connector.running
 $http2ConnectorPid = $http2Connector.pid
 $http2ConnectorProtocol = $http2Connector.protocol
 
-Update-AppUrl -EnvPath $envPath -NewUrl $PublicUrl -ProjectRoot $ProjectPath
+Update-RuntimeEnvironment -EnvPath $envPath -AppUrl $PublicUrl -TrustedHosts $trustedHosts -ProjectRoot $ProjectPath -CspMode $targetCspMode
 
 $publicStatusCode = $null
 $startedAt = Get-Date
@@ -451,9 +598,65 @@ if ($publicStatusCode -and $publicStatusCode -ge 200 -and $publicStatusCode -lt 
     $publicReachable = $true
 }
 
+if (-not $publicReachable) {
+    throw "The Cloudflare hostname did not become reachable at $PublicUrl."
+}
+
+$publicHttpUrl = 'http://' + $publicUri.Host + $publicUri.PathAndQuery
+$publicHttpProbe = Get-UrlRedirectProbe -Url $publicHttpUrl
+$publicHttpRedirectOk = $publicHttpProbe `
+    -and $publicHttpProbe.status_code -in @(301, 302, 307, 308) `
+    -and $publicHttpProbe.redirect_url.StartsWith("https://$($publicUri.Host)", [System.StringComparison]::OrdinalIgnoreCase)
+if (-not $publicHttpRedirectOk) {
+    throw "Public HTTP did not redirect to HTTPS: $publicHttpUrl"
+}
+
+$hstsHeader = Get-ResponseHeader -Url $PublicUrl -Name 'Strict-Transport-Security'
+if ($hstsHeader -ne 'max-age=2592000') {
+    throw "The public HTTPS response has an unexpected Strict-Transport-Security value: $hstsHeader"
+}
+
+$cspReportOnlyHeader = Get-ResponseHeader -Url $PublicUrl -Name 'Content-Security-Policy-Report-Only'
+$cspEnforceHeader = Get-ResponseHeader -Url $PublicUrl -Name 'Content-Security-Policy'
+if ($targetCspMode -eq 'enforce') {
+    if ([string]::IsNullOrWhiteSpace($cspEnforceHeader) -or $cspEnforceHeader -notmatch "frame-ancestors 'none'") {
+        throw "The public HTTPS response is missing the enforcing CSP or frame-ancestors 'none': $PublicUrl"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($cspReportOnlyHeader)) {
+        throw "The public HTTPS response still contains a report-only CSP after enforcement: $PublicUrl"
+    }
+} else {
+    if ([string]::IsNullOrWhiteSpace($cspReportOnlyHeader) -or $cspReportOnlyHeader -notmatch "frame-ancestors 'none'") {
+        throw "The public HTTPS response is missing the report-only CSP or frame-ancestors 'none': $PublicUrl"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($cspEnforceHeader)) {
+        throw "The public HTTPS response unexpectedly contains an enforcing CSP: $PublicUrl"
+    }
+}
+
+$expectedHeaders = [ordered]@{
+    'X-Frame-Options' = 'DENY'
+    'X-Content-Type-Options' = 'nosniff'
+    'Referrer-Policy' = 'strict-origin-when-cross-origin'
+    'X-XSS-Protection' = '0'
+    'Permissions-Policy' = 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), display-capture=()'
+}
+foreach ($expectedHeader in $expectedHeaders.GetEnumerator()) {
+    $actualValue = Get-ResponseHeader -Url $PublicUrl -Name $expectedHeader.Key
+    if ($actualValue -ne $expectedHeader.Value) {
+        throw "The public HTTPS response has an unexpected $($expectedHeader.Key) value: $actualValue"
+    }
+}
+
+$poweredByHeader = Get-ResponseHeader -Url $PublicUrl -Name 'X-Powered-By'
+if (-not [string]::IsNullOrWhiteSpace($poweredByHeader)) {
+    throw "The public HTTPS response discloses X-Powered-By: $poweredByHeader"
+}
+
 $statePath = Join-Path $logsDir 'cloudflare-tunnel-state.json'
 $state = [pscustomobject]@{
     public_url                  = $PublicUrl
+    trusted_hosts               = $trustedHosts
     local_url                   = $LocalUrl
     updated_at                  = (Get-Date).ToString('o')
     cloudflared_path            = $cloudflaredPath
@@ -464,10 +667,23 @@ $state = [pscustomobject]@{
     cloudflared_http2_connector_pid = $http2ConnectorPid
     public_status_code          = $publicStatusCode
     public_reachable            = $publicReachable
+    public_http_status_code     = $publicHttpProbe.status_code
+    public_http_redirect_url    = $publicHttpProbe.redirect_url
+    public_http_redirect_ok     = $publicHttpRedirectOk
+    hsts_header                 = $hstsHeader
+    csp_mode                    = $targetCspMode
+    csp_report_only_present     = -not [string]::IsNullOrWhiteSpace($cspReportOnlyHeader)
+    csp_enforce_present         = -not [string]::IsNullOrWhiteSpace($cspEnforceHeader)
+    x_powered_by_present        = $false
+    public_https_enforced       = $true
     legacy_quick_tunnel_stopped = $legacyQuickTunnelStopped
     queue_connection            = $queueConnection
     queue_worker_running        = $queueWorkerRunning
     queue_worker_pid            = $queueWorkerPid
+    log_channel                 = 'stack'
+    log_stack                   = 'daily'
+    log_level                   = 'info'
+    log_daily_days              = 14
 }
 $state | ConvertTo-Json | Set-Content -Path $statePath -Encoding UTF8
 
@@ -480,8 +696,18 @@ Write-Output ([pscustomobject]@{
     local_url                   = $LocalUrl
     lan_url                     = $lanUrl
     public_url                  = $PublicUrl
+    trusted_hosts               = $trustedHosts
     public_status_code          = $publicStatusCode
     public_reachable            = $publicReachable
+    public_http_status_code     = $publicHttpProbe.status_code
+    public_http_redirect_url    = $publicHttpProbe.redirect_url
+    public_http_redirect_ok     = $publicHttpRedirectOk
+    hsts_header                 = $hstsHeader
+    csp_mode                    = $targetCspMode
+    csp_report_only_present     = -not [string]::IsNullOrWhiteSpace($cspReportOnlyHeader)
+    csp_enforce_present         = -not [string]::IsNullOrWhiteSpace($cspEnforceHeader)
+    x_powered_by_present        = $false
+    public_https_enforced       = $true
     cloudflared_path            = $cloudflaredPath
     cloudflared_service_name    = $serviceName
     cloudflared_service_status  = $serviceStatus
@@ -494,6 +720,10 @@ Write-Output ([pscustomobject]@{
     queue_worker_started        = $queueWorkerStarted
     queue_worker_running        = $queueWorkerRunning
     queue_worker_pid            = $queueWorkerPid
+    log_channel                 = 'stack'
+    log_stack                   = 'daily'
+    log_level                   = 'info'
+    log_daily_days              = 14
     laravel_started             = $laravelStarted
     firewall_ready              = $firewallReady
 } | ConvertTo-Json -Compress)

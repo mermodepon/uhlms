@@ -1,0 +1,89 @@
+name: Dependency security and framework compatibility
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: uhlms_testing
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --password=root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      APP_ENV: testing
+      APP_DEBUG: 'false'
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_URL: http://127.0.0.1:8010
+      BROWSER_DB_DATABASE: uhlms_testing
+      BROWSER_DB_HOST: 127.0.0.1
+      BROWSER_DB_PASSWORD: root
+      BROWSER_DB_PORT: 3306
+      BROWSER_DB_USERNAME: root
+      DB_CONNECTION: mysql
+      DB_DATABASE: uhlms_testing
+      DB_HOST: 127.0.0.1
+      DB_PASSWORD: root
+      DB_PORT: 3306
+      DB_USERNAME: root
+      MAIL_MAILER: array
+      QUEUE_CONNECTION: sync
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: '8.2'
+          tools: composer:2
+          coverage: none
+          extensions: intl, mbstring, pdo_mysql, sodium
+
+      - name: Audit locked Composer dependencies
+        run: composer audit --locked --abandoned=report
+
+      - name: Install locked Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked JavaScript dependencies safely
+        run: npm ci --include=dev --ignore-scripts
+
+      - name: Audit JavaScript dependencies
+        run: npm run audit:security
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build production assets
+        run: npm run build
+
+      - name: Run Laravel compatibility suite
+        run: php artisan test
+
+      - name: Run Chromium enforcing-CSP suite
+        run: npm run test:browser-security
