@@ -5,6 +5,7 @@ namespace App\Filament\Resources\VirtualTourResource\Pages;
 use App\Filament\Resources\VirtualTourResource;
 use App\Models\TourHotspot;
 use App\Models\TourWaypoint;
+use App\Models\User;
 use App\Support\MediaUrl;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
@@ -25,6 +26,16 @@ class ManageTourHotspots extends Page
 
     /** Temporary Livewire upload property */
     public $hotspotImageFile = null;
+
+    public static function canAccess(array $parameters = []): bool
+    {
+        return auth()->user()?->hasPermission(User::VIRTUAL_TOUR_VIEW) ?? false;
+    }
+
+    protected function authorizeManage(): void
+    {
+        abort_unless(auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE), 403);
+    }
 
     public function mount(int|string $record): void
     {
@@ -52,6 +63,8 @@ class ManageTourHotspots extends Page
      */
     public function uploadHotspotImage(): string
     {
+        $this->authorizeManage();
+
         $this->validate([
             'hotspotImageFile' => ['required', 'file', 'mimes:jpeg,jpg,png,webp,gif', 'max:2048'],
         ]);
@@ -77,6 +90,8 @@ class ManageTourHotspots extends Page
      */
     public function setDefaultView(int $waypointId, float $yaw, float $pitch, int $zoom): void
     {
+        $this->authorizeManage();
+
         $wp = TourWaypoint::findOrFail($waypointId);
         $wp->update([
             'default_yaw' => $yaw,
@@ -89,6 +104,8 @@ class ManageTourHotspots extends Page
 
     public function setRoomInfoPosition(int $waypointId, float $yaw, float $pitch): void
     {
+        $this->authorizeManage();
+
         $wp = TourWaypoint::findOrFail($waypointId);
         $wp->update([
             'room_info_yaw'   => $yaw,
@@ -102,7 +119,7 @@ class ManageTourHotspots extends Page
             'pitch'      => $pitch,
         ]);
 
-        Notification::make()->title('Room Info marker repositioned!')->success()->send();
+        Notification::make()->title('View Details and Request marker repositioned!')->success()->send();
     }
 
     /**
@@ -148,6 +165,8 @@ class ManageTourHotspots extends Page
         ?string $mediaUrl = null,
         int $size = 3,
     ): void {
+        $this->authorizeManage();
+
         $validated = $this->validateHotspotPayload([
             'waypoint_id' => $waypointId,
             'title' => $title,
@@ -205,6 +224,8 @@ class ManageTourHotspots extends Page
         ?string $mediaUrl = null,
         int $size = 3,
     ): void {
+        $this->authorizeManage();
+
         $hotspot = TourHotspot::findOrFail($hotspotId);
         $validated = $this->validateHotspotPayload([
             'waypoint_id' => $hotspot->waypoint_id,
@@ -249,6 +270,8 @@ class ManageTourHotspots extends Page
      */
     public function deleteHotspot(int $hotspotId): void
     {
+        $this->authorizeManage();
+
         TourHotspot::findOrFail($hotspotId)->delete();
         Notification::make()->title('Hotspot deleted')->success()->send();
         $this->dispatch('hotspots-updated');
@@ -260,6 +283,8 @@ class ManageTourHotspots extends Page
      */
     public function reorderHotspots(array $orderedIds): void
     {
+        $this->authorizeManage();
+
         foreach ($orderedIds as $order => $id) {
             TourHotspot::where('id', (int) $id)->update(['sort_order' => $order]);
         }
@@ -270,6 +295,8 @@ class ManageTourHotspots extends Page
      */
     public function reorderScenes(array $orderedIds): void
     {
+        $this->authorizeManage();
+
         $ids = collect($orderedIds)
             ->map(fn ($id) => (int) $id)
             ->filter()
@@ -452,7 +479,7 @@ class ManageTourHotspots extends Page
     }
 
     #[Computed]
-    public function waypointsJson(): string
+    public function waypointsData(): array
     {
         $waypoints = TourWaypoint::withCount('hotspots')
             ->orderBy('position_order')
@@ -477,14 +504,14 @@ class ManageTourHotspots extends Page
                 'room_info_pitch'     => $wp->room_info_pitch !== null ? (float) $wp->room_info_pitch : null,
             ]);
 
-        return $waypoints->toJson();
+        return $waypoints->values()->all();
     }
 
     #[Computed]
-    public function hotspotsJson(): string
+    public function hotspotsData(): array
     {
         $wp = $this->getActiveWaypoint();
-        if (!$wp) return '[]';
+        if (!$wp) return [];
 
         return $wp->hotspots->map(fn(TourHotspot $h) => [
             'id' => $h->id,
@@ -500,6 +527,6 @@ class ManageTourHotspots extends Page
             'sort_order' => $h->sort_order,
             'is_active' => (bool) $h->is_active,
             'size' => (int) ($h->size ?? 3),
-        ])->values()->toJson();
+        ])->values()->all();
     }
 }

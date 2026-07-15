@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\BackupUploadController;
+use App\Http\Controllers\AdminMfaController;
 use App\Http\Controllers\AlternativeRoomOfferController;
 use App\Http\Controllers\Guest\AuthController as GuestAuthController;
 use App\Http\Controllers\Guest\DashboardController as GuestDashboardController;
@@ -65,6 +66,9 @@ Route::prefix('account')->middleware('throttle:20,1')->group(function () {
         Route::put('/profile', [GuestProfileController::class, 'update'])->name('guest.account.profile.update');
         Route::get('/reservations', [GuestDashboardController::class, 'reservations'])->name('guest.account.reservations');
         Route::post('/reservations/claim', [GuestDashboardController::class, 'claim'])->name('guest.account.reservations.claim');
+        Route::get('/reservations/{reservation}/deposit-payment', [GuestDashboardController::class, 'startDepositPayment'])->name('guest.account.reservations.deposit-payment');
+        Route::get('/reservations/{reservation}/check-in-payment/qr', [QrCodeController::class, 'accountCheckInBalanceQr'])->name('guest.account.reservations.check-in-payment.qr');
+        Route::get('/reservations/{reservation}/check-in-payment', [QrCodeController::class, 'accountCheckInBalanceCheckout'])->name('guest.account.reservations.check-in-payment.checkout');
         Route::get('/reservations/{reservation}/feedback', [GuestFeedbackController::class, 'create'])->name('guest.account.feedback.create');
         Route::post('/reservations/{reservation}/feedback', [GuestFeedbackController::class, 'store'])->name('guest.account.feedback.store');
         Route::get('/reservations/{reservation}', [GuestDashboardController::class, 'showReservation'])->name('guest.account.reservations.show');
@@ -97,6 +101,9 @@ Route::prefix('reserve/pay')->middleware(['throttle:10,1'])->group(function () {
 });
 Route::get('/reserve/payment-success', [GuestPaymentController::class, 'paymentSuccess'])->name('guest.payment.success');
 Route::get('/reserve/payment-failed', [GuestPaymentController::class, 'paymentFailed'])->name('guest.payment.failed');
+Route::get('/reserve/check-in-payment/{token}/result', [GuestPaymentController::class, 'checkInBalancePaymentResult'])
+    ->middleware('throttle:20,1')
+    ->name('guest.check-in-payment.result');
 Route::get('/reserve/payment-qr/{token}', [QrCodeController::class, 'payment'])->name('guest.payment.qr');
 
 // PayMongo webhook endpoint (TESTING - must be excluded from CSRF)
@@ -108,6 +115,23 @@ Route::post('/api/webhooks/paymongo', [PaymentWebhookController::class, 'handle'
 Route::post('/admin/backup-upload', [BackupUploadController::class, 'upload'])
     ->middleware(['web', 'auth'])
     ->name('backup.upload');
+
+Route::prefix('admin')->group(function () {
+    Route::middleware('guest')->group(function () {
+        Route::get('/mfa-challenge', [AdminMfaController::class, 'challenge'])->name('admin.mfa.challenge');
+        Route::post('/mfa-challenge', [AdminMfaController::class, 'verifyChallenge'])->name('admin.mfa.challenge.verify');
+    });
+
+    Route::middleware('auth')->group(function () {
+        Route::get('/mfa-setup', [AdminMfaController::class, 'setup'])->name('admin.mfa.setup');
+        Route::post('/mfa-setup/enable', [AdminMfaController::class, 'enable'])->name('admin.mfa.enable');
+        Route::post('/mfa-setup/confirm', [AdminMfaController::class, 'confirm'])->name('admin.mfa.confirm');
+        Route::post('/mfa-setup/recovery-codes', [AdminMfaController::class, 'regenerate'])->name('admin.mfa.recovery-codes');
+        Route::delete('/mfa-setup', [AdminMfaController::class, 'disable'])->name('admin.mfa.disable');
+        Route::get('/mfa-confirm', [AdminMfaController::class, 'confirmRecent'])->name('admin.mfa.recent');
+        Route::post('/mfa-confirm', [AdminMfaController::class, 'verifyRecent'])->name('admin.mfa.recent.verify');
+    });
+});
 Route::get('/admin/qr-code', [QrCodeController::class, 'encrypted'])
     ->middleware(['web', 'auth'])
     ->name('admin.qr-code');

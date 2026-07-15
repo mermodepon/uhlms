@@ -9,8 +9,9 @@ use App\Models\ReservationPayment;
 use App\Models\Room;
 use App\Models\Service;
 use App\Models\Setting;
-use App\Services\PaymentGatewayService;
 use App\Services\CheckInService;
+use App\Services\PaymentGatewayService;
+use App\Support\PayMongoPaymentMetadata;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -821,6 +822,7 @@ class CheckInGuest extends Page
     public function createPayMongoBalanceCheckout(): void
     {
         $this->record->refresh();
+        app(\App\Services\ReservationAccountLinker::class)->link($this->record);
 
         if (! Setting::isOnlinePaymentsEnabled()) {
             Notification::make()
@@ -860,15 +862,16 @@ class CheckInGuest extends Page
         }
 
         try {
-            $returnUrl = $this->absoluteUrl(ReservationResource::getUrl('check-in', ['record' => $this->record]));
+            $guestResultToken = (string) Str::uuid();
+            $guestResultPath = route('guest.check-in-payment.result', ['token' => $guestResultToken], false);
             $checkoutSession = app(PaymentGatewayService::class)->createCheckoutSession(
                 $this->record,
                 $amount,
                 'checkin_balance',
                 null,
                 [
-                    'success' => $returnUrl,
-                    'cancel' => $returnUrl,
+                    'success' => $this->absoluteUrl($guestResultPath),
+                    'cancel' => $this->absoluteUrl($guestResultPath.'?cancelled=1'),
                 ]
             );
 
@@ -882,18 +885,23 @@ class CheckInGuest extends Page
                 'gateway_status' => 'pending',
                 'is_deposit' => false,
                 'status' => 'pending',
-                'gateway_metadata' => [
+                'gateway_metadata' => PayMongoPaymentMetadata::sanitize([
                     'checkout_session_created_at' => now()->toIso8601String(),
                     'checkout_session_id' => $checkoutSession['checkout_session_id'] ?? null,
                     'checkout_url' => $checkoutSession['checkout_url'] ?? null,
                     'checkout_payment_methods' => $checkoutSession['payment_method_types'] ?? [],
                     'payment_type' => 'checkin_balance',
+                    'guest_result_token' => $guestResultToken,
                     'reservation_id' => (string) $this->record->id,
                     'reservation_ref' => (string) $this->record->reference_number,
-                ],
+                ], 'pending'),
                 'meta' => [
                     'source' => 'checkin_balance',
                     'payment_type' => 'checkin_balance',
+                    // Keep the guest return token outside gateway metadata too.
+                    // Long-running webhook workers sanitize gateway metadata on
+                    // status updates, while this application-owned metadata is preserved.
+                    'guest_result_token' => $guestResultToken,
                 ],
             ]);
 
@@ -942,14 +950,14 @@ class CheckInGuest extends Page
         $pendingPayment->update([
             'gateway_status' => 'cancelled',
             'status' => 'cancelled',
-            'gateway_metadata' => array_merge(
-                $pendingPayment->gateway_metadata ?? [],
-                [
+            'gateway_metadata' => PayMongoPaymentMetadata::sanitize(
+                array_merge($pendingPayment->gateway_metadata ?? [], [
                     'cancelled_at' => now()->toIso8601String(),
                     'cancelled_by' => auth()->id(),
                     'cancellation_source' => 'checkin_staff_action',
                     'cancellation_reason' => 'Guest will pay manually at reception.',
-                ]
+                ]),
+                'cancelled',
             ),
             'meta' => array_merge(
                 $pendingPayment->meta ?? [],
@@ -1176,7 +1184,7 @@ class CheckInGuest extends Page
     {
         return Str::startsWith($url, ['http://', 'https://'])
             ? $url
-            : url($url);
+            : rtrim((string) config('app.url'), '/').'/'.ltrim($url, '/');
     }
 
     public function submit(): void

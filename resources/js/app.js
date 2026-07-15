@@ -1,2 +1,5 @@
 import './bootstrap';
-import './home-tour-preview';
+
+if (document.querySelector('[data-tour-preview]')) {
+    import('./home-tour-preview');
+}

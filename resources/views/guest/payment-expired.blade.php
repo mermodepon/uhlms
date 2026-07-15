@@ -2,14 +2,16 @@
 
 @section('title', 'Payment Link Expired')
 
-@section('content')
+@section('page-header')
     <section class="bg-gradient-to-r from-gray-600 to-gray-700 text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-bold mb-2">Payment Link Expired</h1>
             <p class="text-gray-100">This payment link is no longer valid</p>
         </div>
     </section>
+@endsection
 
+@section('content')
     <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div class="bg-white rounded-xl shadow-md p-8 text-center">
             <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -58,20 +60,23 @@
             </div>
 
             <div class="space-y-3">
-                <a href="{{ route('guest.home', [], false) }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
-                    Return to Homepage
-                </a>
+                @if($accountReservationUrl)
+                    <a href="{{ $accountReservationUrl }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
+                        Return to Reservation
+                    </a>
+                @else
+                    <a href="{{ route('guest.home', [], false) }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
+                        Return to Homepage
+                    </a>
+                @endif
                 @if($reservation)
-                    <a href="{{ route('guest.track', ['reference' => $reservation->reference_number, 'guest_email' => $reservation->guest_email], false) }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all ml-0 sm:ml-3">
+                    <a href="{{ $trackingUrl }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all ml-0 sm:ml-3">
                         Track Reservation
                     </a>
                 @endif
             </div>
 
-            <div class="mt-8 text-sm text-gray-600">
-                <p>Contact us:</p>
-                <p class="font-medium text-gray-900 mt-1">Email: support@uhlms.edu.ph | Phone: (123) 456-7890</p>
-            </div>
+            @include('guest.partials.support-contact', ['prompt' => 'Contact us:'])
         </div>
     </section>
 @endsection

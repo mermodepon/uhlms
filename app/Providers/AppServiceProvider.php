@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Http\Responses\AdminLoginResponse;
 use App\Models\Amenity;
 use App\Models\Floor;
 use App\Models\Reservation;
@@ -27,9 +28,12 @@ use App\Policies\UserPolicy;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\DateTimePicker;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Fortify\Fortify;
+use Filament\Http\Responses\Auth\Contracts\LoginResponse as LoginResponseContract;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,7 +42,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        Fortify::ignoreRoutes();
+        $this->app->singleton(LoginResponseContract::class, AdminLoginResponse::class);
     }
 
     /**
@@ -46,6 +51,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Add the request nonce while trusted Blade templates are compiled. This
+        // covers framework-owned inline scripts without rewriting rendered HTML.
+        Blade::prepareStringsForCompilationUsing(static function (string $value): string {
+            if (! str_contains(strtolower($value), '<script')) {
+                return $value;
+            }
+
+            return preg_replace(
+                '/<script\b(?![^\r\n]*csp_nonce)(?![^>]*\bnonce\s*=)([^>]*)>/i',
+                '<script @if(request()->attributes->get(\'csp_nonce\')) nonce="{{ request()->attributes->get(\'csp_nonce\') }}" @endif$1>',
+                $value,
+            ) ?? $value;
+        });
+
         // Production Eloquent optimizations
         // Prevent lazy loading in non-production to catch N+1 queries early;
         // log violations silently in production instead of crashing.

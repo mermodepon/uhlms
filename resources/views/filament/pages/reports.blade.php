@@ -324,9 +324,8 @@
 
             {{-- Charts Row --}}
             @php
-                $statusColors = ['pending' => '#F59E0B', 'approved' => '#919F02', 'confirmed' => '#10B981', 'declined' => '#EF4444', 'cancelled' => '#6B7280', 'checked_in' => '#059669', 'checked_out' => '#6366F1'];
-                $statusLabels = array_values(array_map(fn($s) => ucwords(str_replace('_', ' ', $s)), array_keys($data['by_status'])));
-                $statusBgColors = array_values(array_map(fn($s) => $statusColors[$s] ?? '#6B7280', array_keys($data['by_status'])));
+                $statusLabels = array_values(array_map(fn($s) => \App\Models\Reservation::statusPresentation($s)['label'], array_keys($data['by_status'])));
+                $statusBgColors = array_values(array_map(fn($s) => \App\Models\Reservation::statusPresentation($s)['hex'], array_keys($data['by_status'])));
                 $purposeLabels = array_values(array_map(fn($s) => ucwords($s), array_keys($data['by_purpose'])));
 
                 $chartStatusDoughnut = json_encode([
@@ -364,7 +363,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 280px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartStatusDoughnut !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartStatusDoughnut, true)) !!}</script>
                     </div>
                     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
                         <div class="flex items-center justify-between mb-4">
@@ -375,7 +374,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 280px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartPurposeBar !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartPurposeBar, true)) !!}</script>
                     </div>
                 </div>
                 <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
@@ -387,7 +386,7 @@
                         </button>
                     </div>
                     <div style="position: relative; height: 280px;"><canvas></canvas></div>
-                    <script type="application/json" data-chart>{!! $chartRoomTypeBar !!}</script>
+                    <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartRoomTypeBar, true)) !!}</script>
                 </div>
             </div>
         @endif
@@ -495,7 +494,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 320px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartGenderGrouped !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartGenderGrouped, true)) !!}</script>
                     </div>
                     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
                         <div class="flex items-center justify-between mb-4">
@@ -506,7 +505,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 320px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartOriginShare !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartOriginShare, true)) !!}</script>
                     </div>
                 </div>
             </div>
@@ -577,6 +576,11 @@
         {{-- Feedback Analytics Report --}}
         @if(($data['type'] ?? '') === 'feedback_analytics')
             @php
+                // CMU-inspired chart palette: varied enough for comparison while
+                // retaining the established green, gold, olive, and warm accents.
+                $feedbackRatingPalette = ['#B91C1C', '#D97706', '#E3A008', '#7A8F19', '#005A2B'];
+                $feedbackCategoryPalette = ['#00491E', '#087F5B', '#0F766E', '#919F02', '#D6A800'];
+
                 $chartRatingDistribution = json_encode([
                     'type' => 'bar',
                     'data' => [
@@ -584,7 +588,9 @@
                         'datasets' => [[
                             'label' => 'Feedback',
                             'data' => array_values($data['rating_distribution']),
-                            'backgroundColor' => ['#EF4444', '#F97316', '#F59E0B', '#919F02', '#00491E'],
+                            'backgroundColor' => $feedbackRatingPalette,
+                            'borderColor' => ['#991B1B', '#B45309', '#B77900', '#667514', '#003D19'],
+                            'borderWidth' => 1,
                             'borderRadius' => 6,
                         ]],
                     ],
@@ -606,7 +612,9 @@
                         'datasets' => [[
                             'label' => 'Average Rating',
                             'data' => array_column($data['category_rows'], 'average'),
-                            'backgroundColor' => '#00491E',
+                            'backgroundColor' => $feedbackCategoryPalette,
+                            'borderColor' => ['#003D19', '#066647', '#0B5F59', '#758001', '#AD8900'],
+                            'borderWidth' => 1,
                             'borderRadius' => 6,
                         ]],
                     ],
@@ -706,7 +714,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 300px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartRatingDistribution !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartRatingDistribution, true)) !!}</script>
                     </div>
                     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
                         <div class="flex items-center justify-between mb-4">
@@ -717,7 +725,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 300px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartCategoryAverages !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartCategoryAverages, true)) !!}</script>
                     </div>
                     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
                         <div class="flex items-center justify-between mb-4">
@@ -728,7 +736,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 300px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartStayAgain !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartStayAgain, true)) !!}</script>
                     </div>
                     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
                         <div class="flex items-center justify-between mb-4">
@@ -739,7 +747,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 300px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartRatingTrend !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartRatingTrend, true)) !!}</script>
                     </div>
                 </div>
             </div>
@@ -978,7 +986,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 300px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartOccLine !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartOccLine, true)) !!}</script>
                     </div>
                     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
                         <div class="flex items-center justify-between mb-4">
@@ -989,7 +997,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 300px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartRoomStatusDoughnut !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartRoomStatusDoughnut, true)) !!}</script>
                     </div>
                 </div>
             </div>
@@ -1165,7 +1173,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 300px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartUtilBar !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartUtilBar, true)) !!}</script>
                     </div>
                     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 chart-container" x-data x-init="$nextTick(() => CMUCharts.init($el))">
                         <div class="flex items-center justify-between mb-4">
@@ -1176,7 +1184,7 @@
                             </button>
                         </div>
                         <div style="position: relative; height: 300px;"><canvas></canvas></div>
-                        <script type="application/json" data-chart>{!! $chartStaysPie !!}</script>
+                        <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif type="application/json" data-chart>{!! \Illuminate\Support\Js::encode(json_decode($chartStaysPie, true)) !!}</script>
                     </div>
                 </div>
             </div>

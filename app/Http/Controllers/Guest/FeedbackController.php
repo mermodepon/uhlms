@@ -49,6 +49,8 @@ class FeedbackController extends Controller
             'booking_experience_rating' => $ratingRule,
             'would_stay_again' => ['nullable', Rule::in(['1', '0'])],
             'comments' => ['nullable', 'string', 'max:2000'],
+            'public_display_consent' => ['nullable', 'boolean'],
+            'public_display_room_type' => ['nullable', 'boolean'],
         ]);
 
         $reservation->feedback()->create([
@@ -57,6 +59,8 @@ class FeedbackController extends Controller
             'would_stay_again' => array_key_exists('would_stay_again', $data) ? (bool) $data['would_stay_again'] : null,
             'status' => 'new',
             'visibility_status' => 'internal',
+            'public_display_consent' => (bool) ($data['public_display_consent'] ?? false),
+            'public_display_room_type' => (bool) ($data['public_display_consent'] ?? false) && (bool) ($data['public_display_room_type'] ?? false),
             'submitted_at' => now(),
         ]);
 

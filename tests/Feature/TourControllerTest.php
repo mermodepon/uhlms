@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Floor;
+use App\Models\GuestAccount;
 use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
+use App\Models\TourWaypoint;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -63,6 +65,93 @@ class TourControllerTest extends TestCase
             'email' => 'tour-staff-'.uniqid().'@example.com',
             'password' => bcrypt('password'),
             'role' => 'staff',
+        ]);
+    }
+
+    private function createGuestAccount(array $overrides = []): GuestAccount
+    {
+        return GuestAccount::create(array_merge([
+            'first_name' => 'Tour',
+            'last_name' => 'Account',
+            'email' => 'tour-account-'.uniqid().'@example.com',
+            'phone' => '09171234567',
+            'age' => 27,
+            'gender' => 'Other',
+            'address' => 'Musuan, Maramag, Bukidnon',
+            'password' => 'password',
+            'email_verified_at' => now(),
+        ], $overrides));
+    }
+
+    private function createActiveWaypoint(): void
+    {
+        TourWaypoint::create([
+            'name' => 'Tour Test Scene '.uniqid(),
+            'type' => 'common-area',
+            'panorama_image' => 'virtual-tour/panoramas/test.jpg',
+            'position_order' => 1,
+            'is_active' => true,
+        ]);
+    }
+
+    public function test_virtual_tour_prefills_the_authenticated_guest_profile(): void
+    {
+        $account = $this->createGuestAccount();
+        $this->createActiveWaypoint();
+
+        $this->actingAs($account, 'guest')
+            ->get(route('guest.tour.viewer'))
+            ->assertOk()
+            ->assertSee('name="guest_first_name" value="Tour"', false)
+            ->assertSee('name="guest_last_name" value="Account"', false)
+            ->assertSee('name="guest_email" value="'.$account->email.'"', false)
+            ->assertSee('name="guest_phone" value="09171234567"', false)
+            ->assertSee('name="guest_age" value="27"', false)
+            ->assertSee('<option value="Other" selected', false)
+            ->assertSee('Musuan, Maramag, Bukidnon');
+    }
+
+    public function test_virtual_tour_leaves_personal_fields_blank_for_visitors(): void
+    {
+        $this->createActiveWaypoint();
+
+        $this->get(route('guest.tour.viewer'))
+            ->assertOk()
+            ->assertSee('name="guest_first_name" value=""', false)
+            ->assertSee('name="guest_email" value=""', false)
+            ->assertDontSee('<option value="Male" selected', false)
+            ->assertDontSee('<option value="Female" selected', false)
+            ->assertDontSee('<option value="Other" selected', false);
+    }
+
+    public function test_virtual_tour_reservation_with_an_edited_email_is_not_linked_to_the_guest_account(): void
+    {
+        $this->withoutMiddleware(\Spatie\Honeypot\ProtectAgainstSpam::class);
+        $account = $this->createGuestAccount();
+        $roomType = $this->createRoomType();
+        $this->createRoom($roomType);
+
+        $this->actingAs($account, 'guest')
+            ->postJson(route('api.tour.reserve'), [
+                'guest_first_name' => 'Other',
+                'guest_last_name' => 'Guest',
+                'guest_email' => 'other-guest@example.com',
+                'guest_phone' => '09179876543',
+                'guest_age' => 30,
+                'guest_gender' => 'Female',
+                'preferred_room_type_id' => $roomType->id,
+                'check_in_date' => now()->addDay()->toDateString(),
+                'check_out_date' => now()->addDays(3)->toDateString(),
+                'number_of_occupants' => 1,
+                'source' => 'virtual_tour',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('reservations', [
+            'guest_email' => 'other-guest@example.com',
+            'guest_first_name' => 'Other',
+            'guest_account_id' => null,
         ]);
     }
 

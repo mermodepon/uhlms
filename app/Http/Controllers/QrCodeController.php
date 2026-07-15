@@ -16,6 +16,18 @@ use Illuminate\Support\Facades\Crypt;
 
 class QrCodeController extends Controller
 {
+    public function accountCheckInBalanceQr(Request $request, Reservation $reservation)
+    {
+        $checkoutUrl = $this->accountCheckInBalanceCheckoutUrl($request, $reservation);
+
+        return $this->svgResponse($checkoutUrl);
+    }
+
+    public function accountCheckInBalanceCheckout(Request $request, Reservation $reservation)
+    {
+        return redirect()->away($this->accountCheckInBalanceCheckoutUrl($request, $reservation));
+    }
+
     public function payment(string $token)
     {
         if (! Setting::isOnlinePaymentsEnabled()) {
@@ -78,5 +90,43 @@ class QrCodeController extends Controller
         return response($result->getString(), 200)
             ->header('Content-Type', 'image/svg+xml')
             ->header('Cache-Control', 'private, no-store, max-age=0');
+    }
+
+    private function accountCheckInBalanceCheckoutUrl(Request $request, Reservation $reservation): string
+    {
+        $account = $request->user('guest');
+
+        abort_unless(
+            $account
+                && $account->hasVerifiedEmail()
+                && (int) $reservation->guest_account_id === (int) $account->id,
+            403,
+        );
+
+        if (! Setting::isOnlinePaymentsEnabled()) {
+            abort(404);
+        }
+
+        $payment = $reservation->payments()
+            ->where('gateway', 'paymongo')
+            ->where('is_deposit', false)
+            ->where('gateway_status', 'pending')
+            ->where('status', 'pending')
+            ->where('meta->source', 'checkin_balance')
+            ->latest('id')
+            ->first();
+
+        $checkoutUrl = $payment ? data_get($payment->gateway_metadata, 'checkout_url') : null;
+
+        if (! is_string($checkoutUrl) || ! filter_var($checkoutUrl, FILTER_VALIDATE_URL)) {
+            abort(404);
+        }
+
+        $scheme = parse_url($checkoutUrl, PHP_URL_SCHEME);
+        if (! in_array($scheme, ['http', 'https'], true)) {
+            abort(404);
+        }
+
+        return $checkoutUrl;
     }
 }

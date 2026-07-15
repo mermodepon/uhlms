@@ -70,6 +70,22 @@
                 @error('comments') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
             </div>
 
+            <label class="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <input type="checkbox" name="public_display_consent" value="1" @checked(old('public_display_consent')) class="mt-1 rounded border-gray-300 text-[#00491E] focus:ring-[#00491E]">
+                    <span>
+                    <span class="block text-sm font-semibold text-gray-800">Allow my written feedback to be considered for public display</span>
+                    <span class="mt-1 block text-xs text-gray-600">Staff must review and approve it first. It will be attributed only to “Verified guest.” Your name, email, reservation number, and other personal details remain private.</span>
+                </span>
+            </label>
+
+            <label class="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <input type="checkbox" name="public_display_room_type" value="1" @checked(old('public_display_room_type')) class="mt-1 rounded border-gray-300 text-[#00491E] focus:ring-[#00491E]">
+                <span>
+                    <span class="block text-sm font-semibold text-gray-800">Also allow my room type to be shown</span>
+                    <span class="mt-1 block text-xs text-gray-600">This is optional and applies only if your feedback is selected for public display and your stay used one room type. Your room number and stay dates will remain private.</span>
+                </span>
+            </label>
+
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <a href="{{ route('guest.account.reservations.show', $reservation, false) }}" class="inline-flex rounded-lg bg-gray-200 px-5 py-3 font-bold text-gray-800">Cancel</a>
                 <button class="rounded-lg bg-[#00491E] px-5 py-3 font-bold text-white hover:bg-[#02681E]">Submit Feedback</button>

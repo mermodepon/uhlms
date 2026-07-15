@@ -2,20 +2,29 @@
 
 namespace App\Jobs;
 
+use App\Mail\GuestAccountInvitationMail;
+use App\Models\PaymentWebhookEvent;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\ReservationPayment;
 use App\Notifications\NotificationHelper;
 use App\Services\ReservationWorkflowService;
+use App\Services\ReservationAccountLinker;
+use App\Support\PayMongoPaymentMetadata;
+use App\Support\PayMongoWebhookData;
+use App\Support\SecurityMonitor;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
-class ProcessPaymentWebhook implements ShouldQueue
+class ProcessPaymentWebhook implements ShouldBeEncrypted, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -35,17 +44,23 @@ class ProcessPaymentWebhook implements ShouldQueue
 
     /**
      * Webhook payload data.
-     *
-     * @var array
      */
     protected array $webhookData;
 
     /**
+     * Nullable so jobs serialized before event receipts were introduced remain usable.
+     */
+    protected ?int $webhookEventRecordId = null;
+
+    protected ?string $processingFailureReason = null;
+
+    /**
      * Create a new job instance.
      */
-    public function __construct(array $webhookData)
+    public function __construct(array $webhookData, ?int $webhookEventRecordId = null)
     {
-        $this->webhookData = $webhookData;
+        $this->webhookData = PayMongoWebhookData::forQueue($webhookData);
+        $this->webhookEventRecordId = $webhookEventRecordId;
     }
 
     /**
@@ -53,42 +68,54 @@ class ProcessPaymentWebhook implements ShouldQueue
      */
     public function handle(): void
     {
+        $this->markReceiptProcessing();
+
         try {
-            // Extract event type
-            $eventType = $this->webhookData['data']['attributes']['type'] ?? null;
-            $eventData = $this->webhookData['data']['attributes']['data'] ?? null;
+            // Re-normalizing also keeps jobs serialized before this deployment executable.
+            $event = PayMongoWebhookData::forQueue($this->webhookData);
+            $eventId = $event['event_id'] ?? null;
+            $eventType = $event['event_type'] ?? null;
+            $eventData = $event['resource'] ?? null;
 
             if (! $eventData) {
-                Log::error('Invalid webhook payload: missing event data', ['webhook' => $this->webhookData]);
+                Log::error('Invalid webhook payload: missing event data', [
+                    'receipt_id' => $this->webhookEventRecordId,
+                    'event_type' => $eventType,
+                ]);
+                $this->markReceiptFailed('Webhook payload is missing event data.');
 
                 return;
             }
 
-            // Handle source.chargeable events (e-wallet payments)
-            if ($eventType === 'source.chargeable') {
-                $this->handleSourceChargeable($eventData);
+            $processed = match ($eventType) {
+                'source.chargeable' => $this->handleSourceChargeable($eventData, $eventId),
+                'payment.paid' => $this->handlePaymentPaid($eventData, $eventId),
+                'checkout_session.payment.paid' => $this->handleCheckoutSessionPaid($eventData, $eventId),
+                default => null,
+            };
+
+            if ($processed === null) {
+                Log::info('Unhandled webhook event type', ['type' => $eventType]);
+                $this->markReceiptIgnored();
 
                 return;
             }
 
-            // Handle payment.paid events (direct payments or after source charge)
-            if ($eventType === 'payment.paid') {
-                $this->handlePaymentPaid($eventData);
+            if (! $processed) {
+                $this->markReceiptFailed(
+                    $this->processingFailureReason ?? 'Webhook event could not be processed.',
+                );
 
                 return;
             }
 
-            if ($eventType === 'checkout_session.payment.paid') {
-                $this->handleCheckoutSessionPaid($eventData);
-
-                return;
-            }
-
-            Log::info('Unhandled webhook event type', ['type' => $eventType]);
-        } catch (\Exception $e) {
-            Log::error('Webhook processing failed', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+            $this->markReceiptProcessed();
+        } catch (\Throwable $e) {
+            $this->markReceiptRetrying($this->safeExceptionMessage($e));
+            Log::error('Webhook processing attempt failed', [
+                'receipt_id' => $this->webhookEventRecordId,
+                'event_type' => $eventType ?? null,
+                'error_type' => class_basename($e),
             ]);
 
             throw $e;
@@ -99,118 +126,95 @@ class ProcessPaymentWebhook implements ShouldQueue
      * Handle source.chargeable webhook event.
      * This occurs when a user completes payment via e-wallet (GCash, Maya, etc.).
      */
-    protected function handleSourceChargeable(array $sourceData): void
+    protected function handleSourceChargeable(array $sourceData, ?string $eventId = null): bool
     {
         $sourceId = $sourceData['id'] ?? null;
-        $sourceAttributes = $sourceData['attributes'] ?? [];
-        $amount = $sourceAttributes['amount'] ?? null;
+        $amount = $sourceData['amount'] ?? null;
 
         if (! $sourceId || ! $amount) {
+            $this->processingFailureReason = 'Source chargeable event is missing its source ID or amount.';
             Log::error('Source chargeable event missing required data', [
-                'source_id' => $sourceId,
-                'amount' => $amount,
+                'receipt_id' => $this->webhookEventRecordId,
             ]);
 
-            return;
+            return false;
         }
-
-        Log::info('Processing source.chargeable event', [
-            'source_id' => $sourceId,
-            'amount' => $amount,
-        ]);
 
         // Create a Payment from the chargeable Source
         $gatewayService = app(\App\Services\PaymentGatewayService::class);
+        $paymentData = $gatewayService->createPaymentFromSource($sourceId, $amount);
 
-        try {
-            $paymentData = $gatewayService->createPaymentFromSource($sourceId, $amount);
-
-            // Now process this payment as a payment.paid event
-            $this->handlePaymentPaid($paymentData);
-        } catch (\Exception $e) {
-            Log::error('Failed to create payment from source', [
-                'source_id' => $sourceId,
-                'error' => $e->getMessage(),
-            ]);
-
-            throw $e;
-        }
+        // The API response is normalized before any persistence or logging.
+        return $this->handlePaymentPaid(PayMongoWebhookData::payment($paymentData), $eventId);
     }
 
     /**
      * Handle checkout_session.payment.paid webhook event.
      */
-    protected function handleCheckoutSessionPaid(array $checkoutSessionData): void
+    protected function handleCheckoutSessionPaid(array $checkoutSessionData, ?string $eventId = null): bool
     {
-        $checkoutAttributes = $checkoutSessionData['attributes'] ?? [];
-        $payments = $checkoutAttributes['payments'] ?? [];
-        $paymentData = $payments[0] ?? null;
+        $paymentData = $checkoutSessionData['payment'] ?? null;
 
         if (! is_array($paymentData)) {
+            $this->processingFailureReason = 'Checkout session event is missing its payment payload.';
             Log::warning('Checkout session payment webhook missing payment payload', [
-                'checkout_session_id' => $checkoutSessionData['id'] ?? null,
+                'receipt_id' => $this->webhookEventRecordId,
             ]);
 
-            return;
+            return false;
         }
 
-        $paymentData['attributes']['metadata'] = array_merge(
-            $checkoutAttributes['metadata'] ?? [],
-            $paymentData['attributes']['metadata'] ?? []
+        $paymentData['metadata'] = array_merge(
+            $checkoutSessionData['metadata'] ?? [],
+            $paymentData['metadata'] ?? [],
         );
 
-        $paymentData['attributes']['checkout_session_id'] = $checkoutSessionData['id'] ?? null;
+        $paymentData['checkout_session_id'] = $checkoutSessionData['id'] ?? null;
 
-        $this->handlePaymentPaid($paymentData);
+        return $this->handlePaymentPaid($paymentData, $eventId);
     }
 
     /**
      * Handle payment.paid webhook event.
      */
-    protected function handlePaymentPaid(array $paymentData): void
+    protected function handlePaymentPaid(array $paymentData, ?string $eventId = null): bool
     {
-        try {
-            $paymentId = $paymentData['id'] ?? null;
-            $paymentStatus = $paymentData['attributes']['status'] ?? null;
-            $paymentAmount = ($paymentData['attributes']['amount'] ?? 0) / 100; // Convert centavos to PHP
-            $paymentIntentId = $paymentData['attributes']['payment_intent_id'] ?? null;
-            $checkoutSessionId = $paymentData['attributes']['checkout_session_id'] ?? null;
+        $paymentId = $paymentData['id'] ?? null;
+        $paymentAmount = ($paymentData['amount'] ?? 0) / 100; // Convert centavos to PHP
+        $paymentIntentId = $paymentData['payment_intent_id'] ?? null;
+        $checkoutSessionId = $paymentData['checkout_session_id'] ?? null;
+        $sourceData = is_array($paymentData['source'] ?? null) ? $paymentData['source'] : [];
+        $metadata = is_array($paymentData['metadata'] ?? null) ? $paymentData['metadata'] : [];
+        $reservationId = $metadata['reservation_id'] ?? null;
 
-            // Extract reservation ID from source metadata or payment attributes
-            $sourceData = $paymentData['attributes']['source'] ?? [];
-            $sourceAttributes = $sourceData['attributes'] ?? [];
-            $metadata = $sourceAttributes['metadata'] ?? [];
-            if (empty($metadata)) {
-                $metadata = $sourceData['metadata'] ?? [];
-            }
-            if (empty($metadata)) {
-                $metadata = $paymentData['attributes']['metadata'] ?? [];
-            }
-            $reservationId = $metadata['reservation_id'] ?? null;
+        if (! $paymentId || ! $reservationId) {
+            $this->processingFailureReason = 'Payment event is missing its payment ID or reservation ID.';
+            Log::error('Payment event missing payment_id or reservation_id', [
+                'receipt_id' => $this->webhookEventRecordId,
+            ]);
 
-            if (! $paymentId || ! $reservationId) {
-                Log::error('Payment event missing payment_id or reservation_id', [
-                    'payment_id' => $paymentId,
-                    'metadata' => $metadata,
-                ]);
+            return false;
+        }
 
-                return;
-            }
+        // Find the reservation
+        $reservation = Reservation::find($reservationId);
 
-            // Find the reservation
-            $reservation = Reservation::find($reservationId);
+        if (! $reservation) {
+            $this->processingFailureReason = 'The reservation referenced by the payment event was not found.';
+            Log::error('Reservation not found for webhook', [
+                'reservation_id' => $reservationId,
+                'receipt_id' => $this->webhookEventRecordId,
+            ]);
 
-            if (! $reservation) {
-                Log::error('Reservation not found for webhook', [
-                    'reservation_id' => $reservationId,
-                    'payment_id' => $paymentId,
-                ]);
+            return false;
+        }
 
-                return;
-            }
+        $shouldSendAccountInvitation = false;
+        $invitationReservation = null;
+        $invitationPayment = null;
 
-            // Process payment within transaction
-            DB::transaction(function () use ($paymentId, $paymentStatus, $paymentAmount, $paymentIntentId, $checkoutSessionId, $reservation, $paymentData, $sourceData, $sourceAttributes) {
+        // Process payment within transaction
+        $processed = DB::transaction(function () use ($paymentId, $paymentAmount, $paymentIntentId, $checkoutSessionId, $reservation, $sourceData, $metadata, $eventId, &$shouldSendAccountInvitation, &$invitationReservation, &$invitationPayment): bool {
             $sourceId = $sourceData['id'] ?? null;
             $gatewaySourceId = $sourceId ?: $checkoutSessionId;
 
@@ -231,16 +235,15 @@ class ProcessPaymentWebhook implements ShouldQueue
 
             if ($existingPayment && $existingPayment->gateway_status === 'paid') {
                 Log::info('Payment already processed (duplicate webhook)', [
-                    'payment_id' => $paymentId,
-                    'source_id' => $sourceId,
+                    'receipt_id' => $this->webhookEventRecordId,
                     'reservation_id' => $reservation->id,
                 ]);
 
-                return;
+                return true;
             }
 
             // Detect payment method from source type
-            $sourceType = $sourceAttributes['type'] ?? $sourceData['type'] ?? 'unknown';
+            $sourceType = $sourceData['type'] ?? 'unknown';
             $paymentMethod = match ($sourceType) {
                 'gcash' => 'GCash',
                 'paymaya' => 'Maya',
@@ -252,7 +255,7 @@ class ProcessPaymentWebhook implements ShouldQueue
             };
 
             // Detect payment type from metadata
-            $paymentMetadata = $paymentData['attributes']['metadata'] ?? [];
+            $paymentMetadata = $metadata;
             $isDeposit = ($paymentMetadata['payment_type'] ?? 'deposit') === 'deposit';
             $wasCancelledBeforePayment = $existingPayment?->gateway_status === 'cancelled'
                 || $existingPayment?->status === 'cancelled';
@@ -272,16 +275,16 @@ class ProcessPaymentWebhook implements ShouldQueue
                     'reference_no' => $existingPayment->reference_no ?: "PM-{$paymentId}",
                     'or_date' => $existingPayment->or_date ?: now()->toDateString(),
                     'received_at' => $existingPayment->received_at ?: now(),
-                    'gateway_metadata' => array_merge(
-                        $existingPayment->gateway_metadata ?? [],
-                        [
+                    'gateway_metadata' => PayMongoPaymentMetadata::sanitize(
+                        array_merge($existingPayment->gateway_metadata ?? [], [
                             'webhook_received_at' => now()->toIso8601String(),
+                            'webhook_event_id' => $eventId,
                             'payment_intent_id' => $paymentIntentId,
                             'checkout_session_id' => $checkoutSessionId,
+                            'payment_type' => $paymentMetadata['payment_type'] ?? null,
                             'paid_after_staff_cancellation' => $wasCancelledBeforePayment,
-                            'payment_data' => $paymentData,
-                            'source_data' => $sourceData,
-                        ]
+                        ]),
+                        'paid',
                     ),
                 ]);
 
@@ -301,13 +304,13 @@ class ProcessPaymentWebhook implements ShouldQueue
                     'received_at' => now(),
                     'reference_no' => "PM-{$paymentId}",
                     'or_date' => now()->toDateString(),
-                    'gateway_metadata' => [
+                    'gateway_metadata' => PayMongoPaymentMetadata::sanitize([
                         'webhook_received_at' => now()->toIso8601String(),
+                        'webhook_event_id' => $eventId,
                         'payment_intent_id' => $paymentIntentId,
                         'checkout_session_id' => $checkoutSessionId,
-                        'payment_data' => $paymentData,
-                        'source_data' => $sourceData,
-                    ],
+                        'payment_type' => $paymentMetadata['payment_type'] ?? null,
+                    ], 'paid'),
                     'meta' => [
                         'source' => 'online_payment_webhook',
                         'payment_type' => $paymentMetadata['payment_type'] ?? ($isDeposit ? 'deposit' : 'full'),
@@ -315,69 +318,158 @@ class ProcessPaymentWebhook implements ShouldQueue
                 ]);
             }
 
-                $reservation = app(ReservationWorkflowService::class)
-                    ->markConfirmedFromOnlinePayment($reservation);
+            $reservation = app(ReservationWorkflowService::class)
+                ->markConfirmedFromOnlinePayment($reservation);
 
-                // Refresh financial summary
-                $reservation->refreshFinancialSummary();
+            $linker = app(ReservationAccountLinker::class);
+            $linker->link($reservation);
+            $reservation->refresh();
 
-                // Log the payment
-                $paymentTypeLabel = $payment->is_deposit ? 'deposit' : 'full payment';
-                ReservationLog::record(
-                    $reservation,
-                    'payment_completed',
-                    "Online {$paymentTypeLabel} of ₱".number_format($paymentAmount, 2)." received via PayMongo ({$payment->payment_mode}).",
-                    [
-                        'payment_id' => $payment->id,
+            if (($paymentMetadata['payment_type'] ?? null) === 'checkin_balance'
+                && $linker->shouldInviteToCreateAccount($reservation)) {
+                $shouldSendAccountInvitation = true;
+                $invitationReservation = $reservation;
+                $invitationPayment = $payment;
+            }
+
+            // Refresh financial summary
+            $reservation->refreshFinancialSummary();
+
+            // Log the payment
+            $paymentTypeLabel = $payment->is_deposit ? 'deposit' : 'full payment';
+            ReservationLog::record(
+                $reservation,
+                'payment_completed',
+                "Online {$paymentTypeLabel} of ₱".number_format($paymentAmount, 2)." received via PayMongo ({$payment->payment_mode}).",
+                [
+                    'payment_id' => $payment->id,
                     'gateway_payment_id' => $paymentId,
                     'amount' => $paymentAmount,
                     'gateway' => 'paymongo',
                     'is_deposit' => $payment->is_deposit,
                 ]
-                );
+            );
 
-                // Notify staff of successful payment
+            // Notify staff of successful payment
+            NotificationHelper::notifyAllStaff(
+                'Online Payment Received',
+                "Reservation #{$reservation->reference_number} received online payment of ₱".number_format($paymentAmount, 2).'.',
+                'success',
+                'payment',
+                route('filament.admin.resources.reservations.index', [], false).'?tableSearch='.urlencode($reservation->reference_number),
+                null, // No actor (system notification)
+                'reservations_view'
+            );
+
+            if ($wasCancelledBeforePayment) {
                 NotificationHelper::notifyAllStaff(
-                    'Online Payment Received',
-                    "Reservation #{$reservation->reference_number} received online payment of ₱".number_format($paymentAmount, 2).'.',
-                    'success',
+                    'Cancelled PayMongo Request Was Paid',
+                    "Reservation #{$reservation->reference_number} received PayMongo payment of â‚±".number_format($paymentAmount, 2).' after staff had cancelled the checkout request. Please reconcile against any manual collection.',
+                    'warning',
                     'payment',
                     route('filament.admin.resources.reservations.index', [], false).'?tableSearch='.urlencode($reservation->reference_number),
-                    null, // No actor (system notification)
+                    null,
                     'reservations_view'
                 );
+            }
 
-                if ($wasCancelledBeforePayment) {
-                    NotificationHelper::notifyAllStaff(
-                        'Cancelled PayMongo Request Was Paid',
-                        "Reservation #{$reservation->reference_number} received PayMongo payment of â‚±".number_format($paymentAmount, 2).' after staff had cancelled the checkout request. Please reconcile against any manual collection.',
-                        'warning',
-                        'payment',
-                        route('filament.admin.resources.reservations.index', [], false).'?tableSearch='.urlencode($reservation->reference_number),
-                        null,
-                        'reservations_view'
-                    );
-                }
-
-                Log::info('Payment webhook processed successfully', [
-                    'reservation_id' => $reservation->id,
-                    'payment_id' => $payment->id,
-                    'gateway_payment_id' => $paymentId,
-                    'amount' => $paymentAmount,
-                    'new_status' => $reservation->status,
-                    'paid_after_staff_cancellation' => $wasCancelledBeforePayment,
-                ]);
-            });
-        } catch (\Exception $e) {
-            Log::error('Failed to process payment webhook', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'webhook' => $this->webhookData,
+            Log::info('Payment webhook processed successfully', [
+                'receipt_id' => $this->webhookEventRecordId,
+                'reservation_id' => $reservation->id,
+                'payment_record_id' => $payment->id,
+                'new_status' => $reservation->status,
+                'paid_after_staff_cancellation' => $wasCancelledBeforePayment,
             ]);
 
-            // Re-throw to trigger retry
-            throw $e;
+            return true;
+        });
+
+        if ($processed && $shouldSendAccountInvitation && $invitationReservation && $invitationPayment) {
+            try {
+                Mail::to($invitationReservation->guest_email)
+                    ->send(new GuestAccountInvitationMail($invitationReservation, $invitationPayment));
+            } catch (\Throwable $exception) {
+                report($exception);
+                Log::warning('Guest account invitation could not be sent after check-in payment.', [
+                    'reservation_id' => $invitationReservation->id,
+                ]);
+            }
         }
+
+        return $processed;
+    }
+
+    private function markReceiptProcessing(): void
+    {
+        $this->updateReceipt([
+            'status' => PaymentWebhookEvent::STATUS_PROCESSING,
+            'attempts' => DB::raw('attempts + 1'),
+            'processed_at' => null,
+            'failed_at' => null,
+        ]);
+    }
+
+    private function markReceiptRetrying(string $message): void
+    {
+        $this->updateReceipt([
+            'status' => PaymentWebhookEvent::STATUS_RETRYING,
+            'last_error' => $this->truncateError($message),
+        ]);
+    }
+
+    private function markReceiptProcessed(): void
+    {
+        $this->updateReceipt([
+            'status' => PaymentWebhookEvent::STATUS_PROCESSED,
+            'processed_at' => now(),
+            'failed_at' => null,
+            'last_error' => null,
+        ]);
+    }
+
+    private function markReceiptIgnored(): void
+    {
+        $this->updateReceipt([
+            'status' => PaymentWebhookEvent::STATUS_IGNORED,
+            'processed_at' => now(),
+            'failed_at' => null,
+            'last_error' => null,
+        ]);
+    }
+
+    private function markReceiptFailed(string $message): void
+    {
+        $this->updateReceipt([
+            'status' => PaymentWebhookEvent::STATUS_FAILED,
+            'processed_at' => null,
+            'failed_at' => now(),
+            'last_error' => $this->truncateError($message),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function updateReceipt(array $attributes): void
+    {
+        if ($this->webhookEventRecordId === null) {
+            return;
+        }
+
+        $updated = PaymentWebhookEvent::query()
+            ->whereKey($this->webhookEventRecordId)
+            ->update($attributes);
+
+        if ($updated === 0 && ! PaymentWebhookEvent::whereKey($this->webhookEventRecordId)->exists()) {
+            Log::warning('Payment webhook receipt was not found while updating job state', [
+                'webhook_event_record_id' => $this->webhookEventRecordId,
+            ]);
+        }
+    }
+
+    private function truncateError(string $message): string
+    {
+        return Str::limit($message, 2000, '');
     }
 
     /**
@@ -385,16 +477,17 @@ class ProcessPaymentWebhook implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
+        $this->markReceiptFailed($this->safeExceptionMessage($exception));
+        app(SecurityMonitor::class)->webhook('permanent_job_failure');
+
         Log::error('Payment webhook processing failed permanently after retries', [
-            'error' => $exception->getMessage(),
-            'webhook' => $this->webhookData,
+            'receipt_id' => $this->webhookEventRecordId,
+            'error_type' => class_basename($exception),
         ]);
 
         // Optionally notify admins of failed webhook processing
         try {
-            $paymentData = $this->webhookData['data']['attributes']['data'] ?? [];
-            $metadata = $paymentData['attributes']['metadata'] ?? [];
-            $reservationId = $metadata['reservation_id'] ?? 'unknown';
+            $reservationId = $this->reservationIdFromEvent() ?? 'unknown';
 
             NotificationHelper::notifyAllStaff(
                 'Payment Webhook Processing Failed',
@@ -405,8 +498,36 @@ class ProcessPaymentWebhook implements ShouldQueue
                 null,
                 'reservations_edit'
             );
-        } catch (\Exception $e) {
-            Log::error('Failed to send webhook failure notification', ['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send webhook failure notification', [
+                'receipt_id' => $this->webhookEventRecordId,
+                'error_type' => class_basename($e),
+            ]);
         }
+    }
+
+    private function safeExceptionMessage(\Throwable $exception): string
+    {
+        return 'Webhook processing failed ('.class_basename($exception).').';
+    }
+
+    private function reservationIdFromEvent(): ?string
+    {
+        $event = PayMongoWebhookData::forQueue($this->webhookData);
+        $resource = is_array($event['resource'] ?? null) ? $event['resource'] : [];
+        $metadata = match ($event['event_type'] ?? null) {
+            'payment.paid' => $resource['metadata'] ?? [],
+            'checkout_session.payment.paid' => array_merge(
+                is_array($resource['metadata'] ?? null) ? $resource['metadata'] : [],
+                is_array(data_get($resource, 'payment.metadata'))
+                    ? data_get($resource, 'payment.metadata')
+                    : [],
+            ),
+            default => [],
+        };
+
+        $reservationId = $metadata['reservation_id'] ?? null;
+
+        return is_scalar($reservationId) ? (string) $reservationId : null;
     }
 }

@@ -1,6 +1,7 @@
 @extends('layouts.guest')
 
 @section('title', 'Virtual Tour')
+@section('suppressGlobalGuestFlashes', 'true')
 
 @push('styles')
 <style>
@@ -2065,12 +2066,12 @@
             </svg>
             <span class="home-label">Home</span>
         </button>
-        <button id="room-info-btn" onclick="tourEngine.toggleRoomInfoOverlay()" title="View room information">
+        <button id="room-info-btn" onclick="tourEngine.toggleRoomInfoOverlay()" title="View room details and request a stay">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
                 <polyline points="9 22 9 12 15 12 15 22"/>
             </svg>
-            <span>Room Info</span>
+            <span>View Details and Request</span>
         </button>
     </div>
 
@@ -2217,31 +2218,31 @@
                     <div class="grid grid-cols-2 gap-4">
                         <div class="form-group">
                             <label for="guest_first_name">First Name *</label>
-                            <input type="text" id="guest_first_name" name="guest_first_name" required maxlength="255">
+                            <input type="text" id="guest_first_name" name="guest_first_name" value="{{ old('guest_first_name', $guestAccount?->first_name) }}" required maxlength="255">
                         </div>
 
                         <div class="form-group">
                             <label for="guest_last_name">Last Name *</label>
-                            <input type="text" id="guest_last_name" name="guest_last_name" required maxlength="255">
+                            <input type="text" id="guest_last_name" name="guest_last_name" value="{{ old('guest_last_name', $guestAccount?->last_name) }}" required maxlength="255">
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="guest_email">Email *</label>
-                        <input type="email" id="guest_email" name="guest_email" required maxlength="255">
+                        <input type="email" id="guest_email" name="guest_email" value="{{ old('guest_email', $guestAccount?->email) }}" required maxlength="255">
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
                         <div class="form-group">
                             <label for="guest_phone">Mobile Number *</label>
-                            <input type="tel" id="guest_phone" name="guest_phone" maxlength="20" required
+                            <input type="tel" id="guest_phone" name="guest_phone" value="{{ old('guest_phone', $guestAccount?->phone) }}" maxlength="20" required
                                    pattern="^(09[0-9]{9}|\+639[0-9]{9}|639[0-9]{9})$"
                                    data-validation-pattern-message="Enter a valid Philippine mobile number, e.g. 09171234567 or +639171234567.">
                         </div>
 
                         <div class="form-group">
                             <label for="guest_age">Age *</label>
-                            <input type="number" id="guest_age" name="guest_age" min="18" max="120" step="1" data-integer="true" data-validation-min-message="Guest age must be at least 18." required>
+                            <input type="number" id="guest_age" name="guest_age" value="{{ old('guest_age', $guestAccount?->age) }}" min="18" max="120" step="1" data-integer="true" data-validation-min-message="Guest age must be at least 18." required>
                         </div>
                     </div>
 
@@ -2249,9 +2250,9 @@
                         <label for="guest_gender">Gender *</label>
                         <select id="guest_gender" name="guest_gender" class="guest-select" required>
                             <option value="">Select...</option>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Other">Other</option>
+                            <option value="Male" @selected(old('guest_gender', $guestAccount?->gender) === 'Male')>Male</option>
+                            <option value="Female" @selected(old('guest_gender', $guestAccount?->gender) === 'Female')>Female</option>
+                            <option value="Other" @selected(old('guest_gender', $guestAccount?->gender) === 'Other')>Other</option>
                         </select>
                     </div>
 
@@ -2281,7 +2282,7 @@
 
                     <div class="form-group">
                         <label for="guest_address">Address</label>
-                        <textarea id="guest_address" name="guest_address" rows="2" maxlength="1000"></textarea>
+                        <textarea id="guest_address" name="guest_address" rows="2" maxlength="1000">{{ old('guest_address', $guestAccount?->address) }}</textarea>
                     </div>
 
                     <div class="form-group">
@@ -2312,7 +2313,7 @@
                     </button>
 
                     <button type="button" onclick="tourEngine.goToReservationPage()" class="mt-3 w-full rounded-lg border border-[#00491E] bg-white px-4 py-3 text-sm font-bold text-[#00491E] transition hover:bg-[#00491E] hover:text-white">
-                        Reserve Multiple Room Types
+                        Request Multiple Room Types
                     </button>
 
                     <p class="text-xs text-gray-500 mt-3 text-center">
@@ -2420,7 +2421,7 @@
                         </li>
                         <li>
                             <span class="help-icon">🏠</span>
-                            <div><strong>Room Info</strong><br>Appears when viewing room scenes — click to see pricing, capacity, and amenities (top-right corner)</div>
+                            <div><strong>View Details and Request</strong><br>Appears when viewing room scenes — click to see pricing, capacity, amenities, and request options (top-right corner)</div>
                         </li>
                         <li>
                             <span class="help-icon">🗺️</span>
@@ -2500,7 +2501,7 @@
 @push('scripts')
 @if($hasWaypoints)
 @vite(['resources/js/tour-engine.js'])
-<script>
+<script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif>
     // Initialize tour engine when page loads
     let tourEngine;
 
@@ -2977,7 +2978,7 @@
         };
 
         if (!formData.preferred_room_type_id) {
-            alert('Please open Room Info from a room scene before submitting a reservation request.');
+            alert('Please open View Details and Request from a room scene before submitting a reservation request.');
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = submitBtn.dataset.originalText || 'Request This Room Type';

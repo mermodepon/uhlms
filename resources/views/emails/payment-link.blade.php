@@ -166,12 +166,18 @@
             <li>Our staff will keep your reserved room space active for your stay</li>
         </ol>
 
-        <div class="info-box">
-            <strong>💡 Need Help?</strong><br>
-            If you have any questions or need assistance, please contact us at:<br>
-            📧 Email: support@uhlms.edu.ph<br>
-            📞 Phone: (123) 456-7890
-        </div>
+        @if($supportEmail !== '' || $supportPhone !== '')
+            <div class="info-box">
+                <strong>💡 Need Help?</strong><br>
+                If you have any questions or need assistance, please contact us at:<br>
+                @if($supportEmail !== '')
+                    📧 Email: <a href="mailto:{{ $supportEmail }}">{{ $supportEmail }}</a>@if($supportPhone !== '')<br>@endif
+                @endif
+                @if($supportPhone !== '')
+                    📞 Phone: <a href="tel:{{ preg_replace('/[^+\d]/', '', $supportPhone) }}">{{ $supportPhone }}</a>
+                @endif
+            </div>
+        @endif
 
         <div class="footer">
             <p>This is an automated message from the University Homestay Management System.</p>

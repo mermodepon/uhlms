@@ -33,6 +33,14 @@ export default defineConfig({
         rollupOptions: {
             output: {
                 manualChunks(id) {
+                    if (
+                        id.includes('@photo-sphere-viewer')
+                        || id.includes('/three/')
+                        || id.includes('\\three\\')
+                    ) {
+                        return 'panorama-vendor';
+                    }
+
                     if (id.includes('node_modules')) {
                         return 'vendor';
                     }

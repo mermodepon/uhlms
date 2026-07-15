@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ReservationResource\RelationManagers;
 
 use App\Models\Setting;
+use App\Support\PayMongoPaymentMetadata;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -157,6 +158,10 @@ class PaymentsRelationManager extends RelationManager
                                     ->rows(2),
                                 Forms\Components\KeyValue::make('gateway_metadata')
                                     ->label('Gateway Metadata')
+                                    ->formatStateUsing(fn (mixed $state, mixed $record): array => PayMongoPaymentMetadata::sanitize(
+                                        is_array($state) ? $state : [],
+                                        is_object($record) ? $record->gateway_status : null,
+                                    ))
                                     ->disabled(),
                             ])->collapsed(),
                     ]),

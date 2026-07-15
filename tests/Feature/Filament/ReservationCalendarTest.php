@@ -89,9 +89,7 @@ class ReservationCalendarTest extends TestCase
             file_get_contents(resource_path('views/filament/widgets/reservation-calendar.blade.php'))
         );
 
-        $reservationResource = file_get_contents(app_path('Filament/Resources/ReservationResource.php'));
-
-        $this->assertStringContainsString("'confirmed' => 'Confirmed'", $reservationResource);
+        $this->assertSame('Confirmed', Reservation::statusOptions()['confirmed']);
         $this->assertStringContainsString(
             '<option value="confirmed">Confirmed</option>',
             file_get_contents(resource_path('views/filament/pages/reports.blade.php'))

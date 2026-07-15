@@ -1,6 +1,7 @@
 @extends('layouts.guest')
 
 @section('title', 'My Reservations')
+@section('suppressGlobalGuestFlashes', 'true')
 
 @section('content')
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -11,6 +12,8 @@
             </div>
             <a href="{{ route('guest.reserve', [], false) }}" class="rounded-lg bg-[#FFC600] px-5 py-3 font-bold text-[#00491E]">New Reservation</a>
         </div>
+
+        @include('guest.partials.flash-messages', ['wrap' => false, 'containerClass' => 'mb-6 space-y-3'])
 
         <div class="space-y-4">
             @forelse($reservations as $reservation)
@@ -37,7 +40,7 @@
             @empty
                 <div class="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
                     <p class="text-gray-600">No linked reservations yet.</p>
-                    <a href="{{ route('guest.reserve', [], false) }}" class="mt-4 inline-flex rounded-lg bg-[#00491E] px-5 py-3 font-bold text-white">Request a Reservation</a>
+                    <a href="{{ route('guest.reserve', [], false) }}" class="mt-4 inline-flex rounded-lg bg-[#00491E] px-5 py-3 font-bold text-white">Request a Stay</a>
                 </div>
             @endforelse
         </div>

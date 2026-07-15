@@ -88,7 +88,7 @@
 @endsection
 
 @push('scripts')
-    <script>
+    <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif>
         (() => {
             const messagesUrl = @json(route('guest.account.support.messages', $inquiry, false));
             let refreshing = false;

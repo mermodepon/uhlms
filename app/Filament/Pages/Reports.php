@@ -8,6 +8,7 @@ use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
 use App\Models\Setting;
+use App\Models\User;
 use Filament\Pages\Page;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class Reports extends Page
 {
     protected const REPORT_TYPE = 'monthly_or_report';
+
+    protected const REPORT_PERMISSION = User::REPORT_MONTHLY_VIEW;
+
+    protected const EXPORT_PERMISSION = User::REPORT_MONTHLY_EXPORT;
 
     protected static ?string $navigationIcon = 'heroicon-o-document-chart-bar';
 
@@ -65,6 +70,11 @@ class Reports extends Page
     public int $stayLogsPage = 1;
 
     public int $stayLogsPerPage = 10;
+
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->hasPermission(static::REPORT_PERMISSION) ?? false;
+    }
 
     public function mount(): void
     {
@@ -178,6 +188,12 @@ class Reports extends Page
 
     public function downloadMonthlyReportExcel(): StreamedResponse
     {
+        abort_unless(
+            auth()->user()?->hasPermission(static::REPORT_PERMISSION)
+                && auth()->user()?->hasPermission(static::EXPORT_PERMISSION),
+            403,
+        );
+
         $data = $this->getMonthlyOrReport();
         $month = $this->monthPeriod
             ? Carbon::createFromFormat('Y-m', $this->monthPeriod)

@@ -61,7 +61,8 @@ Laravel Cloud should run the equivalent of:
 
 ```bash
 composer install --no-dev --optimize-autoloader --no-interaction
-npm ci
+npm ci --include=dev
+npm run audit:security
 npm run build
 php artisan migrate --force
 php artisan config:cache

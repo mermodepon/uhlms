@@ -2,7 +2,7 @@
 
 @section('title', 'Support Access')
 
-@section('content')
+@section('page-header')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] py-10 text-white sm:py-12">
         <div class="mx-auto max-w-4xl px-6 text-center sm:px-8 lg:px-10">
             <h1 class="text-3xl font-bold sm:text-4xl">Support is available to verified guest accounts</h1>
@@ -11,7 +11,9 @@
             </p>
         </div>
     </section>
+@endsection
 
+@section('content')
     <section class="mx-auto max-w-4xl px-5 py-16 sm:px-8 sm:py-20 lg:px-10">
         <div class="space-y-8 sm:space-y-10">
             <div class="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm sm:p-10">

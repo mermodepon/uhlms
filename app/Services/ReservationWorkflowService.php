@@ -27,9 +27,11 @@ class ReservationWorkflowService
 
         $roomIdsByType = $this->normalizeAssignedRoomsByType($reservation, $data);
         foreach ($reservation->getEffectiveRoomRequests() as $requestLine) {
-            $selectedRoomIds = $roomIdsByType[(int) $requestLine->room_type_id] ?? [];
+            $selectedRoomIds = $roomIdsByType['request_'.(int) $requestLine->id]
+                ?? $roomIdsByType[(int) $requestLine->room_type_id]
+                ?? [];
             if (count($selectedRoomIds) !== (int) $requestLine->requested_room_count) {
-                throw new \RuntimeException('Select all requested rooms before approving, or send the guest an alternative room offer.');
+                throw new \RuntimeException('Select exactly the requested number of rooms before approving, or send the guest an alternative room offer.');
             }
         }
 
@@ -93,16 +95,16 @@ class ReservationWorkflowService
     }
 
     /**
-     * @return array<int, array<int, int>>
+     * @return array<int, array<int, int>> keyed by reservation room-request ID
      */
     protected function normalizeAssignedRoomsByType(Reservation $reservation, array $data): array
     {
         $grouped = [];
 
-        foreach ((array) ($data['assigned_room_ids_by_type'] ?? []) as $roomTypeId => $roomIds) {
+        foreach ((array) ($data['assigned_room_ids_by_type'] ?? []) as $requestId => $roomIds) {
             $roomIds = array_values(array_unique(array_filter(array_map('intval', (array) $roomIds))));
             if (! empty($roomIds)) {
-                $grouped[(int) $roomTypeId] = $roomIds;
+                $grouped[(string) $requestId] = $roomIds;
             }
         }
 

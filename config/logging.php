@@ -1,5 +1,6 @@
 <?php
 
+use App\Logging\RedactSensitiveLogContext;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -54,23 +55,35 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', env('LOG_STACK', 'single')),
+            'channels' => explode(',', env('LOG_STACK', 'daily')),
             'ignore_exceptions' => false,
+            'tap' => [RedactSensitiveLogContext::class],
         ],
 
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'replace_placeholders' => true,
+            'tap' => [RedactSensitiveLogContext::class],
         ],
 
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+            'tap' => [RedactSensitiveLogContext::class],
+        ],
+
+        'security' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/security.log'),
+            'level' => 'info',
+            'days' => 30,
+            'replace_placeholders' => true,
+            'tap' => [RedactSensitiveLogContext::class],
         ],
 
         'slack' => [
@@ -80,11 +93,12 @@ return [
             'emoji' => env('LOG_SLACK_EMOJI', ':boom:'),
             'level' => env('LOG_LEVEL', 'critical'),
             'replace_placeholders' => true,
+            'tap' => [RedactSensitiveLogContext::class],
         ],
 
         'papertrail' => [
             'driver' => 'monolog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'handler' => env('LOG_PAPERTRAIL_HANDLER', SyslogUdpHandler::class),
             'handler_with' => [
                 'host' => env('PAPERTRAIL_URL'),
@@ -92,30 +106,34 @@ return [
                 'connectionString' => 'tls://'.env('PAPERTRAIL_URL').':'.env('PAPERTRAIL_PORT'),
             ],
             'processors' => [PsrLogMessageProcessor::class],
+            'tap' => [RedactSensitiveLogContext::class],
         ],
 
         'stderr' => [
             'driver' => 'monolog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'handler' => StreamHandler::class,
             'formatter' => env('LOG_STDERR_FORMATTER'),
             'with' => [
                 'stream' => 'php://stderr',
             ],
             'processors' => [PsrLogMessageProcessor::class],
+            'tap' => [RedactSensitiveLogContext::class],
         ],
 
         'syslog' => [
             'driver' => 'syslog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'facility' => env('LOG_SYSLOG_FACILITY', LOG_USER),
             'replace_placeholders' => true,
+            'tap' => [RedactSensitiveLogContext::class],
         ],
 
         'errorlog' => [
             'driver' => 'errorlog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'replace_placeholders' => true,
+            'tap' => [RedactSensitiveLogContext::class],
         ],
 
         'null' => [

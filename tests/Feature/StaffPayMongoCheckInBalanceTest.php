@@ -15,6 +15,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -42,6 +43,10 @@ class StaffPayMongoCheckInBalanceTest extends TestCase
 
     public function test_staff_can_generate_paymongo_checkout_for_remaining_checkin_balance(): void
     {
+        config(['app.url' => 'https://app.uhlms.uk']);
+        $this->withServerVariables([
+            'HTTP_HOST' => 'localhost:8000',
+        ]);
         $this->actingAs($this->createUser());
         [$reservation, $room] = $this->createReservationWithRoom();
 
@@ -92,6 +97,22 @@ class StaffPayMongoCheckInBalanceTest extends TestCase
         $this->assertFalse($payment->is_deposit);
         $this->assertEquals('1500.00', (string) $payment->amount);
         $this->assertSame('cs_checkin_balance', $payment->gateway_source_id);
+        $this->assertTrue(Str::isUuid($payment->gateway_metadata['guest_result_token'] ?? ''));
+        $this->assertSame(
+            $payment->gateway_metadata['guest_result_token'],
+            $payment->meta['guest_result_token'] ?? null,
+        );
+
+        Http::assertSent(function ($request): bool {
+            $successUrl = (string) data_get($request->data(), 'data.attributes.success_url');
+            $cancelUrl = (string) data_get($request->data(), 'data.attributes.cancel_url');
+
+            return str_contains($successUrl, '/reserve/check-in-payment/')
+                && str_contains($successUrl, '/result')
+                && str_contains($cancelUrl, 'cancelled=1')
+                && str_starts_with($successUrl, 'https://app.uhlms.uk/')
+                && ! str_contains($successUrl, '/admin/');
+        });
     }
 
     public function test_checkin_room_entries_are_prefilled_from_advance_holds(): void
@@ -239,6 +260,24 @@ class StaffPayMongoCheckInBalanceTest extends TestCase
         $this->assertSame('src_checkin_balance', $payment->gateway_source_id);
         $this->assertSame('PM-pay_checkin_balance', $payment->reference_no);
         $this->assertNotNull($payment->or_date);
+        $this->assertArrayNotHasKey('payment_data', $payment->gateway_metadata);
+        $this->assertArrayNotHasKey('source_data', $payment->gateway_metadata);
+        $this->assertArrayNotHasKey('checkout_url', $payment->gateway_metadata);
+        $this->assertSame('evt_checkin_balance_paid', $payment->gateway_metadata['webhook_event_id']);
+        $this->assertDatabaseHas('payment_webhook_events', [
+            'event_id' => 'evt_checkin_balance_paid',
+            'status' => \App\Models\PaymentWebhookEvent::STATUS_PROCESSED,
+        ]);
+
+        $duplicateResourceEvent = $payload;
+        $duplicateResourceEvent['data']['id'] = 'evt_checkin_balance_resource_duplicate';
+        $this->postJson(route('webhook.paymongo'), $duplicateResourceEvent)->assertOk();
+
+        $this->assertSame(1, ReservationPayment::where('gateway_payment_id', 'pay_checkin_balance')->count());
+        $this->assertDatabaseHas('payment_webhook_events', [
+            'event_id' => 'evt_checkin_balance_resource_duplicate',
+            'status' => \App\Models\PaymentWebhookEvent::STATUS_PROCESSED,
+        ]);
 
         $reservation->refresh();
         $this->assertEquals('1500.00', (string) $reservation->payments_total);
@@ -266,6 +305,7 @@ class StaffPayMongoCheckInBalanceTest extends TestCase
         $this->assertSame('cancelled', $payment->gateway_status);
         $this->assertSame($user->id, $payment->gateway_metadata['cancelled_by']);
         $this->assertSame('checkin_staff_action', $payment->gateway_metadata['cancellation_source']);
+        $this->assertArrayNotHasKey('checkout_url', $payment->gateway_metadata);
         $this->assertDatabaseHas('reservation_logs', [
             'reservation_id' => $reservation->id,
             'event' => 'checkin_balance_payment_cancelled',
@@ -334,6 +374,9 @@ class StaffPayMongoCheckInBalanceTest extends TestCase
         $this->assertSame('posted', $payment->status);
         $this->assertSame('paid', $payment->gateway_status);
         $this->assertTrue($payment->gateway_metadata['paid_after_staff_cancellation']);
+        $this->assertArrayNotHasKey('checkout_url', $payment->gateway_metadata);
+        $this->assertArrayNotHasKey('payment_data', $payment->gateway_metadata);
+        $this->assertArrayNotHasKey('source_data', $payment->gateway_metadata);
         $this->assertEquals('1500.00', (string) $reservation->fresh()->payments_total);
     }
 
@@ -382,8 +425,11 @@ class StaffPayMongoCheckInBalanceTest extends TestCase
     {
         return [
             'data' => [
+                'id' => 'evt_checkin_balance_paid',
+                'type' => 'event',
                 'attributes' => [
                     'type' => 'checkout_session.payment.paid',
+                    'livemode' => false,
                     'data' => [
                         'id' => 'cs_checkin_balance',
                         'attributes' => [

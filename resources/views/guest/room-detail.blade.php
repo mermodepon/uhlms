@@ -2,7 +2,7 @@
 
 @section('title', $roomType->name)
 
-@section('content')
+@section('page-header')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <nav class="text-sm mb-4">
@@ -10,7 +10,7 @@
                 <span class="text-gray-400 mx-2">/</span>
                 <span class="text-[#FFC600]">{{ $roomType->name }}</span>
             </nav>
-            <h1 class="text-3xl font-bold mb-2">{{ $roomType->name }}</h1>
+            <h1 class="text-3xl font-bold mb-2">{{ $roomType->name }}{{ $roomType->has_capacity_variants ? ' - up to '.$roomType->variant_capacity.' guests' : '' }}</h1>
             @php
                 $isPrivate = $roomType->isPrivate();
                 $totalRooms = $roomType->total_rooms_count;
@@ -27,7 +27,7 @@
             <div class="flex items-center gap-4 text-gray-200">
                 <span>{{ $roomType->getFormattedPrice() }}</span>
                 <span>•</span>
-                <span>Up to {{ $roomType->capacity }} {{ Str::plural('guest', $roomType->capacity) }}</span>
+                <span>Up to {{ $roomType->variant_capacity ?? $roomType->capacity }} {{ Str::plural('guest', $roomType->variant_capacity ?? $roomType->capacity) }}</span>
                 <span>•</span>
                 <span class="text-[#FFC600] font-medium">
                     @if($isPrivate)
@@ -39,7 +39,9 @@
             </div>
         </div>
     </section>
+@endsection
 
+@section('content')
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {{-- Main Content --}}
@@ -135,7 +137,7 @@
                     <div class="space-y-3 text-sm text-gray-600 mb-6">
                         <div class="flex justify-between">
                             <span>Capacity per Room</span>
-                            <span class="font-medium">{{ $roomType->capacity }} {{ Str::plural('guest', $roomType->capacity) }}</span>
+                            <span class="font-medium">{{ $roomType->variant_capacity ?? $roomType->capacity }} {{ Str::plural('guest', $roomType->variant_capacity ?? $roomType->capacity) }}</span>
                         </div>
                         <div class="flex justify-between">
                             <span>Total Rooms</span>
@@ -146,6 +148,7 @@
                     @php
                         $reservationQuery = collect([
                             'room_type' => $roomType->id,
+                            'capacity' => $roomType->has_capacity_variants ? $roomType->variant_capacity : null,
                             'check_in' => $checkIn?->format('Y-m-d'),
                             'check_out' => $checkOut?->format('Y-m-d'),
                             'guests' => $guests,

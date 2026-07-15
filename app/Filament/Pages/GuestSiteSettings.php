@@ -260,6 +260,12 @@ class GuestSiteSettings extends Page implements HasForms
                             ->label('Section Intro')
                             ->required()
                             ->maxLength(240),
+                        Forms\Components\TextInput::make('guest_reservation_processing_time')
+                            ->label('Processing-Time Guidance')
+                            ->helperText('Shown on the homepage, reservation form, and reservation tracking page.')
+                            ->required()
+                            ->maxLength(240)
+                            ->columnSpanFull(),
                         Forms\Components\Repeater::make('guest_reservation_steps')
                             ->label('Steps')
                             ->schema([
@@ -287,7 +293,7 @@ class GuestSiteSettings extends Page implements HasForms
                         Forms\Components\TextInput::make('guest_nav_rooms_label')->label('Rooms Label')->required()->maxLength(40),
                         Forms\Components\TextInput::make('guest_nav_track_label')->label('Track Label')->required()->maxLength(40),
                         Forms\Components\TextInput::make('guest_nav_tour_label')->label('Tour Label')->required()->maxLength(40),
-                        Forms\Components\TextInput::make('guest_nav_reserve_label')->label('Reserve Label')->required()->maxLength(40),
+                        Forms\Components\TextInput::make('guest_nav_reserve_label')->label('Request-Stay Label')->required()->maxLength(40),
                         Forms\Components\Textarea::make('guest_footer_address')->label('Address')->rows(3)->columnSpanFull(),
                         Forms\Components\TextInput::make('guest_footer_phone')->label('Phone')->maxLength(120),
                         Forms\Components\TextInput::make('guest_footer_email')->label('Email')->email()->maxLength(160),
@@ -296,7 +302,7 @@ class GuestSiteSettings extends Page implements HasForms
                         Forms\Components\TextInput::make('guest_footer_rooms_label')->label('Footer Rooms Label')->required()->maxLength(60),
                         Forms\Components\TextInput::make('guest_footer_track_label')->label('Footer Track Label')->required()->maxLength(80),
                         Forms\Components\TextInput::make('guest_footer_tour_label')->label('Footer Tour Label')->required()->maxLength(60),
-                        Forms\Components\TextInput::make('guest_footer_reserve_label')->label('Footer Reserve Label')->required()->maxLength(80),
+                        Forms\Components\TextInput::make('guest_footer_reserve_label')->label('Footer Request-Stay Label')->required()->maxLength(80),
                     ]),
             ])
             ->statePath('data');

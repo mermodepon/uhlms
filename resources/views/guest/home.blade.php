@@ -188,7 +188,16 @@
                     <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition group">
                         @if($roomType->images && count($roomType->images))
                             <div class="h-48 bg-gray-200 overflow-hidden">
-                                <img src="{{ \App\Support\MediaUrl::url(collect($roomType->images)->first()) }}" alt="{{ $roomType->name }}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+                                @php
+                                    $cardImageSources = app(\App\Services\ResponsiveRoomImageService::class)
+                                        ->cardSources(collect($roomType->images)->first());
+                                @endphp
+                                <picture>
+                                    @if($cardImageSources)
+                                        <source type="image/webp" srcset="{{ collect($cardImageSources)->map(fn (string $path, int $width): string => \App\Support\MediaUrl::url($path).' '.$width.'w')->implode(', ') }}" sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw">
+                                    @endif
+                                    <img src="{{ \App\Support\MediaUrl::url(collect($roomType->images)->first()) }}" alt="{{ $roomType->name }}" width="960" height="576" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+                                </picture>
                             </div>
                         @else
                             <div class="h-48 bg-gradient-to-br from-[#00491E] to-[#02681E] flex items-center justify-center">
@@ -199,7 +208,10 @@
                         @endif
                         <div class="p-6">
                             <div class="flex justify-between items-start mb-2">
-                                <h3 class="text-xl font-bold text-[#00491E]">{{ $roomType->name }}</h3>
+                                {{--
+                                <h3 class="text-xl font-bold text-[#00491E]">{{ $roomType->name }}@if($roomType->has_capacity_variants) — up to {{ $roomType->variant_capacity }} guests@endif</h3>
+                                --}}
+                                <h3 class="text-xl font-bold text-[#00491E]">{{ $roomType->name }}{{ $roomType->has_capacity_variants ? ' - up to '.$roomType->variant_capacity.' guests' : '' }}</h3>
                                 <span class="bg-[#FFC600] text-[#00491E] px-3 py-1 rounded-full text-sm font-bold">
                                     {{ $roomType->getFormattedPrice() }}
                                 </span>
@@ -209,7 +221,7 @@
                                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
                                 </svg>
-                                Up to {{ $roomType->capacity }} {{ Str::plural('guest', $roomType->capacity) }}
+                                Up to {{ $roomType->variant_capacity ?? $roomType->capacity }} {{ Str::plural('guest', $roomType->variant_capacity ?? $roomType->capacity) }}
                                 <span class="mx-2">|</span>
                                 <span class="text-[#02681E] font-medium">{{ $roomType->availability_label }}</span>
                             </div>
@@ -223,7 +235,7 @@
                                     @endif
                                 </div>
                             @endif
-                            <a href="{{ route('guest.room-detail', $roomType, false) }}" class="text-[#02681E] font-semibold hover:text-[#00491E] transition text-sm">
+                            <a href="{{ route('guest.room-detail', array_merge(['roomType' => $roomType], $roomType->has_capacity_variants ? ['capacity' => $roomType->variant_capacity] : []), false) }}" class="text-[#02681E] font-semibold hover:text-[#00491E] transition text-sm">
                                 View Details &rarr;
                             </a>
                         </div>
@@ -366,13 +378,43 @@
         </div>
     </section>
     @endif
+    @if($testimonials->isNotEmpty())
+    <section class="bg-white py-12 md:py-16" aria-labelledby="guest-testimonials-heading">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-8 md:mb-10">
+                <p class="text-sm font-bold uppercase tracking-wide text-[#02681E]">Verified Stays</p>
+                <h2 id="guest-testimonials-heading" class="mt-2 text-2xl md:text-3xl font-bold text-[#00491E]">What Our Guests Say</h2>
+                <p class="mt-3 text-sm md:text-base text-gray-600">Guest feedback from verified stays.</p>
+            </div>
+            <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                @foreach($testimonials as $testimonial)
+                    <figure class="flex h-full flex-col rounded-xl border border-gray-200 bg-gray-50 p-6 shadow-sm">
+                        <div class="flex items-center gap-1 text-[#FFC600]" aria-label="{{ $testimonial->overall_rating }} out of 5 stars">
+                            @for($star = 1; $star <= 5; $star++)
+                                <span aria-hidden="true" class="text-xl {{ $star <= $testimonial->overall_rating ? '' : 'text-gray-300' }}">&#9733;</span>
+                            @endfor
+                        </div>
+                        <blockquote class="mt-4 flex-1 text-gray-700">&ldquo;{{ $testimonial->comments }}&rdquo;</blockquote>
+                        <figcaption class="mt-5 border-t border-gray-200 pt-4">
+                            <p class="font-bold text-[#00491E]">{{ $testimonial->publicGuestName() }}</p>
+                            @if($roomTypeLabel = $testimonial->publicRoomTypeLabel())
+                                <p class="mt-1 text-xs text-gray-500">Stayed in: {{ $roomTypeLabel }}</p>
+                            @endif
+                        </figcaption>
+                    </figure>
+                @endforeach
+            </div>
+        </div>
+    </section>
+    @endif
+
     <section class="bg-[#00491E]/5 py-12 md:py-16">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-10 md:mb-12">
                 <h2 class="text-2xl md:text-3xl font-bold text-[#00491E] mb-3 md:mb-4">{{ $guestSite['guest_reservation_steps_heading'] }}</h2>
                 <p class="text-sm md:text-base text-gray-600">{{ $guestSite['guest_reservation_steps_intro'] }}</p>
                 <p class="mt-3 inline-flex items-center rounded-full bg-[#FFC600]/20 px-4 py-2 text-xs md:text-sm font-semibold text-[#00491E]">
-                    Estimated processing time: 1-2 business days after submitting your request.
+                    {{ $guestSite['guest_reservation_processing_time'] }}
                 </p>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
@@ -403,7 +445,7 @@
 @endsection
 
 @push('scripts')
-<script>
+<script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif>
     // Quick Booking date validation
     document.addEventListener('DOMContentLoaded', function() {
         const checkInInput = document.getElementById('check_in');

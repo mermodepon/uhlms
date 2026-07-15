@@ -2,9 +2,13 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\User;
+
 class FeedbackAnalyticsReport extends Reports
 {
     protected const REPORT_TYPE = 'feedback_analytics';
+
+    protected const REPORT_PERMISSION = User::REPORT_FEEDBACK_ANALYTICS_VIEW;
 
     protected static ?string $slug = 'reports/feedback-analytics';
 

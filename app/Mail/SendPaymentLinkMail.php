@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Reservation;
+use App\Support\GuestSiteSettings;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -44,6 +45,8 @@ class SendPaymentLinkMail extends Mailable
                 'reservation' => $this->reservation,
                 'paymentLink' => $this->reservation->generatePaymentLink(),
                 'expiresAt' => $this->reservation->payment_link_expires_at,
+                'supportEmail' => trim((string) GuestSiteSettings::get('guest_footer_email')),
+                'supportPhone' => trim((string) GuestSiteSettings::get('guest_footer_phone')),
             ],
         );
     }

@@ -4,6 +4,8 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
+use App\Support\AdminMfa;
+use App\Support\SecurityAudit;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -11,6 +13,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
+use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
 
 class UserResource extends Resource
 {
@@ -78,7 +81,31 @@ class UserResource extends Resource
                             ->helperText(fn (string $operation) => ($operation === 'edit' && ! auth()->user()?->isSuperAdmin()) ? 'Only a Super Administrator can change user roles.' : null),
                     ])->columns(2),
 
-                Forms\Components\Section::make('Custom Permissions')
+                Forms\Components\Section::make('Access Summary')
+                    ->schema([
+                        Forms\Components\Placeholder::make('access_role')
+                            ->label('Role')
+                            ->content(fn (?User $record): string => match ($record?->role) {
+                                'super_admin' => 'Super Administrator',
+                                'admin' => 'Administrator',
+                                'staff' => 'Staff',
+                                default => '—',
+                            }),
+                        Forms\Components\Placeholder::make('access_mode')
+                            ->label('Access mode')
+                            ->content(fn (?User $record): string => $record?->permissions === null
+                                ? 'Using role defaults'
+                                : 'Custom permissions enabled'),
+                        Forms\Components\Placeholder::make('enabled_permissions')
+                            ->label('Enabled permissions')
+                            ->content(fn (?User $record): string => $record?->permissions === null
+                                ? 'Role defaults'
+                                : (string) count(array_filter($record->permissions ?? []))),
+                    ])
+                    ->columns(3)
+                    ->visible(fn (string $operation): bool => $operation === 'edit' && (auth()->user()?->isSuperAdmin() ?? false)),
+
+                Forms\Components\Section::make('Access & Permissions')
                     ->description('Override this user\'s role-based access with specific per-permission settings. When enabled, these toggles completely replace what the role would normally allow.')
                     ->schema([
                         Forms\Components\Toggle::make('use_custom_permissions')
@@ -88,93 +115,18 @@ class UserResource extends Resource
                             ->dehydrated(false),
 
                         Forms\Components\Grid::make(1)
-                            ->schema([
-                                Forms\Components\Fieldset::make('Reservations')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.reservations_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.reservations_create')->label('Create')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.reservations_edit')->label('Edit')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.reservations_delete')->label('Delete')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.reservation_discount_settings_view')->label('View Discount Config')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.reservation_discount_settings_edit')->label('Edit Discount Config')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.online_payment_settings_view')->label('View Payment Config')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.online_payment_settings_edit')->label('Edit Payment Config')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.guest_site_settings_view')->label('View Guest Site Settings')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.guest_site_settings_edit')->label('Edit Guest Site Settings')->inline(false),
-                                    ])->columns(4),
-
-                                Forms\Components\Fieldset::make('Rooms')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.rooms_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.rooms_create')->label('Create')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.rooms_edit')->label('Edit')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.rooms_delete')->label('Delete')->inline(false),
-                                    ])->columns(4),
-
-                                Forms\Components\Fieldset::make('Room Types')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.room_types_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.room_types_create')->label('Create')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.room_types_edit')->label('Edit')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.room_types_delete')->label('Delete')->inline(false),
-                                    ])->columns(4),
-
-                                Forms\Components\Fieldset::make('Floors')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.floors_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.floors_create')->label('Create')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.floors_edit')->label('Edit')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.floors_delete')->label('Delete')->inline(false),
-                                    ])->columns(4),
-
-                                Forms\Components\Fieldset::make('Amenities')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.amenities_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.amenities_create')->label('Create')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.amenities_edit')->label('Edit')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.amenities_delete')->label('Delete')->inline(false),
-                                    ])->columns(4),
-
-                                Forms\Components\Fieldset::make('Add-Ons')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.addons_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.addons_create')->label('Create')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.addons_edit')->label('Edit')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.addons_delete')->label('Delete')->inline(false),
-                                    ])->columns(4),
-
-                                Forms\Components\Fieldset::make('Users')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.users_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.users_create')->label('Create')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.users_edit')->label('Edit')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.users_delete')->label('Delete')->inline(false),
-                                    ])->columns(4),
-
-                                Forms\Components\Fieldset::make('Guest Accounts')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.guest_accounts_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.guest_accounts_edit')->label('Edit')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.guest_accounts_disable')->label('Disable / Enable')->inline(false),
-                                    ])->columns(3),
-
-                                Forms\Components\Fieldset::make('Guest Feedback')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.guest_feedback_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.guest_feedback_edit')->label('Review / Notes')->inline(false),
-                                    ])->columns(2),
-
-                                Forms\Components\Fieldset::make('Support Inquiries')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.support_inquiries_view')->label('View')->inline(false),
-                                        Forms\Components\Toggle::make('permissions.support_inquiries_edit')->label('Triage / Notes')->inline(false),
-                                    ])->columns(2),
-
-                                Forms\Components\Fieldset::make('Stay Logs')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('permissions.stay_logs_view')->label('View Stay Logs')->inline(false),
-                                    ])->columns(1),
-                            ])
+                            ->schema(array_map(
+                                fn (string $group, array $permissions): Forms\Components\Fieldset => Forms\Components\Fieldset::make($group)
+                                    ->schema(array_map(
+                                        fn (array $permission): Forms\Components\Toggle => Forms\Components\Toggle::make('permissions.'.$permission['key'])
+                                            ->label($permission['label'])
+                                            ->inline(false),
+                                        $permissions,
+                                    ))
+                                    ->columns(min(4, count($permissions))),
+                                array_keys(User::permissionGroups()),
+                                array_values(User::permissionGroups()),
+                            ))
                             ->hidden(fn ($get) => ! $get('use_custom_permissions')),
                     ])
                     ->visible(fn (string $operation): bool => $operation === 'edit' && (auth()->user()?->isSuperAdmin() ?? false))
@@ -236,6 +188,35 @@ class UserResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make()
                     ->visible(fn (User $record) => auth()->user()?->can('update', $record)),
+                Tables\Actions\Action::make('reset_mfa')
+                    ->label('Reset MFA')
+                    ->icon('heroicon-o-shield-exclamation')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalDescription('This removes the user\'s authenticator and recovery codes. They must enroll again at their next administrative login.')
+                    ->visible(fn (User $record): bool => (auth()->user()?->isSuperAdmin() ?? false)
+                        && $record->id !== auth()->id()
+                        && AdminMfa::isEnabled($record))
+                    ->action(function (User $record): void {
+                        abort_unless(auth()->user()?->isSuperAdmin(), 403);
+                        abort_if($record->id === auth()->id(), 403, 'You cannot reset your own MFA.');
+                        abort_unless(AdminMfa::isEnabled(auth()->user()) && AdminMfa::isRecent(), 403, 'Recent MFA confirmation is required.');
+
+                        app(SecurityAudit::class)->record('mfa_administrative_reset_requested', [
+                            'actor_id' => auth()->id(),
+                            'target_user_id' => $record->id,
+                        ]);
+                        app(DisableTwoFactorAuthentication::class)($record);
+                        app(SecurityAudit::class)->alert(
+                            'mfa_administrative_reset',
+                            'Administrative MFA reset',
+                            'A super administrator reset another user\'s MFA configuration.',
+                            ['actor_id' => auth()->id(), 'target_user_id' => $record->id],
+                            'danger',
+                            true,
+                        );
+                        Notification::make()->title('MFA reset')->success()->send();
+                    }),
                 Tables\Actions\DeleteAction::make()
                     ->successNotificationTitle('User deleted')
                     ->visible(fn (User $record) => auth()->user()?->can('delete', $record))
@@ -278,6 +259,7 @@ class UserResource extends Resource
                                     $record->reviewedReservations()->exists()
                                 ) {
                                     $skipped++;
+
                                     continue;
                                 }
                                 $record->delete();
@@ -303,6 +285,7 @@ class UserResource extends Resource
         return [
             'index' => Pages\ListUsers::route('/'),
             'create' => Pages\CreateUser::route('/create'),
+            'permissions' => Pages\PermissionsReference::route('/permissions'),
             'edit' => Pages\EditUser::route('/{record}/edit'),
         ];
     }

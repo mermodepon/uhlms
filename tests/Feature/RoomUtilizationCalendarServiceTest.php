@@ -8,6 +8,7 @@ use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomHold;
 use App\Models\RoomType;
+use App\Models\User;
 use App\Services\RoomUtilizationCalendarService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -94,6 +95,12 @@ class RoomUtilizationCalendarServiceTest extends TestCase
         ]);
 
         $checkedInReservation = $this->reservation($dormType, $from, $to, 'checked_in', 2);
+        $staff = User::create([
+            'name' => 'Calendar Staff',
+            'email' => 'calendar-staff@example.com',
+            'password' => 'password',
+            'role' => 'staff',
+        ]);
         foreach (['Ana', 'Ben'] as $firstName) {
             RoomAssignment::create([
                 'reservation_id' => $checkedInReservation->id,
@@ -104,6 +111,7 @@ class RoomUtilizationCalendarServiceTest extends TestCase
                 'status' => 'checked_in',
                 'checked_in_at' => $from,
                 'detailed_checkout_datetime' => $to,
+                'assigned_by' => $staff->id,
             ]);
         }
 

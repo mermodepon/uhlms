@@ -5,14 +5,13 @@
 
 @section('content')
     <section class="max-w-md mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        @include('guest.partials.flash-messages', [
-            'wrap' => false,
-            'containerClass' => 'mb-6 space-y-3',
-        ])
-
         <form method="POST" action="{{ route('guest.account.password.update', [], false) }}" class="bg-white rounded-xl shadow-md p-6 space-y-5" data-guest-validate novalidate>
             @csrf
             <h1 class="text-2xl font-bold text-[#00491E]">Choose New Password</h1>
+            @include('guest.partials.flash-messages', [
+                'wrap' => false,
+                'containerClass' => 'space-y-3',
+            ])
             <input type="hidden" name="token" value="{{ $token }}">
             <div>
                 <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>

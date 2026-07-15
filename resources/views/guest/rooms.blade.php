@@ -2,8 +2,7 @@
 
 @section('title', 'Room Catalog')
 
-@section('content')
-    @php
+@php
         $guestDateDefaults = \App\Support\GuestDatePolicy::defaults(
             $checkIn?->format('Y-m-d'),
             $checkOut?->format('Y-m-d')
@@ -27,15 +26,18 @@
             (int) ($priceMin ?? 0) === 1700 && $priceMax === null => '1700-',
             default => 'custom',
         };
-    @endphp
+@endphp
 
+@section('page-header')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-bold mb-2">Room Catalog</h1>
             <p class="text-gray-200">Browse our available room types and find the perfect accommodation for your stay.</p>
         </div>
     </section>
+@endsection
 
+@section('content')
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div class="mb-8 bg-white rounded-xl shadow-md p-5 md:p-6">
             <div class="mb-5 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
@@ -213,7 +215,11 @@
                     $availableCount = $isPrivate ? $roomType->available_rooms_count : ($roomType->available_beds_count ?? 0);
                     $totalCount = $isPrivate ? $roomType->total_rooms_count : ($roomType->total_beds_count ?? 0);
                     $isAvailable = (bool) ($roomType->can_accommodate_requested_guests ?? false);
-                    $roomDetailUrl = route('guest.room-detail', array_merge(['roomType' => $roomType], $filterQuery), false);
+                    $roomDetailUrl = route('guest.room-detail', array_merge(
+                        ['roomType' => $roomType],
+                        $roomType->has_capacity_variants ? ['capacity' => $roomType->variant_capacity] : [],
+                        $filterQuery,
+                    ), false);
                     $cardClasses = $isAvailable
                         ? 'bg-white hover:shadow-lg cursor-pointer'
                         : 'bg-gray-50 opacity-75 cursor-default';
@@ -248,7 +254,10 @@
 
                         <div class="p-6 md:w-2/3">
                             <div class="flex justify-between items-start mb-3">
-                                <h2 class="text-xl font-bold {{ $isAvailable ? 'text-[#00491E]' : 'text-gray-500' }}">{{ $roomType->name }}</h2>
+                                {{--
+                                <h2 class="text-xl font-bold {{ $isAvailable ? 'text-[#00491E]' : 'text-gray-500' }}">{{ $roomType->name }}@if($roomType->has_capacity_variants) — up to {{ $roomType->variant_capacity }} guests@endif</h2>
+                                --}}
+                                <h2 class="text-xl font-bold {{ $isAvailable ? 'text-[#00491E]' : 'text-gray-500' }}">{{ $roomType->name }}{{ $roomType->has_capacity_variants ? ' - up to '.$roomType->variant_capacity.' guests' : '' }}</h2>
                                 <span class="bg-[#FFC600] text-[#00491E] px-3 py-1 rounded-full text-sm font-bold whitespace-nowrap">
                                     {{ $roomType->getFormattedPrice() }}
                                 </span>
@@ -260,7 +269,7 @@
                                     <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
                                     </svg>
-                                    Capacity: {{ $roomType->capacity }}
+                                    Capacity: {{ $roomType->variant_capacity ?? $roomType->capacity }}
                                 </span>
                                 <span class="flex items-center font-medium {{ $isAvailable ? 'text-[#02681E]' : 'text-gray-500' }}">
                                     {{ $availableCount }} of {{ $totalCount }} {{ $isPrivate ? 'rooms' : 'beds' }} available
@@ -318,7 +327,7 @@
 @endsection
 
 @push('scripts')
-<script>
+<script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif>
     const checkInFilter = document.getElementById('check_in_filter');
     const checkOutFilter = document.getElementById('check_out_filter');
     const priceRangeFilter = document.getElementById('price_range_filter');

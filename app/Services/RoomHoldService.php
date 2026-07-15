@@ -10,18 +10,50 @@ use App\Models\RoomHold;
 use App\Models\RoomType;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class RoomHoldService
 {
     /**
+     * Get the distinct sellable capacities for a room type.
+     *
+     * @return Collection<int, int>
+     */
+    public function getSellableCapacities(RoomType $roomType): Collection
+    {
+        return $this->rememberGuestAvailability(
+            "capacities:{$roomType->id}",
+            fn (): Collection => ($roomType->relationLoaded('rooms')
+                ? $roomType->rooms->filter(fn (Room $room): bool => $room->is_active && ! in_array($room->status, ['maintenance', 'inactive'], true))
+                : $this->getSellableRooms($roomType))
+                ->pluck('capacity')
+                ->map(fn ($capacity): int => max(1, (int) $capacity))
+                ->unique()
+                ->sort()
+                ->values(),
+        );
+    }
+
+    /**
      * Build a guest-facing availability summary for the current moment.
      *
      * @return array<string, mixed>
      */
-    public function getCurrentAvailabilitySummary(RoomType $roomType, ?int $requestedGuests = null): array
+    public function getCurrentAvailabilitySummary(RoomType $roomType, ?int $requestedGuests = null, ?int $capacity = null): array
     {
-        $rooms = $this->getSellableRooms($roomType);
+        return $this->rememberGuestAvailability(
+            "current:{$roomType->id}:".($requestedGuests ?? 'all').':'.($capacity ?? 'all'),
+            fn (): array => $this->getCurrentAvailabilitySummaryUncached($roomType, $requestedGuests, $capacity),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function getCurrentAvailabilitySummaryUncached(RoomType $roomType, ?int $requestedGuests = null, ?int $capacity = null): array
+    {
+        $rooms = $this->getSellableRooms($roomType, $capacity);
 
         if ($roomType->isPrivate()) {
             $availableRoomsCount = $rooms->filter(fn (Room $room) => $room->isAvailable())->count();
@@ -35,7 +67,7 @@ class RoomHoldService
                 'availability_display_count' => $availableRoomsCount,
                 'availability_display_unit' => 'rooms',
                 'availability_label' => $this->formatAvailabilityLabel($availableRoomsCount, 'room'),
-                'can_accommodate_requested_guests' => $this->canPrivateRoomTypeAccommodate($roomType, $availableRoomsCount, $requestedGuests),
+                'can_accommodate_requested_guests' => $this->canPrivateRoomTypeAccommodate($roomType, $availableRoomsCount, $requestedGuests, $capacity),
             ];
         }
 
@@ -76,6 +108,15 @@ class RoomHoldService
         ];
     }
 
+    private function rememberGuestAvailability(string $key, callable $callback): mixed
+    {
+        if (app()->environment('testing')) {
+            return $callback();
+        }
+
+        return Cache::remember("guest-availability:{$key}", now()->addSeconds(30), $callback);
+    }
+
     /**
      * Build a guest-facing availability summary for a specific date range.
      *
@@ -85,12 +126,13 @@ class RoomHoldService
         RoomType $roomType,
         Carbon $checkIn,
         Carbon $checkOut,
-        ?int $requestedGuests = null
+        ?int $requestedGuests = null,
+        ?int $capacity = null,
     ): array {
-        $rooms = $this->getSellableRooms($roomType);
+        $rooms = $this->getSellableRooms($roomType, $capacity);
 
         if ($roomType->isPrivate()) {
-            $availableRooms = $this->getAvailableRooms($roomType, $checkIn, $checkOut);
+            $availableRooms = $this->getAvailableRooms($roomType, $checkIn, $checkOut, $capacity);
             $availableRoomsCount = $availableRooms->count();
 
             return [
@@ -102,7 +144,7 @@ class RoomHoldService
                 'availability_display_count' => $availableRoomsCount,
                 'availability_display_unit' => 'rooms',
                 'availability_label' => $this->formatAvailabilityLabel($availableRoomsCount, 'room'),
-                'can_accommodate_requested_guests' => $this->canPrivateRoomTypeAccommodate($roomType, $availableRoomsCount, $requestedGuests),
+                'can_accommodate_requested_guests' => $this->canPrivateRoomTypeAccommodate($roomType, $availableRoomsCount, $requestedGuests, $capacity),
             ];
         }
 
@@ -212,10 +254,11 @@ class RoomHoldService
      *
      * @return Collection<int, Room>
      */
-    public function getAvailableRooms(RoomType $roomType, Carbon $checkIn, Carbon $checkOut): Collection
+    public function getAvailableRooms(RoomType $roomType, Carbon $checkIn, Carbon $checkOut, ?int $capacity = null): Collection
     {
         $roomId = Room::query()
             ->where('room_type_id', $roomType->id)
+            ->when($capacity !== null, fn ($query) => $query->where('capacity', $capacity))
             ->where('is_active', true)
             ->whereNotIn('status', ['maintenance', 'inactive'])
             ->pluck('id');
@@ -236,9 +279,9 @@ class RoomHoldService
     /**
      * Get the count of available rooms for a room type and date range.
      */
-    public function getAvailableRoomCount(RoomType $roomType, Carbon $checkIn, Carbon $checkOut): int
+    public function getAvailableRoomCount(RoomType $roomType, Carbon $checkIn, Carbon $checkOut, ?int $capacity = null): int
     {
-        return $this->getAvailableRooms($roomType, $checkIn, $checkOut)->count();
+        return $this->getAvailableRooms($roomType, $checkIn, $checkOut, $capacity)->count();
     }
 
     /**
@@ -321,7 +364,7 @@ class RoomHoldService
     }
 
     /**
-     * Create advance holds from room IDs grouped by room type.
+     * Create advance holds from room IDs grouped by reservation room request.
      *
      * @param  array<int|string, array<int, int>>  $roomIdsByRoomType
      * @return array<string, mixed>
@@ -330,26 +373,30 @@ class RoomHoldService
     {
         $checkIn = Carbon::parse($reservation->check_in_date);
         $checkOut = Carbon::parse($reservation->check_out_date);
-        $requests = $reservation->getEffectiveRoomRequests()->keyBy('room_type_id');
+        $requests = $reservation->getEffectiveRoomRequests();
+        $requestsById = $requests->filter(fn ($request) => filled($request->id))->keyBy('id');
+        $requestsByType = $requests->groupBy('room_type_id');
         $holds = [];
 
-        DB::transaction(function () use ($reservation, $roomIdsByRoomType, $requests, $checkIn, $checkOut, &$holds): void {
-            foreach ($roomIdsByRoomType as $roomTypeId => $roomIds) {
-                $roomTypeId = (int) $roomTypeId;
+        DB::transaction(function () use ($reservation, $roomIdsByRoomType, $requestsById, $requestsByType, $checkIn, $checkOut, &$holds): void {
+            foreach ($roomIdsByRoomType as $requestKey => $roomIds) {
                 $roomIds = array_values(array_unique(array_filter(array_map('intval', (array) $roomIds))));
 
                 if (empty($roomIds)) {
                     continue;
                 }
 
-                $requestLine = $requests->get($roomTypeId);
+                $requestLine = str_starts_with((string) $requestKey, 'request_')
+                    ? $requestsById->get((int) substr((string) $requestKey, 8))
+                    : $requestsByType->get((int) $requestKey)?->first();
                 if (! $requestLine) {
                     throw new \RuntimeException('One or more selected rooms do not match the guest requested room types.');
                 }
 
                 $rooms = Room::query()
                     ->whereIn('id', $roomIds)
-                    ->where('room_type_id', $roomTypeId)
+                    ->where('room_type_id', $requestLine->room_type_id)
+                    ->when($requestLine->requested_capacity, fn ($query, $capacity) => $query->where('capacity', $capacity))
                     ->where('is_active', true)
                     ->whereNotIn('status', ['maintenance', 'inactive'])
                     ->with('roomType')
@@ -526,10 +573,11 @@ class RoomHoldService
      *
      * @return Collection<int, Room>
      */
-    protected function getSellableRooms(RoomType $roomType): Collection
+    protected function getSellableRooms(RoomType $roomType, ?int $capacity = null): Collection
     {
         return Room::query()
             ->where('room_type_id', $roomType->id)
+            ->when($capacity !== null, fn ($query) => $query->where('capacity', $capacity))
             ->where('is_active', true)
             ->whereNotIn('status', ['maintenance', 'inactive'])
             ->with([
@@ -543,7 +591,7 @@ class RoomHoldService
             ->get();
     }
 
-    protected function canPrivateRoomTypeAccommodate(RoomType $roomType, int $availableRoomsCount, ?int $requestedGuests = null): bool
+    protected function canPrivateRoomTypeAccommodate(RoomType $roomType, int $availableRoomsCount, ?int $requestedGuests = null, ?int $capacity = null): bool
     {
         if ($availableRoomsCount <= 0) {
             return false;
@@ -553,7 +601,7 @@ class RoomHoldService
             return true;
         }
 
-        return $requestedGuests <= ($roomType->capacity ?? 0);
+        return $requestedGuests <= ($capacity ?? $roomType->capacity ?? 0);
     }
 
     protected function formatAvailabilityLabel(int $count, string $singularUnit): string

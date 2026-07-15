@@ -10,7 +10,7 @@
 
 @section('title', $guestSite['guest_nav_about_label'] ?? 'About Us')
 
-@section('content')
+@section('page-header')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <span class="inline-flex items-center rounded-full bg-[#FFC600]/20 px-4 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[#FFC600]">
@@ -20,7 +20,9 @@
             <p class="mt-3 max-w-3xl text-gray-200">{{ $guestSite['guest_about_intro'] }}</p>
         </div>
     </section>
+@endsection
 
+@section('content')
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-8 items-start">
             <article class="bg-white rounded-xl shadow-md p-6 md:p-8">

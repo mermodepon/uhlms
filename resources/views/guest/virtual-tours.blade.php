@@ -2,7 +2,7 @@
 
 @section('title', 'Virtual Tour')
 
-@section('content')
+@section('page-header')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-bold mb-2">
@@ -12,7 +12,9 @@
             <p class="text-gray-200">Explore our establishment in an immersive guided tour.</p>
         </div>
     </section>
+@endsection
 
+@section('content')
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div class="bg-gradient-to-r from-yellow-400 to-[#00491E] rounded-xl shadow-lg overflow-hidden">
             <div class="p-8 text-center">

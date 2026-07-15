@@ -18,6 +18,12 @@ return new class extends Migration
             return;
         }
 
+        // Existing installations can still contain the retired value. Convert it
+        // before narrowing the enum so the schema change remains data-safe.
+        DB::table('reservations')
+            ->where('status', 'pending_payment')
+            ->update(['status' => 'pending']);
+
         DB::statement("
             ALTER TABLE reservations 
             MODIFY COLUMN status ENUM(

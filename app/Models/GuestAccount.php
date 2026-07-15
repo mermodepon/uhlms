@@ -80,6 +80,6 @@ class GuestAccount extends Authenticatable
 
     public function hasVerifiedEmail(): bool
     {
-        return $this->email_verified_at !== null;
+        return ($this->getAttributes()['email_verified_at'] ?? null) !== null;
     }
 }

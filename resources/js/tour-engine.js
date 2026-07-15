@@ -785,8 +785,8 @@ class VirtualTourEngine {
         if (this.currentWaypoint?.is_room_related && this.currentWaypoint?.linked_room_type_id) {
             steps.push({
                 key: 'room-info',
-                title: 'Rooms have their own details',
-                copy: 'Room Info shows pricing, amenities, availability, and reservation actions. You do not need to navigate every corner inside a room.',
+                title: 'View room details and request a stay',
+                copy: 'View Details and Request shows pricing, amenities, availability, and reservation actions. You do not need to navigate every corner inside a room.',
                 anchor: () => document.getElementById('psv-marker-room-info-marker') || this.roomInfoBtn,
                 placement: 'auto',
             });
@@ -1314,7 +1314,7 @@ class VirtualTourEngine {
                 id:       'room-info-marker',
                 position: { yaw: `${infoYaw}deg`, pitch: `${infoPitch}deg` },
                 data:     { isRoomInfo: true },
-                sprite:   { style: 'badge', icon: '🏠', label: 'Room Info',
+                sprite:   { style: 'badge', icon: '🏠', label: 'View Details and Request',
                              bgColor: 'linear-gradient(135deg,#00491E,#02681E)',
                              textColor: '#ffffff', iconColor: '#ffffff' },
             });
@@ -1893,6 +1893,11 @@ class VirtualTourEngine {
             url.searchParams.set('room_type', roomTypeId);
         }
 
+        const capacity = this.currentRoom?.capacity || this.currentRoomType?.capacity;
+        if (capacity) {
+            url.searchParams.set('capacity', String(capacity));
+        }
+
         url.searchParams.set('check_in', this._checkIn);
         url.searchParams.set('check_out', this._checkOut);
         url.searchParams.set('guests', String(this._guests));
@@ -2243,7 +2248,7 @@ class VirtualTourEngine {
           + `<div style="display:flex;flex-direction:column;gap:5px;align-items:center;margin-top:4px">`
           +   `<button onclick="tourEngine.openReservationModal();event.stopPropagation()" style="${buttonStyle}">${buttonText}</button>`
           +   exploreButtonHtml
-          +   `<button onclick="tourEngine.goToReservationPage();event.stopPropagation()" style="width:100%;background:#00491E;color:white;border:none;padding:8px;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer">📝 Reserve Multiple Room Types</button>`
+          +   `<button onclick="tourEngine.goToReservationPage();event.stopPropagation()" style="width:100%;background:#00491E;color:white;border:none;padding:8px;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer">📝 Request Multiple Room Types</button>`
           +   `<div style="font-size:10px;color:#6b7280;line-height:1.35;text-align:center">Use the full form when one reservation needs different room types.</div>`
           + `</div>`
           + disclaimer
@@ -2279,7 +2284,7 @@ class VirtualTourEngine {
         try {
             this.viewer.updateMarker({
                 id:     'room-info-marker',
-                sprite: { style: 'badge', icon: '🏠', label: 'Room Info',
+                sprite: { style: 'badge', icon: '🏠', label: 'View Details and Request',
                            bgColor: 'linear-gradient(135deg,#00491E,#02681E)',
                            textColor: '#ffffff', iconColor: '#ffffff' },
             });
@@ -2341,7 +2346,7 @@ class VirtualTourEngine {
         const buttons = this.previewMode ? '' : `
             <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;align-items:center">
                 <button onclick="tourEngine.openReservationModal()" style="width:85%;background:#FFC600;color:#00491E;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83C\uDFE8 Request This Room Type</button>
-                <button onclick="tourEngine.goToReservationPage()" style="width:85%;background:#00491E;color:white;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83D\uDCDD Reserve Multiple Room Types</button>
+                <button onclick="tourEngine.goToReservationPage()" style="width:85%;background:#00491E;color:white;border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">\uD83D\uDCDD Request Multiple Room Types</button>
                 <div style="width:85%;font-size:10px;color:#6b7280;line-height:1.35;text-align:center">Use the full form when one reservation needs different room types.</div>
             </div>`;
 
@@ -2933,7 +2938,7 @@ class VirtualTourEngine {
             }), center.clone().add(new THREE.Vector3(0, 0.22, 0)), { x: 3.05, y: 1.55 }, { panel: true, action: 'noop' });
             panelGroup.add(panel);
 
-            const request = makePlane(makeTextTexture('Exit VR to Reserve', {
+            const request = makePlane(makeTextTexture('Exit VR to Request a Stay', {
                 width: 512,
                 height: 120,
                 background: '#FFC600',
@@ -3087,13 +3092,14 @@ class VirtualTourEngine {
             if (this.currentWaypoint?.is_room_related && this.currentWaypoint?.linked_room_type_id) {
                 const yaw = this.currentWaypoint.room_info_yaw ?? this.currentWaypoint.default_yaw ?? 0;
                 const pitch = this.currentWaypoint.room_info_pitch ?? ((this.currentWaypoint.default_pitch ?? 0) + 15);
-                const roomInfo = makePlane(makeTextTexture('Room Info', {
+            const roomInfo = makePlane(makeTextTexture(['View Details', 'and Request'], {
                     width: 420,
                     height: 120,
                     background: '#00491E',
                     color: '#FFC600',
                     border: '#FFC600',
                     font: 'bold 36px sans-serif',
+                    lineHeight: 40,
                 }), yawPitchToVector(yaw, pitch), XR_ROOM_SCALE, { action: 'room-info' });
                 hotspotGroup.add(roomInfo);
             }
@@ -3455,7 +3461,7 @@ class VirtualTourEngine {
                     'open-url': 'Open link',
                     'reservation': 'Reservation',
                     'reserve-page': 'Reservation',
-                    'room-info': 'Room Info',
+                    'room-info': 'View Details and Request',
                 };
                 const target = {
                     id: `xr-ui-${data.action}-${targetId}`,
@@ -4224,7 +4230,7 @@ class VirtualTourEngine {
 
         return {
             id: 'room-info-marker',
-            title: 'Room Info',
+            title: 'View Details and Request',
             yaw: wp.room_info_yaw ?? wp.default_yaw ?? 0,
             pitch: wp.room_info_pitch ?? ((wp.default_pitch ?? 0) + 15),
             action_type: 'room-info',

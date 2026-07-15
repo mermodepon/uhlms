@@ -149,7 +149,7 @@ class GuestAccountResource extends Resource
                     ->icon('heroicon-o-envelope')
                     ->visible(fn (GuestAccount $record) => ! $record->hasVerifiedEmail() && (auth()->user()?->hasPermission('guest_accounts_edit') ?? false))
                     ->action(function (GuestAccount $record) {
-                        GuestAuthController::sendVerificationLinkFor($record, request());
+                        GuestAuthController::sendVerificationLinkFor($record);
                         Notification::make()->title('Verification email sent')->success()->send();
                     }),
                 Tables\Actions\Action::make('disable')

@@ -796,7 +796,7 @@ h6 {
 <script src="{{ asset('js/cmu-charts.js') }}?v={{ filemtime(public_path('js/cmu-charts.js')) }}"></script>
 
 @auth
-<script>
+<script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif>
     (function() {
         const username = @json(auth()->user()->name ?? '');
 

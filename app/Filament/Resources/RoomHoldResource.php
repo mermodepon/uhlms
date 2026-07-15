@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\RoomHoldResource\Pages;
 use App\Models\RoomHold;
+use App\Models\User;
 use App\Services\RoomHoldService;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -27,6 +28,26 @@ class RoomHoldResource extends Resource
     protected static ?string $navigationLabel = 'Room Holds';
 
     protected static ?string $modelLabel = 'Room Hold';
+
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->hasPermission(User::ROOM_HOLDS_VIEW) ?? false;
+    }
+
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return false;
+    }
+
+    public static function canDelete($record): bool
+    {
+        return false;
+    }
 
     public static function form(Form $form): Form
     {
@@ -89,11 +110,13 @@ class RoomHoldResource extends Resource
                     ->label('Release Hold')
                     ->icon('heroicon-o-lock-open')
                     ->color('danger')
-                    ->visible(fn (RoomHold $record) => $record->isAdvance())
+                    ->visible(fn (RoomHold $record) => $record->isAdvance() && (auth()->user()?->hasPermission(User::ROOM_HOLDS_RELEASE) ?? false))
                     ->requiresConfirmation()
                     ->modalHeading('Release Room Hold')
                     ->modalDescription(fn (RoomHold $record) => "Release hold on Room {$record->room->room_number} for reservation {$record->reservation->reference_number}? The room will become available for other reservations.")
                     ->action(function (RoomHold $record) {
+                        abort_unless(auth()->user()?->hasPermission(User::ROOM_HOLDS_RELEASE), 403);
+
                         $reservation = $record->reservation;
                         app(RoomHoldService::class)->releaseAdvanceHolds($reservation);
 
@@ -108,10 +131,13 @@ class RoomHoldResource extends Resource
                     ->label('Release Selected Advance Holds')
                     ->icon('heroicon-o-lock-open')
                     ->color('danger')
+                    ->visible(fn () => auth()->user()?->hasPermission(User::ROOM_HOLDS_RELEASE) ?? false)
                     ->requiresConfirmation()
                     ->modalHeading('Release selected advance holds?')
                     ->modalDescription('The held rooms will become available for other reservations.')
                     ->action(function (Collection $records) {
+                        abort_unless(auth()->user()?->hasPermission(User::ROOM_HOLDS_RELEASE), 403);
+
                         $count = 0;
                         foreach ($records as $record) {
                             if ($record->isAdvance()) {

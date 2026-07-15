@@ -134,13 +134,6 @@
         .guest-select::-ms-expand {
             display: none;
         }
-        @keyframes tour-ping {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.5); }
-        }
-        .tour-pill-dot {
-            animation: tour-ping 1.8s ease-in-out infinite;
-        }
         .guest-desktop-nav {
             gap: 1rem;
         }
@@ -217,10 +210,6 @@
                     <a href="{{ route('guest.track', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.track') ? 'text-[#FFC600]' : '' }}">{{ $guestSite['guest_nav_track_label'] }}</a>
                     <a href="{{ route('guest.support', [], false) }}" class="text-white hover:text-[#FFC600] transition font-medium {{ request()->routeIs('guest.support', 'guest.account.support.*') ? 'text-[#FFC600]' : '' }}">Support</a>
                     <a href="{{ route('guest.virtual-tours', [], false) }}" class="guest-nav-pill flex items-center gap-2 bg-[#FFC600] text-[#00491E] font-bold px-4 py-1.5 rounded-full shadow-[0_0_12px_rgba(255,198,0,0.45)] hover:shadow-[0_0_20px_rgba(255,198,0,0.7)] hover:bg-yellow-400 transition-all duration-200 {{ request()->routeIs('guest.virtual-tours') ? 'ring-2 ring-white' : '' }}">
-                        <span class="relative flex items-center justify-center w-2 h-2">
-                            <span class="tour-pill-dot absolute inline-flex w-full h-full rounded-full bg-red-600 opacity-60"></span>
-                            <span class="relative inline-flex w-2 h-2 rounded-full bg-red-600"></span>
-                        </span>
                         <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                         {{ $guestSite['guest_nav_tour_label'] }}
                     </a>
@@ -271,13 +260,15 @@
         </div>
     </nav>
 
-    {{-- Flash Messages --}}
-    @unless(trim($__env->yieldContent('suppressGlobalGuestFlashes')) === 'true')
-        @include('guest.partials.flash-messages')
-    @endunless
-
     {{-- Main Content --}}
     <main class="flex-1">
+        {{-- Page titles and hero headers always precede transient notifications. --}}
+        @yield('page-header')
+
+        @unless(trim($__env->yieldContent('suppressGlobalGuestFlashes')) === 'true')
+            @include('guest.partials.flash-messages')
+        @endunless
+
         @yield('content')
     </main>
 
@@ -321,7 +312,7 @@
         </div>
     </footer>
 
-    <script>
+    <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif>
         window.GuestDatePairs = window.GuestDatePairs || (() => {
             const pairs = [
                 ['check_in', 'check_out'],
@@ -383,7 +374,7 @@
             return { addDays, sync, syncAll };
         })();
     </script>
-    <script>
+    <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif>
         window.GuestRealtimeValidation = window.GuestRealtimeValidation || (() => {
             const selector = 'input:not([type="hidden"]):not([type="radio"]), select, textarea';
 

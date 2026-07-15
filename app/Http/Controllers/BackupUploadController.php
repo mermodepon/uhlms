@@ -2,79 +2,64 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\EncryptedBackupService;
+use App\Support\AdminMfa;
+use App\Support\SecurityAudit;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class BackupUploadController extends Controller
 {
-    public function upload(Request $request)
-    {
-        // Auth check - super_admin only
-        if (! auth()->check() || ! auth()->user()->isSuperAdmin()) {
-            abort(403);
-        }
+    public function upload(
+        Request $request,
+        EncryptedBackupService $backups,
+        SecurityAudit $audit,
+    ): RedirectResponse {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless(AdminMfa::isEnabled($request->user()) && AdminMfa::isRecent(), 403, 'Recent MFA confirmation is required.');
 
         $request->validate([
-            'backup_file' => ['required', 'file', 'max:51200'],
+            'backup_file' => ['required', 'file', 'max:51200', 'extensions:uhlmsbak'],
         ]);
 
-        $file = $request->file('backup_file');
-        $originalName = $file->getClientOriginalName();
-        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        $upload = $request->file('backup_file');
+        $original = basename($upload->getClientOriginalName());
+        try {
+            $backups->validate($upload->getRealPath());
+        } catch (Throwable $exception) {
+            $audit->alert(
+                'backup_upload_failed',
+                'Backup upload rejected',
+                'An unauthenticated, damaged, or incompatible backup upload was rejected.',
+                ['actor_id' => $request->user()->id, 'filename' => $original, 'reason' => class_basename($exception)],
+                'danger',
+                true,
+            );
 
-        if ($extension !== 'sql') {
-            Log::warning('Backup upload rejected: invalid extension', [
-                'original' => $originalName,
-                'user' => auth()->user()?->name,
-                'ip' => $request->ip(),
-            ]);
-
-            return back()->with('upload_error', 'Only .sql files are accepted.');
+            return back()->with('upload_error', 'The backup is damaged, unauthenticated, or was encrypted with a different key.');
         }
 
-        $contents = file_get_contents($file->getRealPath());
-        if ($contents === false || ! $this->isAcceptableSqlBackup($contents)) {
-            Log::warning('Backup upload rejected: invalid content', [
-                'original' => $originalName,
-                'user' => auth()->user()?->name,
-                'ip' => $request->ip(),
-            ]);
-
-            return back()->with('upload_error', 'File does not look like a supported SQL backup.');
+        $filename = 'uploaded_'.now()->format('Y-m-d_His_u').'.uhlmsbak';
+        $destination = $backups->path($filename);
+        if (! $upload->move($backups->directory(), $filename)) {
+            throw new \RuntimeException('The uploaded backup could not be stored.');
         }
 
-        $backupDir = storage_path('app/backups');
-        if (! is_dir($backupDir)) {
-            mkdir($backupDir, 0755, true);
+        try {
+            $audit->alert(
+                'backup_uploaded',
+                'Database backup uploaded',
+                'An authenticated encrypted backup was uploaded.',
+                ['actor_id' => $request->user()->id, 'filename' => $filename],
+                'warning',
+                true,
+            );
+        } catch (Throwable $exception) {
+            @unlink($destination);
+            throw $exception;
         }
 
-        // Save with the original name (or timestamped to avoid conflicts)
-        $filename = 'uploaded_'.now()->format('Y-m-d_His').'.sql';
-        $file->move($backupDir, $filename);
-
-        Log::info('Backup file uploaded', [
-            'filename' => $filename,
-            'original' => $originalName,
-            'user' => auth()->user()->name,
-            'ip' => $request->ip(),
-        ]);
-
-        return back()->with('upload_success', "File uploaded as {$filename}. You can now restore it from the backup list.");
-    }
-
-    private function isAcceptableSqlBackup(string $contents): bool
-    {
-        $sample = substr($contents, 0, 1048576);
-
-        if (preg_match('/<\?php|<script|__halt_compiler|<html|<!doctype\s+html/i', $sample)) {
-            return false;
-        }
-
-        // The restore parser is intentionally simple and does not support stored routine dumps.
-        if (preg_match('/^\s*DELIMITER\s+/im', $sample)) {
-            return false;
-        }
-
-        return (bool) preg_match('/\b(CREATE\s+TABLE|INSERT\s+INTO|ALTER\s+TABLE|DROP\s+TABLE|SET\s+FOREIGN_KEY_CHECKS)\b/i', $sample);
+        return back()->with('upload_success', "File uploaded as {$filename}. It can now be restored from the backup list.");
     }
 }

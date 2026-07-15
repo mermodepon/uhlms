@@ -7,7 +7,7 @@
                 <div>
                     <h3 class="text-lg font-medium text-gray-950 dark:text-white">Database Backups</h3>
                     <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Create and manage database backups. Only the last 10 backups are kept.
+                        Create and manage authenticated encrypted backups. Up to 10 routine backups are kept for 30 days.
                     </p>
                 </div>
                 <button
@@ -110,7 +110,7 @@
         <div class="fi-section rounded-xl bg-white shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10 p-6">
             <h3 class="text-lg font-medium text-gray-950 dark:text-white mb-1">Upload Backup File</h3>
             <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                Upload a <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">.sql</code> backup file. It will appear in the backup list above, where you can restore it. Maximum file size: 50 MB.
+                Upload an authenticated <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">.uhlmsbak</code> backup file. Raw SQL is never accepted through the web interface. Maximum file size: 50 MB.
             </p>
 
             @if(session('upload_success'))
@@ -127,11 +127,11 @@
             <form action="{{ route('backup.upload') }}" method="POST" enctype="multipart/form-data" class="flex items-end gap-4">
                 @csrf
                 <div class="flex-1">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Backup File (.sql)</label>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Backup File (.uhlmsbak)</label>
                     <input
                         type="file"
                         name="backup_file"
-                        accept=".sql"
+                        accept=".uhlmsbak"
                         required
                         class="block w-full text-sm text-gray-500 dark:text-gray-400
                                file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0

@@ -18,6 +18,7 @@ class ListVirtualTours extends ListRecords
                 ->label('Open Tour Editor')
                 ->icon('heroicon-o-map-pin')
                 ->color('success')
+                ->visible(fn (): bool => auth()->user()?->hasPermission(\App\Models\User::VIRTUAL_TOUR_MANAGE) ?? false)
                 ->disabled(fn (): bool => !$this->getEditorEntryWaypointId())
                 ->tooltip('Create a scene first to use the tour editor.')
                 ->url(function (): ?string {

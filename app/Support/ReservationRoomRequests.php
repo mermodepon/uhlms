@@ -11,7 +11,7 @@ use Illuminate\Support\Carbon;
 class ReservationRoomRequests
 {
     /**
-     * @return array<int, array{room_type_id:int,requested_room_count:int,occupant_count:int,notes:?string,sort_order:int}>
+     * @return array<int, array{room_type_id:int,requested_capacity:?int,requested_room_count:int,occupant_count:int,notes:?string,sort_order:int}>
      */
     public static function fromRequest(Request $request): array
     {
@@ -20,6 +20,7 @@ class ReservationRoomRequests
         if ($request->filled('preferred_room_type_id')) {
             $lines[] = [
                 'room_type_id' => (int) $request->input('preferred_room_type_id'),
+                'requested_capacity' => $request->filled('preferred_room_capacity') ? max(1, (int) $request->input('preferred_room_capacity')) : null,
                 'requested_room_count' => max(1, (int) $request->input('requested_room_count', 1)),
                 'occupant_count' => max(1, (int) $request->input('number_of_occupants', 1)),
                 'notes' => null,
@@ -34,6 +35,7 @@ class ReservationRoomRequests
 
             $lines[] = [
                 'room_type_id' => (int) $line['room_type_id'],
+                'requested_capacity' => filled($line['requested_capacity'] ?? null) ? max(1, (int) $line['requested_capacity']) : null,
                 'requested_room_count' => max(1, (int) ($line['requested_room_count'] ?? 1)),
                 'occupant_count' => max(1, (int) ($line['occupant_count'] ?? 1)),
                 'notes' => filled($line['notes'] ?? null) ? trim((string) $line['notes']) : null,
@@ -42,7 +44,7 @@ class ReservationRoomRequests
         }
 
         return collect($lines)
-            ->groupBy('room_type_id')
+            ->groupBy(fn (array $line): string => $line['room_type_id'].'-'.($line['requested_capacity'] ?? 'any'))
             ->map(function ($group) {
                 $first = $group->first();
                 $notes = $group
@@ -52,6 +54,7 @@ class ReservationRoomRequests
 
                 return [
                     'room_type_id' => (int) $first['room_type_id'],
+                    'requested_capacity' => $first['requested_capacity'],
                     'requested_room_count' => $group->sum(fn (array $line): int => max(1, (int) $line['requested_room_count'])),
                     'occupant_count' => $group->sum(fn (array $line): int => max(1, (int) $line['occupant_count'])),
                     'notes' => $notes !== '' ? $notes : null,
@@ -94,17 +97,19 @@ class ReservationRoomRequests
 
             $requestedRooms = max(1, (int) ($line['requested_room_count'] ?? 1));
             $occupants = max(1, (int) ($line['occupant_count'] ?? 1));
+            $requestedCapacity = filled($line['requested_capacity'] ?? null) ? (int) $line['requested_capacity'] : null;
             $summary = app(RoomHoldService::class)->getDateAvailabilitySummary(
                 $roomType,
                 Carbon::parse($checkInDate),
                 Carbon::parse($checkOutDate),
-                $occupants
+                $occupants,
+                $requestedCapacity,
             );
 
             $summaries[] = self::formatLineSummary($roomType, $requestedRooms, $occupants);
 
             if ($roomType->isPrivate()) {
-                $capacity = max(1, (int) ($roomType->capacity ?? 1));
+                $capacity = $requestedCapacity ?? max(1, (int) ($roomType->capacity ?? 1));
                 $maxGuests = $requestedRooms * $capacity;
 
                 if ($occupants > $maxGuests) {
@@ -165,6 +170,7 @@ class ReservationRoomRequests
             collect($lines)
                 ->map(fn (array $line, int $index): array => [
                     'room_type_id' => (int) $line['room_type_id'],
+                    'requested_capacity' => filled($line['requested_capacity'] ?? null) ? (int) $line['requested_capacity'] : null,
                     'requested_room_count' => max(1, (int) ($line['requested_room_count'] ?? 1)),
                     'occupant_count' => max(1, (int) ($line['occupant_count'] ?? 1)),
                     'sort_order' => $index,

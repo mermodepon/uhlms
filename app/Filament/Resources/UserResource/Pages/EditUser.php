@@ -6,6 +6,7 @@ use App\Filament\Pages\EditRedirectToIndex as EditRecord;
 use App\Filament\Resources\UserResource;
 use App\Models\User;
 use Filament\Actions;
+use Filament\Notifications\Notification;
 
 class EditUser extends EditRecord
 {
@@ -14,6 +15,24 @@ class EditUser extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('reset_permissions')
+                ->label('Reset to role defaults')
+                ->icon('heroicon-o-arrow-path')
+                ->color('warning')
+                ->visible(fn (User $record): bool => auth()->user()?->isSuperAdmin() && $record->permissions !== null)
+                ->requiresConfirmation()
+                ->modalHeading('Reset permissions to role defaults?')
+                ->modalDescription('This will remove the custom permission override and restore the user\'s role-based access.')
+                ->action(function (User $record): void {
+                    $record->forceFill(['permissions' => null])->save();
+                    $record->refresh();
+                    $this->fillForm();
+
+                    Notification::make()
+                        ->title('Permissions reset to role defaults')
+                        ->success()
+                        ->send();
+                }),
             Actions\DeleteAction::make()
                 ->successNotificationTitle('User deleted')
                 ->disabled(fn ($record) => $record->roomAssignments()->exists() || $record->reviewedReservations()->exists())

@@ -1,5 +1,9 @@
 <?php
 
+use App\Http\Middleware\ApplySecurityHeaders;
+use App\Http\Middleware\MonitorSecurityResponses;
+use App\Http\Middleware\ValidateTrustedHost;
+use App\Support\TrustedHostPatterns;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -19,6 +23,14 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Trust localhost by default for local servers and Cloudflare Tunnel clients.
         $middleware->trustProxies(at: $trustedProxies ?: ['127.0.0.1', '::1']);
+
+        $middleware->trustHosts(
+            at: fn (): array => TrustedHostPatterns::fromLiterals(config('security.trusted_hosts', [])),
+            subdomains: false,
+        );
+        $middleware->append(ValidateTrustedHost::class);
+        $middleware->append(ApplySecurityHeaders::class);
+        $middleware->append(MonitorSecurityResponses::class);
 
         // Exclude PayMongo webhook from CSRF protection
         $middleware->validateCsrfTokens(except: [

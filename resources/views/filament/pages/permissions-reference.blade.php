@@ -110,73 +110,25 @@
                     $yes = '<span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-200 text-green-700 dark:bg-green-900/60 dark:text-green-400 shadow"><svg class="w-5 h-5" fill="none" stroke="currentColor" style="color:inherit" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></span>';
                     $no  = '<span class="inline-flex items-center justify-center w-8 h-8 text-gray-300 dark:text-gray-600 select-none text-xl font-bold">–</span>';
 
-                    $matrix = [
-                        'Reservations' => [
-                            'View'   => [true,  true,  true],
-                            'Create' => [true,  true,  true],
-                            'Edit'   => [true,  true,  true],
-                            'Delete' => [true,  true,  false],
-                        ],
-                        'Rooms' => [
-                            'View'   => [true,  true,  true],
-                            'Create' => [true,  true,  false],
-                            'Edit'   => [true,  true,  false],
-                            'Delete' => [true,  true,  false],
-                        ],
-                        'Room Types' => [
-                            'View'   => [true,  true,  true],
-                            'Create' => [true,  true,  false],
-                            'Edit'   => [true,  true,  false],
-                            'Delete' => [true,  true,  false],
-                        ],
-                        'Floors' => [
-                            'View'   => [true,  true,  true],
-                            'Create' => [true,  true,  false],
-                            'Edit'   => [true,  true,  false],
-                            'Delete' => [true,  true,  false],
-                        ],
-                        'Amenities' => [
-                            'View'   => [true,  true,  true],
-                            'Create' => [true,  true,  false],
-                            'Edit'   => [true,  true,  false],
-                            'Delete' => [true,  true,  false],
-                        ],
-                        'Add-Ons' => [
-                            'View'   => [true,  true,  true],
-                            'Create' => [true,  true,  false],
-                            'Edit'   => [true,  true,  false],
-                            'Delete' => [true,  true,  false],
-                        ],
-                        'Users' => [
-                            'View'   => [true,  true,  false],
-                            'Create' => [true,  true,  false],
-                            'Edit'   => [true,  true,  false],
-                            'Delete' => [true,  true,  false],
-                        ],
-                        'Stay Logs' => [
-                            'View'   => [true,  true,  true],
-                        ],
-                        'Guest Site Settings' => [
-                            'View'   => [true,  true,  false],
-                            'Edit'   => [true,  true,  false],
-                        ],
-                        'Discount Configuration' => [
-                            'View'   => [true,  true,  false],
-                            'Edit'   => [true,  true,  false],
-                        ],
-                        'Online Payments' => [
-                            'View'   => [true,  false, false],
-                            'Edit'   => [true,  false, false],
-                        ],
+                    $permissionGroups = \App\Models\User::permissionGroups();
+                    $roleDefaults = [
+                        'super_admin' => [],
+                        'admin' => \App\Models\User::defaultPermissionsForRole('admin'),
+                        'staff' => \App\Models\User::defaultPermissionsForRole('staff'),
                     ];
 
                     $rowIndex = 0;
                     @endphp
 
-                    @foreach ($matrix as $resource => $actions)
-                        @php $actionCount = count($actions); $first = true; @endphp
-                        @foreach ($actions as $action => $perms)
+                    @foreach ($permissionGroups as $resource => $permissions)
+                        @php $actionCount = count($permissions); $first = true; @endphp
+                        @foreach ($permissions as $permission)
                             @php
+                            $perms = [
+                                true,
+                                (bool) ($roleDefaults['admin'][$permission['key']] ?? false),
+                                (bool) ($roleDefaults['staff'][$permission['key']] ?? false),
+                            ];
                             $bg = $rowIndex % 2 === 0 ? '' : 'bg-gray-50/60 dark:bg-gray-800/30';
                             $rowIndex++;
                             @endphp
@@ -187,7 +139,7 @@
                                     </td>
                                     @php $first = false; @endphp
                                 @endif
-                                <td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">{{ $action }}</td>
+                                <td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">{{ $permission['label'] }}</td>
                                 <td class="px-4 py-2.5 text-center">{!! $perms[0] ? $yes : $no !!}</td>
                                 <td class="px-4 py-2.5 text-center">{!! $perms[1] ? $yes : $no !!}</td>
                                 <td class="px-4 py-2.5 text-center">{!! $perms[2] ? $yes : $no !!}</td>
@@ -200,12 +152,12 @@
         </div>
     </div>
 
-    {{-- Fixed-Access Pages --}}
+    {{-- Additional Access Rules --}}
     <div class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">Fixed-Access Pages</h2>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">Additional Access Rules</h2>
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                These pages have hardcoded access rules and cannot be changed via custom permissions.
+                These pages use role-level rules or require permissions listed in the matrix above.
             </p>
         </div>
         <div class="overflow-x-auto">
@@ -239,9 +191,9 @@
                     $fixedYes = '<span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-200 text-green-700 dark:bg-green-900/60 dark:text-green-400 shadow"><svg class="w-5 h-5" fill="none" stroke="currentColor" style="color:inherit" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></span>';
                     $fixedNo  = '<span class="inline-flex items-center justify-center w-8 h-8 text-gray-300 dark:text-gray-600 select-none text-xl font-bold">–</span>';
                     $fixedPages = [
-                        ['Virtual Tour Manager',      'All authenticated staff',     true,  true,  true],
-                        ['Room Holds',                'All authenticated staff',     true,  true,  true],
-                        ['Reports',                   'All authenticated staff',     true,  true,  true],
+                        ['Virtual Tour Manager',      'Virtual Tour View permission', true,  true,  false],
+                        ['Room Holds',                'Room Holds View permission',   true,  true,  true],
+                        ['Monthly Report Export',     'Monthly Export permission',    true,  true,  false],
                         ['Signatories Configuration', 'Admin &amp; above only',      true,  true,  false],
                         ['Force Deletion Logs',       'Super Admin only',            true,  false, false],
                         ['Backup &amp; Restore',      'Super Admin only',            true,  false, false],
@@ -279,7 +231,7 @@
                 </svg>
                 <span><strong class="text-gray-800 dark:text-gray-200">Custom Permissions:</strong>
                     Super Admins can override the defaults above on a per-user basis via
-                    <em>Configuration → Users → Edit User → Custom Permissions</em>.
+                    <em>Users → Edit User → Access &amp; Permissions</em>.
                     Enabling custom permissions for a user completely replaces their role-based defaults.</span>
             </li>
             <li class="flex gap-2">
@@ -302,8 +254,8 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z"/>
                 </svg>
                 <span><strong class="text-gray-800 dark:text-gray-200">Online Payments access:</strong>
-                    The Online Payments page is not enabled for Admin accounts by default. Access must be explicitly granted via
-                    <em>Configuration → Users → Edit User → Custom Permissions</em>.</span>
+                    Online Payments is enabled for Admin and Super Admin accounts by default and can be delegated through
+                    <em>Users → Edit User → Access &amp; Permissions</em>.</span>
             </li>
             <li class="flex gap-2">
                 <svg class="w-4 h-4 mt-0.5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

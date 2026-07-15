@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A beginner-friendly guided tour of the UH Lodging Management System source code.">
+  <title>UHLMS File Guide — Project Tutorial</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#lesson">Skip to lesson</a>
+  <header class="topbar">
+    <button id="menuButton" class="menu-button" aria-label="Open chapters" aria-expanded="false">☰</button>
+    <a class="brand" href="#welcome"><span>UH</span> UHLMS File Guide</a>
+    <div class="top-actions">
+      <div class="view-switch" role="group" aria-label="Tutorial view"><button id="referenceViewButton" class="view-button active" type="button">File-by-file guide</button><button id="lessonViewButton" class="view-button" type="button">Guided lessons</button></div>
+      <label class="search"><span class="sr-only">Search tutorial</span><input id="searchInput" type="search" placeholder="Search files or code…" autocomplete="off"></label>
+      <button id="themeButton" class="icon-button" aria-label="Toggle dark mode">◐</button>
+    </div>
+  </header>
+
+  <aside id="sidebar" class="sidebar" aria-label="Tutorial chapters">
+    <div class="progress-label"><span>Your progress</span><strong id="progressText">0%</strong></div>
+    <div class="progress-track"><span id="progressBar"></span></div>
+    <nav id="chapterNav"></nav>
+  </aside>
+  <div id="scrim" class="scrim"></div>
+
+  <main id="lesson" tabindex="-1">
+    <div id="searchResults" class="search-results" hidden></div>
+    <article id="lessonContent"></article>
+    <nav class="lesson-pager" aria-label="Lesson navigation">
+      <button id="previousButton">← Previous</button>
+      <button id="completeButton" class="complete-button">Mark complete ✓</button>
+      <button id="nextButton">Next →</button>
+    </nav>
+  </main>
+
+  <script src="tutorial-data.js"></script>
+  <script src="source-reference.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

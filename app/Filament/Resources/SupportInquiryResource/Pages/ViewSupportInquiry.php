@@ -20,7 +20,7 @@ class ViewSupportInquiry extends ViewRecord
                 ->label('Reply to Guest')
                 ->icon('heroicon-o-paper-airplane')
                 ->color('info')
-                ->visible(fn () => $this->record->guest_account_id !== null)
+                ->visible(fn () => SupportInquiryResource::canReply($this->record))
                 ->form([
                     Forms\Components\Textarea::make('message')
                         ->label('Your Reply')
@@ -30,11 +30,13 @@ class ViewSupportInquiry extends ViewRecord
                         ->rows(5),
                 ])
                 ->action(function (array $data): void {
+                    SupportInquiryResource::authorizeReply($this->record);
+
                     SupportInquiryReply::create([
                         'support_inquiry_id' => $this->record->id,
-                        'user_id'            => auth()->id(),
-                        'guest_account_id'   => null,
-                        'message'            => $data['message'],
+                        'user_id' => auth()->id(),
+                        'guest_account_id' => null,
+                        'message' => $data['message'],
                     ]);
 
                     Notification::make()

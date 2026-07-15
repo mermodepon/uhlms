@@ -3,17 +3,19 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Pages\Auth\EditProfile;
+use App\Filament\Pages\Auth\Login;
 use App\Filament\Pages\Auth\PasswordReset\RequestPasswordReset;
+use App\Http\Middleware\EnforceAdminMfa;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\MenuItem;
 use Filament\Navigation\NavigationGroup;
 use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Saade\FilamentFullCalendar\FilamentFullCalendarPlugin;
 use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -21,6 +23,7 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Saade\FilamentFullCalendar\FilamentFullCalendarPlugin;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -30,7 +33,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->login()
+            ->login(Login::class)
             ->passwordReset(RequestPasswordReset::class)
             ->profile(EditProfile::class)
             ->brandName('UH Lodging Management System')
@@ -67,26 +70,20 @@ class AdminPanelProvider extends PanelProvider
             )
             ->databaseNotifications()
             ->databaseNotificationsPolling('60s')
+            ->userMenuItems([
+                MenuItem::make()
+                    ->label('Security & MFA')
+                    ->icon('heroicon-o-shield-check')
+                    ->url(fn (): string => route('admin.mfa.setup'))
+                    ->sort(-10),
+            ])
             ->renderHook(
                 'panels::body.end',
-                fn (): string => <<<'HTML'
-                <script>
-                    document.addEventListener('livewire:init', () => {
-                        Livewire.hook('request', ({ fail }) => {
-                            fail(({ status, preventDefault }) => {
-                                if (status === 419) {
-                                    preventDefault();
-                                    window.location.href = '/admin/login';
-                                }
-                            });
-                        });
-                    });
-                </script>
-                HTML,
+                fn (): string => view('filament.session-expiry-script')->render(),
             )
             ->renderHook(
                 'panels::footer',
-                fn (): string => '<div class="text-center text-xs ' . (request()->routeIs('filament.admin.auth.login') ? 'text-white' : 'text-gray-500') . ' py-4">&copy; ' . date('Y') . ' CMU University Homestay Lodging Management System. All rights reserved.</div>',
+                fn (): string => '<div class="text-center text-xs '.(request()->routeIs('filament.admin.auth.login') ? 'text-white' : 'text-gray-500').' py-4">&copy; '.date('Y').' CMU University Homestay Lodging Management System. All rights reserved.</div>',
             )
             ->colors([
                 'primary' => Color::hex('#00491E'),
@@ -136,6 +133,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
+                EnforceAdminMfa::class,
             ]);
     }
 }

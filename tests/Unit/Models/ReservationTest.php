@@ -3,6 +3,7 @@
 namespace Tests\Unit\Models;
 
 use App\Models\Reservation;
+use App\Models\ReservationPayment;
 use App\Models\RoomType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -289,6 +290,65 @@ class ReservationTest extends TestCase
         $this->assertEquals('0.00', $reservation->payments_total);
         $this->assertEquals('0.00', $reservation->balance_due);
         $this->assertEquals('pending', $reservation->payment_status);
+    }
+
+    public function test_guest_payment_summary_uses_requested_room_estimate_before_charges_are_finalized(): void
+    {
+        $reservation = $this->createReservation([
+            'check_in_date' => now()->addDay()->toDateString(),
+            'check_out_date' => now()->addDays(2)->toDateString(),
+        ]);
+
+        $reservation->preferredRoomType->update(['base_rate' => 800]);
+        ReservationPayment::create([
+            'reservation_id' => $reservation->id,
+            'amount' => 160,
+            'payment_mode' => 'GCash',
+            'gateway' => 'paymongo',
+            'gateway_status' => 'paid',
+            'is_deposit' => true,
+            'status' => 'posted',
+        ]);
+
+        $summary = $reservation->guestPaymentSummary();
+
+        $this->assertFalse($summary['is_finalized']);
+        $this->assertSame(800.0, $summary['total']);
+        $this->assertSame(160.0, $summary['paid']);
+        $this->assertSame(640.0, $summary['remaining']);
+        $this->assertSame('Deposit received', $summary['status_label']);
+        $this->assertSame('Estimated remaining balance', $summary['balance_label']);
+    }
+
+    public function test_guest_payment_summary_uses_finalized_charges_when_available(): void
+    {
+        $reservation = $this->createReservation();
+        $reservation->charges()->create([
+            'charge_type' => 'room_rate',
+            'scope_type' => 'reservation',
+            'scope_id' => $reservation->id,
+            'description' => 'Final room charge',
+            'qty' => 1,
+            'unit_price' => 800,
+            'amount' => 800,
+            'currency' => 'PHP',
+        ]);
+        $reservation->payments()->create([
+            'amount' => 160,
+            'payment_mode' => 'GCash',
+            'gateway' => 'paymongo',
+            'gateway_status' => 'paid',
+            'is_deposit' => true,
+            'status' => 'posted',
+        ]);
+
+        $summary = $reservation->guestPaymentSummary();
+
+        $this->assertTrue($summary['is_finalized']);
+        $this->assertSame(800.0, $summary['total']);
+        $this->assertSame(640.0, $summary['remaining']);
+        $this->assertSame('Partially paid', $summary['status_label']);
+        $this->assertSame('Remaining balance', $summary['balance_label']);
     }
 
     public function test_refresh_financial_summary_with_addons(): void

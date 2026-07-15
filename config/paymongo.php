@@ -73,6 +73,9 @@ return [
     // Enable strict webhook signature verification (recommended: true)
     'strict_webhook_verification' => env('PAYMONGO_STRICT_WEBHOOK_VERIFICATION', true),
 
+    // Reject signed webhook deliveries outside this clock-skew window.
+    'webhook_tolerance_seconds' => max(0, (int) env('PAYMONGO_WEBHOOK_TOLERANCE_SECONDS', 300)),
+
     // Optional CA bundle path for Windows/PHP runtimes without curl.cainfo configured.
     'ca_bundle' => env('PAYMONGO_CA_BUNDLE'),
 

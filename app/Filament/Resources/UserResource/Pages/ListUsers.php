@@ -18,6 +18,11 @@ class ListUsers extends ListRecords
                 ->icon('heroicon-o-arrow-path')
                 ->color('gray')
                 ->action(fn () => $this->dispatch('$refresh')),
+            Actions\Action::make('permissions_reference')
+                ->label('Roles & Permissions')
+                ->icon('heroicon-o-shield-check')
+                ->color('gray')
+                ->url(fn (): string => UserResource::getUrl('permissions')),
             Actions\CreateAction::make(),
         ];
     }

@@ -2,14 +2,17 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Filament\Pages\SupportInbox;
 use App\Filament\Resources\SupportInquiryResource;
 use App\Filament\Resources\SupportInquiryResource\Pages\EditSupportInquiry;
 use App\Filament\Resources\SupportInquiryResource\Pages\ListSupportInquiries;
-use App\Filament\Pages\SupportInbox;
+use App\Filament\Resources\SupportInquiryResource\Pages\ViewSupportInquiry;
+use App\Models\GuestAccount;
 use App\Models\SupportInquiry;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class SupportInquiryResourceTest extends TestCase
@@ -17,7 +20,9 @@ class SupportInquiryResourceTest extends TestCase
     use RefreshDatabase;
 
     private User $staff;
+
     private User $restrictedStaff;
+
     private User $viewOnlyStaff;
 
     protected function setUp(): void
@@ -118,6 +123,127 @@ class SupportInquiryResourceTest extends TestCase
             ->assertForbidden();
 
         $this->assertDatabaseCount('support_inquiry_replies', 0);
+    }
+
+    public function test_view_only_staff_can_read_inquiries_but_resource_reply_actions_are_hidden(): void
+    {
+        $this->actingAs($this->viewOnlyStaff);
+        $inquiry = $this->createAccountInquiry();
+
+        Livewire::test(ListSupportInquiries::class)
+            ->assertSuccessful()
+            ->assertTableActionHidden('reply', $inquiry);
+
+        Livewire::test(ViewSupportInquiry::class, ['record' => $inquiry->getRouteKey()])
+            ->assertSuccessful()
+            ->assertActionHidden('reply');
+    }
+
+    public function test_table_reply_action_authorizes_its_execution_callback(): void
+    {
+        $this->actingAs($this->viewOnlyStaff);
+        $inquiry = $this->createAccountInquiry();
+        $component = Livewire::test(ListSupportInquiries::class);
+        $action = $component->instance()->getTable()->getAction('reply');
+
+        $action
+            ->record($inquiry)
+            ->formData(['message' => 'This direct table reply must be rejected.']);
+
+        $this->assertForbiddenCallback(fn () => $action->call());
+        $this->assertDatabaseCount('support_inquiry_replies', 0);
+    }
+
+    public function test_view_reply_action_authorizes_its_execution_callback(): void
+    {
+        $this->actingAs($this->viewOnlyStaff);
+        $inquiry = $this->createAccountInquiry();
+        $component = Livewire::test(ViewSupportInquiry::class, ['record' => $inquiry->getRouteKey()]);
+        $action = $component->instance()->getAction('reply');
+
+        $action
+            ->record($inquiry)
+            ->formData(['message' => 'This direct detail reply must be rejected.']);
+
+        $this->assertForbiddenCallback(fn () => $action->call());
+        $this->assertDatabaseCount('support_inquiry_replies', 0);
+    }
+
+    public function test_authorized_staff_can_reply_from_table_and_view_actions(): void
+    {
+        $this->actingAs($this->staff);
+        $inquiry = $this->createAccountInquiry();
+
+        Livewire::test(ListSupportInquiries::class)
+            ->assertTableActionVisible('reply', $inquiry)
+            ->callTableAction('reply', $inquiry, [
+                'message' => 'Reply sent from the inquiry list.',
+            ])
+            ->assertHasNoTableActionErrors();
+
+        Livewire::test(ViewSupportInquiry::class, ['record' => $inquiry->getRouteKey()])
+            ->assertActionVisible('reply')
+            ->callAction('reply', [
+                'message' => 'Reply sent from the inquiry detail page.',
+            ])
+            ->assertHasNoActionErrors();
+
+        $this->assertDatabaseHas('support_inquiry_replies', [
+            'support_inquiry_id' => $inquiry->id,
+            'user_id' => $this->staff->id,
+            'guest_account_id' => null,
+            'message' => 'Reply sent from the inquiry list.',
+        ]);
+        $this->assertDatabaseHas('support_inquiry_replies', [
+            'support_inquiry_id' => $inquiry->id,
+            'user_id' => $this->staff->id,
+            'guest_account_id' => null,
+            'message' => 'Reply sent from the inquiry detail page.',
+        ]);
+    }
+
+    public function test_reply_actions_reject_inquiries_without_a_guest_account(): void
+    {
+        $this->actingAs($this->staff);
+        $inquiry = $this->createInquiry();
+
+        Livewire::test(ListSupportInquiries::class)
+            ->assertTableActionHidden('reply', $inquiry);
+
+        Livewire::test(ViewSupportInquiry::class, ['record' => $inquiry->getRouteKey()])
+            ->assertActionHidden('reply');
+
+        $this->assertFalse(SupportInquiryResource::canReply($inquiry));
+        $this->assertForbiddenCallback(fn () => SupportInquiryResource::authorizeReply($inquiry));
+        $this->assertDatabaseCount('support_inquiry_replies', 0);
+    }
+
+    private function assertForbiddenCallback(callable $callback): void
+    {
+        try {
+            $callback();
+            $this->fail('The reply callback did not reject the unauthorized request.');
+        } catch (HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
+    }
+
+    private function createAccountInquiry(): SupportInquiry
+    {
+        $account = GuestAccount::create([
+            'last_name' => 'Guest',
+            'first_name' => 'Support',
+            'email' => 'linked-guest@example.com',
+            'password' => 'password',
+            'phone' => '09171234567',
+        ]);
+
+        return $this->createInquiry([
+            'guest_account_id' => $account->id,
+            'name' => $account->name,
+            'email' => $account->email,
+            'source' => SupportInquiry::SOURCE_GUEST_ACCOUNT,
+        ]);
     }
 
     private function createInquiry(array $overrides = []): SupportInquiry

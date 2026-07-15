@@ -7,6 +7,7 @@ use App\Filament\Resources\SupportInquiryResource\RelationManagers\SupportInquir
 use App\Models\SupportInquiry;
 use App\Models\SupportInquiryReply;
 use Filament\Forms;
+use Filament\Forms\Form;
 use Filament\Infolists;
 use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
@@ -42,6 +43,37 @@ class SupportInquiryResource extends Resource
     public static function canDelete($record): bool
     {
         return false;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()?->hasPermission('support_inquiries_edit') ?? false;
+    }
+
+    public static function canReply(SupportInquiry $record): bool
+    {
+        return $record->guest_account_id !== null && static::canEdit($record);
+    }
+
+    public static function authorizeReply(SupportInquiry $record): void
+    {
+        abort_unless(static::canReply($record), 403);
+    }
+
+    public static function form(Form $form): Form
+    {
+        return $form->schema([
+            Forms\Components\Select::make('status')
+                ->options(SupportInquiry::statusOptions())
+                ->required(),
+            Forms\Components\Select::make('priority')
+                ->options(SupportInquiry::priorityOptions())
+                ->required(),
+            Forms\Components\Textarea::make('internal_notes')
+                ->label('Internal Notes')
+                ->rows(5)
+                ->columnSpanFull(),
+        ])->columns(2);
     }
 
     public static function infolist(Infolist $infolist): Infolist
@@ -101,7 +133,7 @@ class SupportInquiryResource extends Resource
             ->label('Reply to Guest')
             ->icon('heroicon-o-paper-airplane')
             ->color('info')
-            ->visible(fn (SupportInquiry $record) => $record->guest_account_id !== null)
+            ->visible(fn (SupportInquiry $record) => static::canReply($record))
             ->form([
                 Forms\Components\Textarea::make('message')
                     ->label('Your Reply')
@@ -111,11 +143,13 @@ class SupportInquiryResource extends Resource
                     ->rows(5),
             ])
             ->action(function (SupportInquiry $record, array $data): void {
+                static::authorizeReply($record);
+
                 SupportInquiryReply::create([
                     'support_inquiry_id' => $record->id,
-                    'user_id'            => auth()->id(),
-                    'guest_account_id'   => null,
-                    'message'            => $data['message'],
+                    'user_id' => auth()->id(),
+                    'guest_account_id' => null,
+                    'message' => $data['message'],
                 ]);
 
                 Notification::make()
@@ -137,6 +171,7 @@ class SupportInquiryResource extends Resource
         return [
             'index' => Pages\ListSupportInquiries::route('/'),
             'view' => Pages\ViewSupportInquiry::route('/{record}'),
+            'edit' => Pages\EditSupportInquiry::route('/{record}/edit'),
         ];
     }
 }

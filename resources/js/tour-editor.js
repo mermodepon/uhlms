@@ -380,7 +380,7 @@ class TourEditor {
         return {
             style: 'badge',
             icon: '📍',
-            label: 'Room Info (preview)',
+            label: 'View Details and Request (preview)',
             dashed: true,
             borderColor: '#FFC600',
             bgColor: 'linear-gradient(135deg,#00491E,#02681E)',
@@ -457,10 +457,10 @@ class TourEditor {
             markers.push({
                 id: 'room-info-system',
                 position: { yaw: `${yaw}deg`, pitch: `${pitch}deg` },
-                tooltip: { content: '🔒 Auto-generated Room Info marker', position: 'top center' },
+            tooltip: { content: '🔒 Auto-generated View Details and Request marker', position: 'top center' },
                 data: { isSystem: true },
                 sprite: {
-                    style: 'badge', icon: '📍', label: 'Room Info (system)',
+                style: 'badge', icon: '📍', label: 'View Details and Request (system)',
                     dashed: true, borderColor: '#FFC600',
                     bgColor: 'linear-gradient(135deg,#00491E,#02681E)',
                     opacity: 0.85,

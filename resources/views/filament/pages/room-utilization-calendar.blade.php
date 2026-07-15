@@ -13,7 +13,7 @@
         $typeLabels = [
             'holds' => 'Held rooms',
             'assignments' => 'Checked-in/out',
-            'room_states' => 'Maintenance/inactive',
+            'room_states' => 'Out of Order / Inactive',
             'unassigned' => 'Unassigned requests',
         ];
     @endphp

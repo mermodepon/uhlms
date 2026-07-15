@@ -2,17 +2,27 @@
 
 @section('title', 'Track Reservation')
 
-@section('content')
+@section('page-header')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-bold mb-2">Track Your Reservation Request</h1>
             <p class="text-gray-200">Use your reservation reference number and guest email address, or open the secure tracking link sent to your email.</p>
         </div>
     </section>
+@endsection
 
+@section('content')
     <section class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {{-- Search Form --}}
         <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+            @if(!$reservation)
+                <div class="mb-5 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800" role="note">
+                    <svg class="mt-0.5 h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6l4 2m5-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <p><span class="font-semibold">{{ \App\Support\GuestSiteSettings::get('guest_reservation_processing_time') }}</span> Use this page to check for status updates.</p>
+                </div>
+            @endif
             <form action="{{ route('guest.track', [], false) }}" method="GET" class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-4 items-end">
                 <label class="block min-w-0">
                     <span class="block text-sm font-semibold text-gray-700 mb-1">Reference Number</span>
@@ -65,16 +75,8 @@
                     return $first . ' ' . implode(' ', $masked);
                 };
 
-                $statusGuidance = [
-                    'pending' => 'Your request is waiting for staff review. Estimated processing time is 1-2 business days. Please watch your email for approval or follow-up instructions.',
-                    'awaiting_alternative_confirmation' => 'We have reserved a possible room alternative for you. Please check your email and accept or decline the offer before it expires.',
-                    'approved' => 'Your reservation request has been approved. Staff will reserve room space before online payment becomes available.',
-                    'confirmed' => 'Room space has been reserved for your stay. Please keep monitoring your email for payment reminders or arrival instructions.',
-                    'declined' => 'This reservation request was declined. Please contact the homestay staff if you need clarification or would like to submit a new request.',
-                    'cancelled' => 'This reservation has been cancelled. Contact staff if you believe this was made in error.',
-                    'checked_in' => 'You are currently checked in. If you need help during your stay, please contact the homestay staff.',
-                    'checked_out' => 'This reservation has been completed. Thank you for staying with us.',
-                ];
+                $statusPresentation = \App\Models\Reservation::statusPresentation($reservation->status);
+                $statusLabels = \App\Models\Reservation::statusOptions(false);
 
                 $summaryFields = [
                     'room_type' => $reservation->preferredRoomType?->name,
@@ -102,26 +104,20 @@
                     : 'bg-blue-50 border-blue-200 text-blue-800';
             @endphp
 
-            {{-- Status Timeline --}}
+            @include('guest.partials.reservation-progress', [
+                'reservation' => $reservation,
+                'heading' => 'Reservation '.$reservation->reference_number,
+                'showGuidance' => false,
+            ])
+
+            @if(false)
+            {{-- Legacy status timeline retained temporarily for markup compatibility. --}}
             <div class="bg-white rounded-xl shadow-md p-6 mb-8">
                 <div class="flex justify-between items-center mb-6">
                     <h2 class="text-xl font-bold text-[#00491E]">Reservation {{ $reservation->reference_number }}</h2>
-                    @php
-                        $statusLabels = [
-                            'pending' => 'Pending Review',
-                            'awaiting_alternative_confirmation' => 'Alternative Offer Pending',
-                            'approved' => 'Approved',
-                            'confirmed' => 'Confirmed',
-
-                            'declined' => 'Declined',
-                            'cancelled' => 'Cancelled',
-                            'checked_in' => 'Checked In',
-                            'checked_out' => 'Checked out',
-                        ];
-                    @endphp
                     @include('guest.partials.reservation-status-badge', [
                         'status' => $reservation->status,
-                        'label' => $statusLabels[$reservation->status] ?? ucfirst(str_replace('_', ' ', $reservation->status)),
+                        'label' => $statusPresentation['label'],
                     ])
                 </div>
 
@@ -159,13 +155,14 @@
                 @endif
 
             </div>
+            @endif
 
             {{-- Reservation Summary --}}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div class="bg-white rounded-xl shadow-md p-6">
                     <h3 class="font-bold text-[#00491E] mb-4">What Happens Next</h3>
                     <div class="rounded-lg border p-4 text-sm {{ $guidanceTone }}">
-                        {{ $statusGuidance[$reservation->status] ?? 'Please monitor this page and your email for updates to your reservation.' }}
+                        {{ $statusPresentation['guidance'] }}
                     </div>
                     <p class="text-xs text-gray-500 mt-3">For privacy, this page now focuses on reservation status and essential next steps only.</p>
                 </div>
@@ -254,22 +251,22 @@
                                     <strong>Transaction ID:</strong> {{ $gatewayPayment->gateway_payment_id }}
                                 </p>
                             </div>
-                            @php
-                                $estimatedTotal = $reservation->calculateDepositAmount() > 0
-                                    ? round($gatewayPayment->amount / (($reservation->deposit_percentage ?? \App\Models\Setting::getDefaultDepositPercentage()) / 100), 2)
-                                    : 0;
-                                $estimatedRemaining = max(0, $estimatedTotal - $gatewayPayment->amount);
-                            @endphp
-                            @if($gatewayPayment->is_deposit && $estimatedRemaining > 0)
+                            @php($paymentSummary = $reservation->guestPaymentSummary())
+                            @if($gatewayPayment->is_deposit && ! $paymentSummary['is_finalized'] && $paymentSummary['remaining'] > 0)
                                 <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 inline-block mt-4">
                                     <p class="text-sm text-gray-700">
-                                        <strong>Estimated Total:</strong> ₱{{ number_format($estimatedTotal, 2) }}<br>
-                                        <strong>Deposit Paid:</strong> -₱{{ number_format($gatewayPayment->amount, 2) }}<br>
-                                        <strong>Estimated Remaining Balance:</strong> ₱{{ number_format($estimatedRemaining, 2) }}
+                                        <strong>Estimated Total:</strong> ₱{{ number_format($paymentSummary['total'], 2) }}<br>
+                                        <strong>Deposit Paid:</strong> -₱{{ number_format($paymentSummary['paid'], 2) }}<br>
+                                        <strong>Estimated Remaining Balance:</strong> ₱{{ number_format($paymentSummary['remaining'], 2) }}
                                     </p>
                                 </div>
+                                <p class="text-gray-500 text-xs mt-4">{{ $paymentSummary['note'] }}</p>
                             @endif
-                            <p class="text-gray-500 text-xs mt-4">Please complete the remaining balance upon check-in at our facility.</p>
+                            @if($gatewayPayment->is_deposit && $paymentSummary['is_finalized'] && $paymentSummary['remaining'] > 0)
+                                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 inline-block mt-4">
+                                    <p class="text-sm text-gray-700"><strong>Remaining Balance:</strong> ₱{{ number_format($paymentSummary['remaining'], 2) }}</p>
+                                </div>
+                            @endif
                         </div>
                     @elseif($paymentPending)
                         {{-- Payment Pending --}}

@@ -258,13 +258,10 @@ class ReservationWorkflowServiceTest extends TestCase
         $approvalTime = Carbon::parse('2026-05-02 10:00:00');
         $this->travelTo($approvalTime);
 
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Select exactly the requested number of rooms before approving, or send the guest an alternative room offer.');
+
         $this->service->approve($reservation, ['admin_notes' => 'Approved for payment']);
-
-        $fresh = $reservation->fresh();
-
-        $this->assertSame('approved', $fresh->status);
-        $this->assertNull($fresh->payment_link_token);
-        $this->assertNull($fresh->payment_link_expires_at);
     }
 
     public function test_approve_with_room_hold_refreshes_guest_payment_link_window_from_approval_time(): void

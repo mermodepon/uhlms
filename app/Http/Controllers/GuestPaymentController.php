@@ -8,8 +8,10 @@ use App\Models\ReservationLog;
 use App\Models\ReservationPayment;
 use App\Models\Setting;
 use App\Services\PaymentGatewayService;
+use App\Support\PayMongoPaymentMetadata;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class GuestPaymentController extends Controller
 {
@@ -36,6 +38,8 @@ class GuestPaymentController extends Controller
         if (! $reservation->isPaymentLinkValid()) {
             return view('guest.payment-expired', [
                 'reservation' => $reservation,
+                'trackingUrl' => $reservation->generateGuestTrackingUrl(),
+                'accountReservationUrl' => $this->accountReservationUrl($reservation),
             ]);
         }
 
@@ -50,7 +54,7 @@ class GuestPaymentController extends Controller
             ->first();
 
         if ($existingDeposit) {
-            return redirect()->route('guest.payment.success', ['reservation' => $reservation->reference_number])
+            return redirect()->route('guest.payment.success', ['token' => $reservation->payment_link_token])
                 ->with('message', 'This reservation has already been paid.');
         }
 
@@ -126,8 +130,8 @@ class GuestPaymentController extends Controller
                 $paymentType,
                 $checkoutPaymentMethods,
                 [
-                    'success' => route('guest.payment.success', ['reservation' => $reservation->reference_number]),
-                    'cancel' => route('guest.payment.failed', ['reservation' => $reservation->reference_number]),
+                    'success' => $this->requestAbsoluteUrl(route('guest.payment.success', ['token' => $reservation->payment_link_token], false)),
+                    'cancel' => $this->requestAbsoluteUrl(route('guest.payment.failed', ['token' => $reservation->payment_link_token], false)),
                 ]
             );
 
@@ -142,12 +146,12 @@ class GuestPaymentController extends Controller
                 'gateway_status' => 'pending',
                 'is_deposit' => $isDeposit,
                 'status' => 'pending',
-                'gateway_metadata' => [
+                'gateway_metadata' => PayMongoPaymentMetadata::sanitize([
                     'checkout_session_created_at' => now()->toIso8601String(),
                     'checkout_session_id' => $checkoutSession['checkout_session_id'] ?? null,
                     'checkout_payment_methods' => $checkoutSession['payment_method_types'] ?? $checkoutPaymentMethods,
                     'payment_type' => $paymentType,
-                ],
+                ], 'pending'),
                 'meta' => [
                     'source' => 'guest_payment_page',
                     'payment_type' => $paymentType,
@@ -180,15 +184,14 @@ class GuestPaymentController extends Controller
         } catch (PaymentGatewayException $e) {
             Log::error('Payment initialization failed', [
                 'reservation_id' => $reservation->id,
-                'error' => $e->getMessage(),
+                'error_type' => class_basename($e),
             ]);
 
             return back()->withErrors(['payment' => 'Failed to initialize payment: '.$e->getMessage()]);
         } catch (\Exception $e) {
             Log::error('Unexpected error during payment initialization', [
                 'reservation_id' => $reservation->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'error_type' => class_basename($e),
             ]);
 
             return back()->withErrors(['payment' => 'An unexpected error occurred. Please try again.']);
@@ -202,16 +205,13 @@ class GuestPaymentController extends Controller
      */
     public function paymentSuccess(Request $request)
     {
-        $reservationRef = $request->query('reservation');
-        $reservation = null;
-
-        if ($reservationRef) {
-            $reservation = Reservation::where('reference_number', $reservationRef)->first();
-        }
+        $reservation = $this->resolvePaymentResultReservation($request);
 
         return view('guest.payment-success', [
             'reservation' => $reservation,
             'message' => $request->session()->get('message'),
+            'trackingUrl' => $reservation?->generateGuestTrackingUrl(),
+            'accountReservationUrl' => $this->accountReservationUrl($reservation),
         ]);
     }
 
@@ -222,15 +222,71 @@ class GuestPaymentController extends Controller
      */
     public function paymentFailed(Request $request)
     {
-        $reservationRef = $request->query('reservation');
-        $reservation = null;
-
-        if ($reservationRef) {
-            $reservation = Reservation::where('reference_number', $reservationRef)->first();
-        }
+        $reservation = $this->resolvePaymentResultReservation($request);
 
         return view('guest.payment-failed', [
             'reservation' => $reservation,
+            'accountReservationUrl' => $this->accountReservationUrl($reservation),
         ]);
+    }
+
+    /**
+     * Show the guest-safe return page for a check-in balance checkout.
+     *
+     * Check-in balance checkout is initiated by staff, but its return URL must
+     * never send a guest to the authenticated staff workflow.
+     */
+    public function checkInBalancePaymentResult(Request $request, string $token)
+    {
+        abort_unless(Str::isUuid($token), 404);
+
+        $payment = ReservationPayment::query()
+            ->where('gateway', 'paymongo')
+            ->where('meta->source', 'checkin_balance')
+            ->where(function ($query) use ($token): void {
+                $query->where('meta->guest_result_token', $token)
+                    ->orWhere('gateway_metadata->guest_result_token', $token);
+            })
+            ->with('reservation')
+            ->firstOrFail();
+
+        return view('guest.check-in-balance-payment-result', [
+            'payment' => $payment,
+            'reservation' => $payment->reservation,
+            'cancelled' => $request->boolean('cancelled'),
+            'accountReservationUrl' => $this->accountReservationUrl($payment->reservation),
+        ]);
+    }
+
+    /**
+     * Resolve a reservation for a payment result without exposing predictable references.
+     */
+    private function resolvePaymentResultReservation(Request $request): ?Reservation
+    {
+        $token = trim((string) $request->query('token', ''));
+
+        if ($token === '') {
+            return null;
+        }
+
+        $reservation = Reservation::where('payment_link_token', $token)->first();
+
+        return $reservation?->isPaymentLinkValid() ? $reservation : null;
+    }
+
+    private function accountReservationUrl(?Reservation $reservation): ?string
+    {
+        $account = auth('guest')->user();
+
+        if (! $reservation || ! $account || (int) $reservation->guest_account_id !== (int) $account->id) {
+            return null;
+        }
+
+        return route('guest.account.reservations.show', $reservation, false);
+    }
+
+    private function requestAbsoluteUrl(string $path): string
+    {
+        return rtrim((string) config('app.url'), '/').'/'.ltrim($path, '/');
     }
 }

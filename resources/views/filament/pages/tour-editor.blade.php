@@ -556,11 +556,11 @@
                                     class="te-btn te-btn-block"
                                     x-show="!placingRoomInfo"
                                     style="background:#f0fdf4;border-color:#86efac;color:#166534;font-size:11px">
-                                    📍 Reposition Room Info Marker
+                                    📍 Reposition View Details and Request Marker
                                 </button>
                                 <template x-if="placingRoomInfo">
                                     <div style="padding:8px;background:#eff6ff;border:1px solid #93c5fd;border-radius:6px">
-                                        <p style="font-size:11px;color:#1e40af;margin-bottom:6px">Click on the panorama to reposition the Room Info marker</p>
+                                        <p style="font-size:11px;color:#1e40af;margin-bottom:6px">Click on the panorama to reposition the View Details and Request marker</p>
                                         <button class="te-btn te-btn-success te-btn-block" @click="confirmRoomInfoPlacing()" style="margin-bottom:4px">✓ Confirm Position</button>
                                         <button class="te-btn te-btn-ghost te-btn-block" @click="cancelRoomInfoPlacing()">✕ Cancel</button>
                                     </div>
@@ -582,13 +582,13 @@
     </div>
 
     @vite(['resources/js/tour-editor.js'])
-    <script>
+    <script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif>
         function tourEditorApp() {
             return {
                 // Data from server
-                waypoints: {!! $this->waypointsJson !!},
-                hotspots: {!! $this->hotspotsJson !!},
-                activeWaypointId: {{ $this->activeWaypointId }},
+                waypoints: {{ \Illuminate\Support\Js::from($this->waypointsData) }},
+                hotspots: {{ \Illuminate\Support\Js::from($this->hotspotsData) }},
+                activeWaypointId: {{ \Illuminate\Support\Js::from($this->activeWaypointId) }},
 
                 // Editor state
                 editor: null,
@@ -778,7 +778,7 @@
                     this.editor?.cancelPlacement();
                     this.editor?.cancelHotspotRepositioning();
                     this.editor?.startRoomInfoPlacement();
-                    this.statusText = '📍 Click on the panorama to reposition the Room Info marker';
+                    this.statusText = '📍 Click on the panorama to reposition the View Details and Request marker';
                 },
 
                 cancelRoomInfoPlacing() {

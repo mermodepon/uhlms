@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Guest;
 
 use App\Http\Controllers\Controller;
 use App\Models\GuestAccount;
+use App\Services\ReservationAccountLinker;
+use App\Support\CanonicalAppUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
@@ -33,7 +35,7 @@ class AuthController extends Controller
 
         $account = GuestAccount::create($data);
         Auth::guard('guest')->login($account);
-        $sent = $this->sendVerificationLink($account, $request);
+        $sent = $this->sendVerificationLink($account);
 
         return redirect()->route('guest.account.dashboard')
             ->with('success', $sent
@@ -92,12 +94,16 @@ class AuthController extends Controller
             $account->forceFill(['email_verified_at' => now()])->save();
         }
 
+        $linkedCount = app(ReservationAccountLinker::class)->linkUnclaimedReservations($account);
+
         if (! Auth::guard('guest')->check()) {
             Auth::guard('guest')->login($account);
         }
 
         return redirect()->route('guest.account.dashboard')
-            ->with('success', 'Email verified. You can now claim matching past reservations.');
+            ->with('success', $linkedCount > 0
+                ? "Email verified. {$linkedCount} matching reservation(s) were linked to your account."
+                : 'Email verified. Matching reservations will appear here automatically.');
     }
 
     public function resendVerification(Request $request)
@@ -106,7 +112,7 @@ class AuthController extends Controller
         $sent = false;
 
         if ($account && ! $account->hasVerifiedEmail()) {
-            $sent = $this->sendVerificationLink($account, $request);
+            $sent = $this->sendVerificationLink($account);
         }
 
         return back()->with('success', $sent
@@ -115,12 +121,12 @@ class AuthController extends Controller
         );
     }
 
-    public static function sendVerificationLinkFor(GuestAccount $account, Request $request): bool
+    public static function sendVerificationLinkFor(GuestAccount $account): bool
     {
-        return (new self())->sendVerificationLink($account, $request);
+        return (new self())->sendVerificationLink($account);
     }
 
-    private function sendVerificationLink(GuestAccount $account, Request $request): bool
+    private function sendVerificationLink(GuestAccount $account): bool
     {
         $relative = URL::temporarySignedRoute(
             'guest.account.verify',
@@ -128,7 +134,7 @@ class AuthController extends Controller
             ['account' => $account->id],
             false
         );
-        $url = $request->getSchemeAndHttpHost().$relative;
+        $url = CanonicalAppUrl::fromRelative($relative);
 
         try {
             Mail::raw(

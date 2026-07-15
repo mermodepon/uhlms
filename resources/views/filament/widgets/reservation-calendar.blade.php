@@ -53,7 +53,6 @@
             x-ignore x-data="fullcalendar({
                 locale: @js($plugin->getLocale()),
                 plugins: @js($plugin->getPlugins()),
-                schedulerLicenseKey: @js($plugin->getSchedulerLicenseKey()),
                 timeZone: @js($plugin->getTimezone()),
                 config: @js($this->getConfig()),
                 editable: @json($plugin->isEditable()),

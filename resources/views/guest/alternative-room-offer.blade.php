@@ -1,12 +1,13 @@
 @extends('layouts.guest')
 
 @section('title', 'Room Alternative Offer')
+@section('suppressGlobalGuestFlashes', 'true')
 
 @section('content')
     <section class="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
-        @include('guest.partials.flash-messages', ['wrap' => false, 'containerClass' => 'mb-6 space-y-3'])
         <div class="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
             <h1 class="text-2xl font-bold text-[#00491E]">Room Alternative Offer</h1>
+            @include('guest.partials.flash-messages', ['wrap' => false, 'containerClass' => 'mt-6 space-y-3'])
             @if($offer->status !== \App\Models\ReservationAlternativeOffer::STATUS_PENDING)
                 <p class="mt-4 text-gray-700">This offer is {{ $offer->status }} and can no longer be changed.</p>
             @else

@@ -4,11 +4,13 @@ namespace App\Observers;
 
 use App\Models\RoomType;
 use App\Notifications\NotificationHelper;
+use App\Services\ResponsiveRoomImageService;
 
 class RoomTypeObserver
 {
     public function created(RoomType $roomType): void
     {
+        $this->generateImageVariants($roomType);
         $sharing = $roomType->room_sharing_type === 'private' ? 'Private (exclusive)' : 'Public (shared)';
         NotificationHelper::notifyAllStaff(
             'New Room Type Created',
@@ -24,6 +26,10 @@ class RoomTypeObserver
     public function updated(RoomType $roomType): void
     {
         $changes = $roomType->getChanges();
+
+        if (array_key_exists('images', $changes)) {
+            $this->generateImageVariants($roomType);
+        }
 
         if (array_key_exists('is_active', $changes)) {
             $status = $changes['is_active'] ? 'activated' : 'deactivated';
@@ -73,5 +79,14 @@ class RoomTypeObserver
             auth()->id(),
             'room_types_view'
         );
+    }
+
+    private function generateImageVariants(RoomType $roomType): void
+    {
+        foreach ($roomType->images ?? [] as $path) {
+            if (is_string($path) && $path !== '') {
+                app(ResponsiveRoomImageService::class)->generate($path);
+            }
+        }
     }
 }

@@ -439,12 +439,18 @@ class PanoramaViewer {
 
         const interactionShield = `onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onpointerdown="event.stopPropagation()" onwheel="event.stopPropagation()" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()"`;
 
+        const headerBadges = (subtitle || badge)
+            ? `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px">`
+                + (subtitle ? `<span style="display:inline-block;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22);font-size:11px;padding:2px 8px;border-radius:999px;color:#f6f7eb;font-weight:600">${subtitle}</span>` : '')
+                + (badge ? `<span style="display:inline-block;font-size:11px;font-weight:700;color:${badgeClr};background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);padding:3px 8px;border-radius:999px;backdrop-filter:blur(2px)">${badge}</span>` : '')
+                + `</div>`
+            : '';
+
         return `<div class="pv-info-card" ${interactionShield} style="background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);width:${cardWidth};font-family:var(--guest-font-body);display:flex;flex-direction:column;overflow:hidden;max-height:${cardMaxHeight};pointer-events:auto;touch-action:pan-y">`
             + `<div style="background:linear-gradient(135deg,#00491E,#02681E);color:white;padding:14px 64px 14px 16px;position:relative;flex-shrink:0;min-height:60px;box-sizing:border-box">`
             + closeBtn
             + `<h2 style="font-size:16px;font-weight:700;margin:0">${title}</h2>`
-            + (subtitle ? `<span style="display:inline-block;margin-top:4px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22);font-size:11px;padding:2px 8px;border-radius:999px;color:#f6f7eb;font-weight:600">${subtitle}</span>` : '')
-            + (badge ? `<div style="display:inline-block;margin-top:6px;font-size:11px;font-weight:700;color:${badgeClr};background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);padding:3px 8px;border-radius:999px;backdrop-filter:blur(2px)">${badge}</div>` : '')
+            + headerBadges
             + `</div>`
             + `<div style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y">`
             + mediaHtml

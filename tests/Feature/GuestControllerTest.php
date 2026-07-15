@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\Amenity;
+use App\Models\GuestAccount;
 use App\Models\Floor;
 use App\Models\Reservation;
+use App\Models\ReservationFeedback;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomHold;
@@ -14,6 +16,7 @@ use App\Models\TourWaypoint;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 
@@ -76,6 +79,43 @@ class GuestControllerTest extends TestCase
         ], $overrides));
     }
 
+    private function createPublicTestimonial(RoomType $roomType, string $comments, bool $displayRoomType = true): ReservationFeedback
+    {
+        $account = GuestAccount::create([
+            'first_name' => 'Testimonial',
+            'last_name' => 'Guest',
+            'email' => 'testimonial-'.uniqid().'@example.com',
+            'phone' => '09171234567',
+            'password' => 'password',
+            'email_verified_at' => now(),
+        ]);
+        $reservation = Reservation::create([
+            'guest_account_id' => $account->id,
+            'guest_first_name' => $account->first_name,
+            'guest_last_name' => $account->last_name,
+            'guest_email' => $account->email,
+            'guest_phone' => $account->phone,
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->subDays(3),
+            'check_out_date' => now()->subDay(),
+            'number_of_occupants' => 1,
+            'status' => 'checked_out',
+        ]);
+
+        return ReservationFeedback::create([
+            'reservation_id' => $reservation->id,
+            'guest_account_id' => $account->id,
+            'overall_rating' => 5,
+            'comments' => $comments,
+            'status' => 'reviewed',
+            'visibility_status' => 'public',
+            'public_display_consent' => true,
+            'public_display_room_type' => $displayRoomType,
+            'submitted_at' => now()->subDay(),
+            'reviewed_at' => now(),
+        ]);
+    }
+
     private function occupyRoomForDates(RoomType $roomType, string $checkInDate, string $checkOutDate): Room
     {
         $user = $this->createStaffUser();
@@ -113,8 +153,11 @@ class GuestControllerTest extends TestCase
     {
         $this->createRoomType();
 
-        $response = $this->get(route('guest.home'));
-        $response->assertStatus(200);
+        $this->get(route('guest.home'))
+            ->assertOk()
+            ->assertDontSee('panorama-vendor', false)
+            ->assertDontSee('tour-pill-dot', false)
+            ->assertDontSee('@keyframes tour-ping', false);
     }
 
     public function test_home_page_displays_active_room_types(): void
@@ -129,6 +172,52 @@ class GuestControllerTest extends TestCase
         $response->assertDontSee('Hidden Room');
     }
 
+    public function test_home_page_uses_generated_responsive_room_card_images(): void
+    {
+        Storage::fake('public');
+        $image = imagecreatetruecolor(1200, 720);
+        ob_start();
+        imagejpeg($image, null, 90);
+        $contents = ob_get_clean();
+        imagedestroy($image);
+
+        Storage::disk('public')->put('room-types/home-card.jpg', $contents);
+        $this->createRoomType([
+            'name' => 'Responsive Card Room',
+            'images' => ['room-types/home-card.jpg'],
+        ]);
+
+        Storage::disk('public')->assertExists('room-types/home-card.jpg');
+        Storage::disk('public')->assertExists('room-types/home-card.card-480.webp');
+        Storage::disk('public')->assertExists('room-types/home-card.card-960.webp');
+
+        $this->get(route('guest.home'))
+            ->assertOk()
+            ->assertSee('/storage/room-types/home-card.card-480.webp 480w', false)
+            ->assertSee('/storage/room-types/home-card.card-960.webp 960w', false)
+            ->assertSee('loading="lazy"', false)
+            ->assertSee('decoding="async"', false);
+    }
+
+    public function test_room_card_variant_command_only_generates_missing_variants(): void
+    {
+        Storage::fake('public');
+        $image = imagecreatetruecolor(640, 360);
+        ob_start();
+        imagejpeg($image, null, 90);
+        $contents = ob_get_clean();
+        imagedestroy($image);
+
+        Storage::disk('public')->put('room-types/backfill.jpg', $contents);
+        $roomType = $this->createRoomType(['images' => []]);
+        $roomType->updateQuietly(['images' => ['room-types/backfill.jpg']]);
+
+        Storage::disk('public')->assertMissing('room-types/backfill.card-480.webp');
+        $this->artisan('media:generate-room-card-variants')->assertSuccessful();
+        Storage::disk('public')->assertExists('room-types/backfill.card-480.webp');
+        Storage::disk('public')->assertExists('room-types/backfill.card-960.webp');
+    }
+
     public function test_home_page_uses_guest_site_settings(): void
     {
         $this->createRoomType();
@@ -139,6 +228,7 @@ class GuestControllerTest extends TestCase
         Setting::set('guest_announcement_text', 'Public notice for guests.');
         Setting::set('guest_show_booking_policy', '1');
         Setting::set('guest_booking_policy', 'Bring a valid ID during check-in.');
+        Setting::set('guest_reservation_processing_time', 'Most requests are reviewed within one working day.');
         Setting::set('guest_show_faq', '1');
         Setting::set('guest_faq_items', json_encode([
             ['question' => 'Do you accept walk-ins?', 'answer' => 'Please submit a request first.'],
@@ -151,7 +241,143 @@ class GuestControllerTest extends TestCase
         $response->assertSee('A configurable public welcome message.');
         $response->assertSee('Public notice for guests.');
         $response->assertSee('Bring a valid ID during check-in.');
+        $response->assertSee('Most requests are reviewed within one working day.');
         $response->assertSee('Do you accept walk-ins?');
+    }
+
+    public function test_home_page_displays_only_reviewed_consenting_public_testimonials(): void
+    {
+        $roomType = $this->createRoomType(['name' => 'Testimonial Suite']);
+        $account = GuestAccount::create([
+            'first_name' => 'Alice',
+            'last_name' => 'Valencia',
+            'email' => 'alice-testimonial@example.com',
+            'phone' => '09171234567',
+            'password' => 'password',
+            'email_verified_at' => now(),
+        ]);
+        $reservation = Reservation::create([
+            'guest_account_id' => $account->id,
+            'guest_first_name' => 'Alice',
+            'guest_last_name' => 'Valencia',
+            'guest_email' => $account->email,
+            'guest_phone' => $account->phone,
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => now()->subDays(3),
+            'check_out_date' => now()->subDay(),
+            'number_of_occupants' => 1,
+            'status' => 'checked_out',
+        ]);
+
+        ReservationFeedback::create([
+            'reservation_id' => $reservation->id,
+            'guest_account_id' => $account->id,
+            'overall_rating' => 5,
+            'comments' => 'Wonderful approved testimonial.',
+            'status' => 'reviewed',
+            'visibility_status' => 'public',
+            'public_display_consent' => true,
+            'public_display_room_type' => true,
+            'submitted_at' => now()->subDay(),
+            'reviewed_at' => now(),
+        ]);
+
+        RoomAssignment::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $this->createRoom($roomType)->id,
+            'assigned_by' => $this->createStaffUser()->id,
+            'status' => 'checked_out',
+            'checked_in_at' => now()->subDays(3),
+            'checked_out_at' => now()->subDay(),
+        ]);
+
+        $otherReservation = $this->createReservationForRoomType($roomType, [
+            'guest_account_id' => $account->id,
+            'guest_email' => $account->email,
+            'status' => 'checked_out',
+        ]);
+        $internalFeedback = ReservationFeedback::create([
+            'reservation_id' => $otherReservation->id,
+            'guest_account_id' => $account->id,
+            'overall_rating' => 4,
+            'comments' => 'Internal feedback must stay private.',
+            'status' => 'reviewed',
+            'visibility_status' => 'public',
+            'public_display_consent' => false,
+            'public_display_room_type' => true,
+            'submitted_at' => now(),
+            'reviewed_at' => now(),
+        ]);
+
+        $this->assertSame('internal', $internalFeedback->visibility_status);
+        $this->assertFalse($internalFeedback->public_display_room_type);
+
+        $response = $this->get(route('guest.home'));
+
+        $response->assertOk()
+            ->assertSee('What Our Guests Say')
+            ->assertSee('Wonderful approved testimonial.')
+            ->assertSee('Verified guest')
+            ->assertSee('Stayed in: Testimonial Suite')
+            ->assertDontSee('Internal feedback must stay private.')
+            ->assertDontSee('alice-testimonial@example.com')
+            ->assertDontSee('Alice Valencia')
+            ->assertDontSee('Alice V.')
+            ->assertDontSee('Approved testimonial')
+            ->assertDontSee('Verified guest &bull; Testimonial Suite', false);
+        $response->assertViewHas('testimonials', fn ($testimonials): bool => $testimonials->count() === 1);
+    }
+
+    public function test_home_page_hides_room_label_for_testimonials_with_multiple_assigned_room_types(): void
+    {
+        $primaryType = $this->createRoomType(['name' => 'Primary Testimonial Room']);
+        $secondType = $this->createRoomType(['name' => 'Second Testimonial Room']);
+        $feedback = $this->createPublicTestimonial($primaryType, 'Multi-room testimonial.');
+        $staff = $this->createStaffUser();
+
+        foreach ([$primaryType, $secondType] as $roomType) {
+            RoomAssignment::create([
+                'reservation_id' => $feedback->reservation_id,
+                'room_id' => $this->createRoom($roomType)->id,
+                'assigned_by' => $staff->id,
+                'status' => 'checked_out',
+            ]);
+        }
+
+        $this->get(route('guest.home'))
+            ->assertOk()
+            ->assertSee('Multi-room testimonial.')
+            ->assertDontSee('Stayed in: Primary Testimonial Room')
+            ->assertDontSee('Stayed in: Second Testimonial Room');
+    }
+
+    public function test_home_page_hides_room_label_without_an_assignment(): void
+    {
+        $roomType = $this->createRoomType(['name' => 'Requested But Not Assigned']);
+        $this->createPublicTestimonial($roomType, 'No-assignment testimonial.');
+
+        $this->get(route('guest.home'))
+            ->assertOk()
+            ->assertSee('No-assignment testimonial.')
+            ->assertDontSee('Stayed in: Requested But Not Assigned');
+    }
+
+    public function test_home_page_hides_room_label_without_guest_consent(): void
+    {
+        $roomType = $this->createRoomType(['name' => 'No Consent Testimonial Room']);
+        $feedback = $this->createPublicTestimonial($roomType, 'No-consent testimonial.', false);
+
+        RoomAssignment::create([
+            'reservation_id' => $feedback->reservation_id,
+            'room_id' => $this->createRoom($roomType)->id,
+            'assigned_by' => $this->createStaffUser()->id,
+            'status' => 'checked_out',
+        ]);
+
+        $this->get(route('guest.home'))
+            ->assertOk()
+            ->assertSee('No-consent testimonial.')
+            ->assertDontSee('Stayed in: No Consent Testimonial Room');
     }
 
     public function test_home_page_keeps_gradient_fallback_without_enabled_hero_background(): void
@@ -405,6 +631,8 @@ class GuestControllerTest extends TestCase
         ]);
 
         $reservation = $this->createReservationForRoomType($roomType, [
+            'check_in_date' => now()->toDateString(),
+            'check_out_date' => now()->addDays(2)->toDateString(),
             'number_of_occupants' => 5,
         ]);
 
@@ -502,6 +730,45 @@ class GuestControllerTest extends TestCase
             return $private
                 && $private->available_rooms_count === 1
                 && $private->can_accommodate_requested_guests === false;
+        });
+    }
+
+    public function test_rooms_page_splits_mixed_capacity_room_types_and_filters_for_party_size(): void
+    {
+        $roomType = $this->createRoomType([
+            'name' => 'Family Room',
+            'room_sharing_type' => 'private',
+        ]);
+
+        $this->createRoom($roomType)->update(['capacity' => 3]);
+        $this->createRoom($roomType)->update(['capacity' => 4]);
+
+        $fourGuestResponse = $this->get(route('guest.rooms', [
+            'check_in' => '2026-04-29',
+            'check_out' => '2026-04-30',
+            'guests' => 4,
+        ]));
+
+        $fourGuestResponse->assertStatus(200);
+        $fourGuestResponse->assertViewHas('roomTypes', function ($roomTypes) use ($roomType): bool {
+            $variants = $roomTypes->where('id', $roomType->id);
+
+            return $variants->count() === 1
+                && $variants->first()->variant_capacity === 4
+                && $variants->first()->available_rooms_count === 1;
+        });
+
+        $threeGuestResponse = $this->get(route('guest.rooms', [
+            'check_in' => '2026-04-29',
+            'check_out' => '2026-04-30',
+            'guests' => 3,
+        ]));
+
+        $threeGuestResponse->assertViewHas('roomTypes', function ($roomTypes) use ($roomType): bool {
+            return $roomTypes->where('id', $roomType->id)
+                ->pluck('variant_capacity')
+                ->values()
+                ->all() === [3, 4];
         });
     }
 
@@ -722,6 +989,17 @@ class GuestControllerTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_reserve_form_displays_configured_processing_time_guidance(): void
+    {
+        Setting::set('guest_reservation_processing_time', 'Most requests are reviewed within one working day.');
+
+        $response = $this->get(route('guest.reserve'));
+
+        $response->assertStatus(200);
+        $response->assertSee('Most requests are reviewed within one working day.');
+        $response->assertSee('Confirmation is sent after staff approval.');
+    }
+
     // ── Reservation Query Defaults ───────────────────────────
 
     public function test_reserve_form_defaults_dates_to_today_and_tomorrow_without_query_params(): void
@@ -754,7 +1032,10 @@ class GuestControllerTest extends TestCase
         ]));
 
         $response->assertStatus(200);
-        $response->assertSee('value="'.$roomType->id.'" selected', false);
+        $this->assertMatchesRegularExpression(
+            '/<option\s+value="'.preg_quote((string) $roomType->id, '/').'"[^>]*\bselected\b/',
+            $response->getContent()
+        );
         $response->assertSee('name="check_in_date" id="check_in_date" value="'.$checkIn.'"', false);
         $response->assertSee('name="check_out_date" id="check_out_date" value="'.$checkOut.'"', false);
         $response->assertSee('name="number_of_occupants" id="number_of_occupants" value="2"', false);
@@ -1149,6 +1430,35 @@ class GuestControllerTest extends TestCase
     {
         $response = $this->get(route('guest.track'));
         $response->assertStatus(200);
+    }
+
+    public function test_guest_page_notifications_render_below_the_page_title(): void
+    {
+        $pages = [
+            [route('guest.track'), 'Track Your Reservation Request'],
+            [route('guest.rooms'), 'Room Catalog'],
+            [route('guest.reserve'), 'Request a Stay'],
+            [route('guest.support'), 'Support is available to verified guest accounts'],
+        ];
+
+        foreach ($pages as [$url, $title]) {
+            $response = $this->withSession(['success' => 'Notification placement check.'])
+                ->get($url);
+
+            $response->assertOk()
+                ->assertSeeInOrder([$title, 'Notification placement check.']);
+        }
+    }
+
+    public function test_track_page_displays_configured_processing_time_guidance(): void
+    {
+        Setting::set('guest_reservation_processing_time', 'Most requests are reviewed within one working day.');
+
+        $response = $this->get(route('guest.track'));
+
+        $response->assertStatus(200);
+        $response->assertSee('Most requests are reviewed within one working day.');
+        $response->assertSee('Use this page to check for status updates.');
     }
 
     public function test_track_finds_reservation_by_reference_and_guest_email(): void

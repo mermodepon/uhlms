@@ -29,8 +29,14 @@ function initTourPreview(el) {
     });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function initializeTourPreviews() {
     document.querySelectorAll('[data-tour-preview]').forEach((el) => {
         initTourPreview(el);
     });
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeTourPreviews, { once: true });
+} else {
+    initializeTourPreviews();
+}

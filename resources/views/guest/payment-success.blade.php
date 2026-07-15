@@ -1,15 +1,17 @@
 @extends('layouts.guest')
 
-@section('title', 'Payment Successful')
+@section('title', $reservation ? 'Payment Successful' : 'Payment Status')
 
-@section('content')
-    <section class="bg-gradient-to-r from-green-600 to-green-700 text-white py-12">
+@section('page-header')
+    <section class="bg-gradient-to-r {{ $reservation ? 'from-green-600 to-green-700' : 'from-[#00491E] to-[#02681E]' }} text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h1 class="text-3xl font-bold mb-2">Payment Successful!</h1>
-            <p class="text-gray-100">Your deposit has been received</p>
+            <h1 class="text-3xl font-bold mb-2">{{ $reservation ? 'Payment Successful!' : 'Payment Status' }}</h1>
+            <p class="text-gray-100">{{ $reservation ? 'Your payment return was received' : 'Reservation details are protected' }}</p>
         </div>
     </section>
+@endsection
 
+@section('content')
     <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {{-- Success Message --}}
         <div class="bg-white rounded-xl shadow-md p-8 text-center">
@@ -19,13 +21,19 @@
                 </svg>
             </div>
 
-            <h2 class="text-2xl font-bold text-gray-900 mb-3">Payment Confirmed</h2>
-            
-            @if($message)
-                <p class="text-gray-600 mb-6">{{ $message }}</p>
+            <h2 class="text-2xl font-bold text-gray-900 mb-3">{{ $reservation ? 'Payment Confirmed' : 'Check Your Reservation Securely' }}</h2>
+
+            @if($reservation)
+                @if($message)
+                    <p class="text-gray-600 mb-6">{{ $message }}</p>
+                @else
+                    <p class="text-gray-600 mb-6">
+                        Thank you! Your payment has been successfully processed. Your approved reservation has been updated, and staff will send any remaining arrival details shortly.
+                    </p>
+                @endif
             @else
                 <p class="text-gray-600 mb-6">
-                    Thank you! Your payment has been successfully processed. Your approved reservation has been updated, and staff will send any remaining arrival details shortly.
+                    This link cannot display reservation or payment details. Use the secure tracking form or contact support if you need assistance.
                 </p>
             @endif
 
@@ -53,6 +61,7 @@
                 </div>
             @endif
 
+            @if($reservation)
             <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 text-left">
                 <h4 class="font-bold text-blue-900 mb-2 flex items-center">
                     <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
@@ -69,15 +78,29 @@
             </div>
 
             <div class="space-y-3">
-                <a href="{{ route('guest.home', [], false) }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
-                    Return to Homepage
-                </a>
-                @if($reservation)
-                    <a href="{{ route('guest.track', ['reference' => $reservation->reference_number, 'guest_email' => $reservation->guest_email], false) }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all ml-0 sm:ml-3">
+                @if($accountReservationUrl)
+                    <a href="{{ $accountReservationUrl }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
+                        Return to Reservation
+                    </a>
+                @else
+                    <a href="{{ route('guest.home', [], false) }}" class="inline-block w-full sm:w-auto bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-3 px-8 rounded-lg font-bold hover:from-[#003817] hover:to-[#015717] transition-all">
+                        Return to Homepage
+                    </a>
+                @endif
+                @if($reservation && $trackingUrl)
+                    <a href="{{ $trackingUrl }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all ml-0 sm:ml-3">
                         Track Reservation
+                    </a>
+                @elseif(!$reservation)
+                    <a href="{{ route('guest.track', [], false) }}" class="inline-block w-full sm:w-auto bg-gray-200 text-gray-800 py-3 px-8 rounded-lg font-bold hover:bg-gray-300 transition-all ml-0 sm:ml-3">
+                        Track Reservation
+                    </a>
+                    <a href="{{ route('guest.support', [], false) }}" class="inline-block w-full sm:w-auto text-[#00491E] py-3 px-5 font-bold hover:underline">
+                        Contact Support
                     </a>
                 @endif
             </div>
+            @endif
         </div>
     </section>
 @endsection

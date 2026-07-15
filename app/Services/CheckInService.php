@@ -289,6 +289,7 @@ class CheckInService
 
         if (($result['all_succeeded'] ?? false) === true) {
             $reservation->refresh();
+            app(ReservationAccountLinker::class)->link($reservation);
             $this->persistCheckInSnapshot($reservation, $payload);
             $this->persistFinancialRecords($reservation, $payload);
 

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ReservationAccountLinker;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +14,29 @@ use Illuminate\Support\Str;
 
 class Reservation extends Model
 {
+    /**
+     * Single source of truth for reservation status presentation.
+     */
+    private const STATUS_PRESENTATIONS = [
+        'pending' => ['label' => 'Pending Review', 'admin_label' => 'Pending', 'hex' => '#fbbf24', 'badge_text' => '#422006', 'filament_color' => 'warning', 'guidance' => 'Your request is waiting for staff review. Estimated processing time is 1-2 business days. Please watch your email for approval or follow-up instructions.'],
+        'awaiting_alternative_confirmation' => ['label' => 'Alternative Offer Pending', 'admin_label' => 'Awaiting Alternative Confirmation', 'hex' => '#f59e0b', 'badge_text' => '#422006', 'filament_color' => 'warning', 'guidance' => 'We have reserved a possible room alternative for you. Please check your email and accept or decline the offer before it expires.'],
+        'approved' => ['label' => 'Approved', 'admin_label' => 'Approved', 'hex' => '#919F02', 'badge_text' => '#ffffff', 'filament_color' => 'info', 'guidance' => 'Your reservation request has been approved. Staff will reserve room space before online payment becomes available.'],
+        'confirmed' => ['label' => 'Confirmed', 'admin_label' => 'Confirmed', 'hex' => '#10B981', 'badge_text' => '#ffffff', 'filament_color' => 'success', 'guidance' => 'Room space has been reserved for your stay. Please keep monitoring your email for payment reminders or arrival instructions.'],
+        'pending_payment' => ['label' => 'Payment Pending', 'admin_label' => 'Payment Pending', 'hex' => '#f97316', 'badge_text' => '#ffffff', 'filament_color' => 'warning', 'guidance' => 'Your reservation is awaiting payment. Please use the payment link sent to your email before it expires.'],
+        'declined' => ['label' => 'Declined', 'admin_label' => 'Declined', 'hex' => '#EF4444', 'badge_text' => '#ffffff', 'filament_color' => 'danger', 'guidance' => 'This reservation request was declined. Please contact the homestay staff if you need clarification or would like to submit a new request.'],
+        'cancelled' => ['label' => 'Cancelled', 'admin_label' => 'Cancelled', 'hex' => '#6B7280', 'badge_text' => '#ffffff', 'filament_color' => 'gray', 'guidance' => 'This reservation has been cancelled. Contact staff if you believe this was made in error.'],
+        'checked_in' => ['label' => 'Checked In', 'admin_label' => 'Checked In', 'hex' => '#16a34a', 'badge_text' => '#ffffff', 'filament_color' => 'success', 'guidance' => 'You are currently checked in. If you need help during your stay, please contact the homestay staff.'],
+        'checked_out' => ['label' => 'Checked Out', 'admin_label' => 'Checked Out', 'hex' => '#94a3b8', 'badge_text' => '#0f172a', 'filament_color' => 'gray', 'guidance' => 'This reservation has been completed. Thank you for staying with us.'],
+    ];
+
+    private const GUEST_DASHBOARD_CARDS = [
+        'upcoming' => ['label' => 'Upcoming', 'accent' => '#919F02'],
+        'pending' => ['label' => 'Pending', 'accent' => '#fbbf24', 'statuses' => ['pending']],
+        'awaiting_alternative_confirmation' => ['label' => 'Alternative Offer Pending', 'accent' => '#f59e0b', 'statuses' => ['awaiting_alternative_confirmation']],
+        'active' => ['label' => 'Active', 'accent' => '#10B981', 'statuses' => ['approved', 'confirmed', 'checked_in']],
+        'completed' => ['label' => 'Completed', 'accent' => '#94a3b8', 'statuses' => ['checked_out']],
+    ];
+
     protected $fillable = [
         'reference_number',
         'guest_account_id',
@@ -106,6 +130,36 @@ class Reservation extends Model
                 );
             }
         });
+
+        // Staff-created or edited reservations can be linked as soon as their guest email
+        // matches an active, verified guest account. The linker never replaces an existing link.
+        static::saved(function (self $reservation) {
+            app(ReservationAccountLinker::class)->link($reservation);
+        });
+    }
+
+    public static function statusPresentation(?string $status): array
+    {
+        return self::STATUS_PRESENTATIONS[$status] ?? [
+            'label' => filled($status) ? str($status)->replace('_', ' ')->title()->toString() : 'Unknown',
+            'admin_label' => filled($status) ? str($status)->replace('_', ' ')->title()->toString() : 'Unknown',
+            'hex' => '#6B7280',
+            'badge_text' => '#ffffff',
+            'filament_color' => 'gray',
+            'guidance' => 'Please monitor this page and your email for updates to your reservation.',
+        ];
+    }
+
+    public static function statusOptions(bool $adminLabels = true): array
+    {
+        return collect(self::STATUS_PRESENTATIONS)
+            ->mapWithKeys(fn (array $presentation, string $status) => [$status => $presentation[$adminLabels ? 'admin_label' : 'label']])
+            ->all();
+    }
+
+    public static function guestDashboardCards(): array
+    {
+        return self::GUEST_DASHBOARD_CARDS;
     }
 
     public function preferredRoomType(): BelongsTo
@@ -202,6 +256,51 @@ class Reservation extends Model
         ]);
     }
 
+    /**
+     * Return the financial summary appropriate for guests.
+     *
+     * Charges are finalized at check-in (or when an alternative offer is
+     * accepted). Until then, a deposit belongs against the requested-room
+     * estimate, not the empty accounting ledger.
+     *
+     * @return array{is_finalized: bool, total: float, paid: float, remaining: float, status_label: string, balance_label: string, note: ?string}
+     */
+    public function guestPaymentSummary(): array
+    {
+        $hasFinalizedCharges = $this->charges()->exists();
+        $total = $hasFinalizedCharges
+            ? (float) $this->charges()->sum('amount')
+            : $this->calculateRequestedRoomAmount();
+        $paid = (float) $this->payments()->where('status', 'posted')->sum('amount');
+        $remaining = max(0, $total - $paid);
+
+        if ($hasFinalizedCharges) {
+            return [
+                'is_finalized' => true,
+                'total' => $total,
+                'paid' => $paid,
+                'remaining' => $remaining,
+                'status_label' => $total > 0 && $remaining <= 0
+                    ? 'Paid'
+                    : ($paid > 0 ? 'Partially paid' : 'Payment pending'),
+                'balance_label' => 'Remaining balance',
+                'note' => null,
+            ];
+        }
+
+        return [
+            'is_finalized' => false,
+            'total' => $total,
+            'paid' => $paid,
+            'remaining' => $remaining,
+            'status_label' => $paid > 0
+                ? ($remaining > 0 ? 'Deposit received' : 'Payment received')
+                : 'Payment pending',
+            'balance_label' => 'Estimated remaining balance',
+            'note' => 'The final balance is confirmed at check-in and may reflect approved add-ons, discounts, or finalized charges.',
+        ];
+    }
+
     public function getNightsAttribute(): int
     {
         return $this->check_in_date->diffInDays($this->check_out_date);
@@ -209,17 +308,7 @@ class Reservation extends Model
 
     public function getStatusColorAttribute(): string
     {
-        return match ($this->status) {
-            'pending' => 'warning',
-            'awaiting_alternative_confirmation' => 'warning',
-            'approved' => 'info',
-            'confirmed' => 'success',
-            'declined' => 'danger',
-            'cancelled' => 'gray',
-            'checked_in' => 'success',
-            'checked_out' => 'gray',
-            default => 'gray',
-        };
+        return self::statusPresentation($this->status)['filament_color'];
     }
 
     public function canReceiveFeedbackFrom(GuestAccount $account): bool

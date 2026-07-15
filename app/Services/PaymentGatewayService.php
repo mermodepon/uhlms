@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\PaymentGatewayException;
 use App\Models\Reservation;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -99,7 +100,6 @@ class PaymentGatewayService
     /**
      * Create a PaymentIntent for the reservation.
      *
-     * @param  Reservation  $reservation
      * @param  float  $amount  Amount in PHP
      * @param  string  $paymentType  'deposit' or 'full'
      * @return array ['payment_id' => string, 'checkout_url' => string, 'client_key' => string]
@@ -110,7 +110,7 @@ class PaymentGatewayService
     {
         try {
             $amountInCentavos = (int) ($amount * 100);
-            $description = $paymentType === 'full' 
+            $description = $paymentType === 'full'
                 ? "Full Payment for Reservation {$reservation->reference_number}"
                 : "Deposit for Reservation {$reservation->reference_number}";
 
@@ -142,14 +142,9 @@ class PaymentGatewayService
                 ->post("{$this->baseUrl}/payment_intents", $payload);
 
             if ($response->failed()) {
-                $errorMessage = $response->json('errors.0.detail') ?? 'Unknown error creating payment intent';
-                Log::error('PayMongo API Error (Create Intent)', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                    'reservation_id' => $reservation->id,
-                ]);
+                $this->logGatewayFailure('create_payment_intent', $response, $reservation->id);
 
-                throw new PaymentGatewayException("Failed to create payment: {$errorMessage}");
+                throw new PaymentGatewayException('The payment provider could not start this payment. Please try again.');
             }
 
             $data = $response->json('data');
@@ -163,21 +158,15 @@ class PaymentGatewayService
         } catch (PaymentGatewayException $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::error('PayMongo Service Exception', [
-                'message' => $e->getMessage(),
-                'reservation_id' => $reservation->id,
-            ]);
+            $this->logGatewayException('create_payment_intent', $e, $reservation->id);
 
-            throw new PaymentGatewayException("Payment service error: {$e->getMessage()}");
+            throw new PaymentGatewayException('The payment provider could not start this payment. Please try again.');
         }
     }
 
     /**
      * Create a hosted PayMongo Checkout Session.
      *
-     * @param  Reservation  $reservation
-     * @param  float  $amount
-     * @param  string  $paymentType
      * @param  array<int, string>|null  $paymentMethods
      * @param  array{success:string,cancel:string}  $returnUrls
      * @return array{checkout_session_id:?string,checkout_url:?string,payment_intent_id:?string,payment_method_types:array<int,string>}
@@ -247,15 +236,9 @@ class PaymentGatewayService
                 ->post("{$this->baseUrl}/checkout_sessions", $payload);
 
             if ($response->failed()) {
-                $errorMessage = $response->json('errors.0.detail') ?? 'Unknown error creating checkout session';
-                Log::error('PayMongo API Error (Create Checkout Session)', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                    'reservation_id' => $reservation->id,
-                    'payment_method_types' => $paymentMethodTypes,
-                ]);
+                $this->logGatewayFailure('create_checkout_session', $response, $reservation->id);
 
-                throw new PaymentGatewayException("Failed to create checkout session: {$errorMessage}");
+                throw new PaymentGatewayException('The payment provider could not start checkout. Please try again.');
             }
 
             $data = $response->json('data');
@@ -269,12 +252,9 @@ class PaymentGatewayService
         } catch (PaymentGatewayException $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::error('PayMongo Checkout Session Exception', [
-                'message' => $e->getMessage(),
-                'reservation_id' => $reservation->id,
-            ]);
+            $this->logGatewayException('create_checkout_session', $e, $reservation->id);
 
-            throw new PaymentGatewayException("Checkout session error: {$e->getMessage()}");
+            throw new PaymentGatewayException('The payment provider could not start checkout. Please try again.');
         }
     }
 
@@ -282,7 +262,6 @@ class PaymentGatewayService
      * Attach a payment method (GCash, etc.) to a PaymentIntent.
      * For e-wallets, this creates a standalone Source.
      *
-     * @param  string  $paymentIntentId
      * @param  string  $paymentMethod  'gcash', 'paymaya', 'grab_pay', or card details
      * @param  array  $returnUrls  ['success' => url, 'failed' => url]
      * @return array ['checkout_url' => string, 'source_id' => string]
@@ -319,19 +298,15 @@ class PaymentGatewayService
                 ->post("{$this->baseUrl}/sources", $sourcePayload);
 
             if ($sourceResponse->failed()) {
-                $errorMessage = $sourceResponse->json('errors.0.detail') ?? 'Unknown error creating source';
-                Log::error('PayMongo Source Creation Failed', [
-                    'status' => $sourceResponse->status(),
-                    'body' => $sourceResponse->body(),
-                ]);
-                throw new PaymentGatewayException("Failed to create payment source: {$errorMessage}");
+                $this->logGatewayFailure('create_payment_source', $sourceResponse);
+                throw new PaymentGatewayException('The payment provider could not prepare this payment method. Please try again.');
             }
 
             $sourceData = $sourceResponse->json('data');
             $sourceId = $sourceData['id'];
             $checkoutUrl = $sourceData['attributes']['redirect']['checkout_url'] ?? null;
 
-            if (!$checkoutUrl) {
+            if (! $checkoutUrl) {
                 throw new PaymentGatewayException('No checkout URL returned from payment gateway');
             }
 
@@ -342,12 +317,9 @@ class PaymentGatewayService
         } catch (PaymentGatewayException $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::error('PayMongo Attach Method Exception', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+            $this->logGatewayException('create_payment_source', $e);
 
-            throw new PaymentGatewayException("Payment method attachment error: {$e->getMessage()}");
+            throw new PaymentGatewayException('The payment provider could not prepare this payment method. Please try again.');
         }
     }
 
@@ -366,17 +338,17 @@ class PaymentGatewayService
                 ->get("{$this->baseUrl}/payment_intents/{$paymentId}");
 
             if ($response->failed()) {
-                $errorMessage = $response->json('errors.0.detail') ?? 'Unknown error retrieving payment';
-                throw new PaymentGatewayException("Failed to retrieve payment: {$errorMessage}");
+                $this->logGatewayFailure('retrieve_payment', $response);
+                throw new PaymentGatewayException('The payment provider could not retrieve this payment. Please try again.');
             }
 
             return $response->json('data');
         } catch (PaymentGatewayException $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::error('PayMongo Retrieve Exception', ['message' => $e->getMessage(), 'payment_id' => $paymentId]);
+            $this->logGatewayException('retrieve_payment', $e);
 
-            throw new PaymentGatewayException("Payment retrieval error: {$e->getMessage()}");
+            throw new PaymentGatewayException('The payment provider could not retrieve this payment. Please try again.');
         }
     }
 
@@ -409,25 +381,17 @@ class PaymentGatewayService
                 ->post("{$this->baseUrl}/payments", $payload);
 
             if ($response->failed()) {
-                $errorMessage = $response->json('errors.0.detail') ?? 'Unknown error creating payment';
-                Log::error('PayMongo Payment Creation Failed', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                    'source_id' => $sourceId,
-                ]);
-                throw new PaymentGatewayException("Failed to create payment from source: {$errorMessage}");
+                $this->logGatewayFailure('create_payment_from_source', $response);
+                throw new PaymentGatewayException('The payment provider could not complete this payment. Please try again.');
             }
 
             return $response->json('data');
         } catch (PaymentGatewayException $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::error('PayMongo Create Payment Exception', [
-                'message' => $e->getMessage(),
-                'source_id' => $sourceId,
-            ]);
+            $this->logGatewayException('create_payment_from_source', $e);
 
-            throw new PaymentGatewayException("Payment creation error: {$e->getMessage()}");
+            throw new PaymentGatewayException('The payment provider could not complete this payment. Please try again.');
         }
     }
 
@@ -443,30 +407,38 @@ class PaymentGatewayService
         // Skip verification if strict mode is disabled (for development)
         if (! config('paymongo.strict_webhook_verification', true)) {
             Log::info('Webhook signature verification skipped (strict mode disabled)');
+
             return true;
         }
 
         if (empty($this->webhookSecret)) {
             Log::warning('Webhook secret not configured; signature verification skipped');
+
             return false;
         }
 
         // PayMongo-Signature header format: "t=<timestamp>,te=<test_hmac>,v1=<live_hmac>"
         // The signed message is "<timestamp>.<raw_payload>" hashed with the webhook secret.
-        $parts = [];
-        foreach (explode(',', $signature) as $part) {
-            [$k, $v] = array_pad(explode('=', $part, 2), 2, '');
-            $parts[trim($k)] = trim($v);
-        }
+        $parts = $this->parseWebhookSignature($signature);
 
         $timestamp = $parts['t'] ?? '';
         if (empty($timestamp)) {
-            Log::warning('PayMongo webhook signature missing timestamp component');
             return false;
         }
 
-        $signedMessage  = $timestamp . '.' . $payload;
-        $expectedHmac   = hash_hmac('sha256', $signedMessage, $this->webhookSecret);
+        $timestampValue = $this->webhookSignatureTimestamp($signature);
+        if ($timestampValue === null) {
+            return false;
+        }
+
+        $tolerance = max(0, (int) config('paymongo.webhook_tolerance_seconds', 300));
+        $clockDifference = abs(now()->getTimestamp() - $timestampValue);
+        if ($clockDifference > $tolerance) {
+            return false;
+        }
+
+        $signedMessage = $timestamp.'.'.$payload;
+        $expectedHmac = hash_hmac('sha256', $signedMessage, $this->webhookSecret);
 
         // Accept either test-mode (te) or live-mode (v1) signature component.
         $testSig = $parts['te'] ?? '';
@@ -478,10 +450,39 @@ class PaymentGatewayService
         return $validTest || $validLive;
     }
 
+    public function webhookSignatureTimestamp(string $signature): ?int
+    {
+        $timestamp = $this->parseWebhookSignature($signature)['t'] ?? '';
+
+        if (! is_string($timestamp) || preg_match('/\A[1-9]\d{0,18}\z/', $timestamp) !== 1) {
+            return null;
+        }
+
+        $value = filter_var($timestamp, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        return $value === false ? null : $value;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function parseWebhookSignature(string $signature): array
+    {
+        $parts = [];
+
+        foreach (explode(',', $signature) as $part) {
+            [$key, $value] = array_pad(explode('=', $part, 2), 2, '');
+            $parts[trim($key)] = trim($value);
+        }
+
+        return $parts;
+    }
+
     /**
      * Calculate deposit amount for a reservation.
      *
-     * @param  Reservation  $reservation
      * @return float Deposit amount in PHP
      */
     public function calculateDepositAmount(Reservation $reservation): float
@@ -525,7 +526,7 @@ class PaymentGatewayService
             return [];
         } catch (\Exception $e) {
             Log::warning('Unable to retrieve PayMongo merchant payment methods', [
-                'message' => $e->getMessage(),
+                'error_type' => class_basename($e),
             ]);
 
             return [];
@@ -554,5 +555,30 @@ class PaymentGatewayService
         $paymentData = $this->retrievePayment($paymentIntentId);
 
         return $paymentData['attributes']['client_key'] ?? '';
+    }
+
+    private function logGatewayFailure(string $operation, Response $response, ?int $reservationId = null): void
+    {
+        $gatewayCode = $response->json('errors.0.code');
+        $context = [
+            'operation' => $operation,
+            'status' => $response->status(),
+            'reservation_id' => $reservationId,
+        ];
+
+        if (is_scalar($gatewayCode)) {
+            $context['gateway_error_code'] = (string) $gatewayCode;
+        }
+
+        Log::error('PayMongo request failed', $context);
+    }
+
+    private function logGatewayException(string $operation, \Throwable $exception, ?int $reservationId = null): void
+    {
+        Log::error('PayMongo request raised an exception', [
+            'operation' => $operation,
+            'reservation_id' => $reservationId,
+            'error_type' => class_basename($exception),
+        ]);
     }
 }

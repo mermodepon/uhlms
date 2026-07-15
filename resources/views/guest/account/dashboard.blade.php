@@ -37,20 +37,11 @@
             </div>
         @endif
 
-        @php
-            $statCards = [
-                'upcoming' => ['label' => 'Upcoming', 'accent' => '#919F02'],
-                'pending' => ['label' => 'Pending', 'accent' => '#fbbf24'],
-                'awaiting_alternative_confirmation' => ['label' => 'Alternative Offer Pending', 'accent' => '#f59e0b'],
-                'active' => ['label' => 'Active', 'accent' => '#10B981'],
-                'completed' => ['label' => 'Completed', 'accent' => '#94a3b8'],
-            ];
-        @endphp
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             @foreach($statCards as $key => $card)
                 <div class="rounded-xl border border-gray-200 border-t-4 bg-white p-5 shadow-sm" style="border-top-color: {{ $card['accent'] }};">
                     <div class="text-sm font-medium text-gray-500">{{ $card['label'] }}</div>
-                    <div class="mt-2 text-3xl font-bold" style="color: {{ $card['accent'] }};">{{ $stats[$key] }}</div>
+                    <div class="mt-2 text-3xl font-bold" style="color: {{ $card['accent'] }};">{{ $stats[$key] ?? 0 }}</div>
                 </div>
             @endforeach
         </div>

@@ -90,6 +90,21 @@ class RoomTypeResource extends Resource
                             ->image()
                             ->multiple()
                             ->disk(config('media.disk'))
+                            ->appendFiles()
+                            ->getUploadedFileUsing(function (Forms\Components\BaseFileUpload $component, string $file): ?array {
+                                $storage = $component->getDisk();
+
+                                if (! $storage->exists($file)) {
+                                    return null;
+                                }
+
+                                return [
+                                    'name' => basename($file),
+                                    'size' => $storage->size($file),
+                                    'type' => $storage->mimeType($file),
+                                    'url' => MediaUrl::url($file),
+                                ];
+                            })
                             ->maxFiles(5)
                             ->reorderable()
                             ->directory('room-types')
@@ -197,7 +212,7 @@ class RoomTypeResource extends Resource
                         ->label('Deactivate')
                         ->icon('heroicon-o-x-mark')
                         ->color('gray')
-                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->visible(fn () => auth()->user()?->hasPermission('room_types_edit') ?? false)
                         ->requiresConfirmation()
                         ->modalHeading('Deactivate selected room types')
                         ->deselectRecordsAfterCompletion()
@@ -221,7 +236,7 @@ class RoomTypeResource extends Resource
                         ->label('Activate')
                         ->icon('heroicon-o-check-badge')
                         ->color('success')
-                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->visible(fn () => auth()->user()?->hasPermission('room_types_edit') ?? false)
                         ->requiresConfirmation()
                         ->modalHeading('Activate selected room types')
                         ->deselectRecordsAfterCompletion()

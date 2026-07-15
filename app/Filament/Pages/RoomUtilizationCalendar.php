@@ -6,6 +6,7 @@ use App\Filament\Resources\ReservationResource;
 use App\Models\Floor;
 use App\Models\Reservation;
 use App\Models\RoomType;
+use App\Models\User;
 use App\Services\RoomUtilizationCalendarService;
 use Filament\Pages\Page;
 use Filament\Tables;
@@ -43,6 +44,11 @@ class RoomUtilizationCalendar extends Page implements HasTable
      * @var array<int,string>
      */
     public array $visibleTypes = ['holds', 'assignments', 'room_states', 'unassigned'];
+
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->hasPermission(User::REPORT_ROOM_UTILIZATION_VIEW) ?? false;
+    }
 
     public function mount(): void
     {

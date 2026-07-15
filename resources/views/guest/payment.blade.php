@@ -2,14 +2,16 @@
 
 @section('title', 'Complete Payment')
 
-@section('content')
+@section('page-header')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-bold mb-2">Complete Your Payment</h1>
             <p class="text-gray-200">Secure online payment for your reserved stay</p>
         </div>
     </section>
+@endsection
 
+@section('content')
     <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {{-- Status-based Message --}}
         @if($reservation->status === 'approved')

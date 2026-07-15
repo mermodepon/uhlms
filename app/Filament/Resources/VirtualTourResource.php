@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\VirtualTourResource\Pages;
 use App\Models\TourWaypoint;
+use App\Models\User;
 use App\Support\MediaUrl;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -31,6 +32,31 @@ class VirtualTourResource extends Resource
     protected static ?string $modelLabel = 'Scene';
 
     protected static ?string $pluralModelLabel = 'Scenes';
+
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->hasPermission(User::VIRTUAL_TOUR_VIEW) ?? false;
+    }
+
+    public static function canCreate(): bool
+    {
+        return auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE) ?? false;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE) ?? false;
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE) ?? false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE) ?? false;
+    }
 
     public static function form(Form $form): Form
     {
@@ -74,7 +100,7 @@ class VirtualTourResource extends Resource
                         Forms\Components\FileUpload::make('panorama_image')
                             ->label('360° Panorama Image')
                             ->image()
-                            ->previewable(false)
+                            ->previewable()
                             ->disk(config('media.disk'))
                             ->directory('virtual-tour/panoramas')
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
@@ -91,7 +117,7 @@ class VirtualTourResource extends Resource
                                 }
 
                                 return new HtmlString(
-                                    '<img src="'.e($url).'" alt="'.e($record->name).' panorama preview" style="width:100%;max-height:20rem;object-fit:contain;border:1px solid rgb(229 231 235);border-radius:0.5rem;background:#f9fafb;" loading="lazy">'
+                                    '<img src="'.e($url).'" alt="'.e($record?->name ?? 'Scene').' panorama preview" style="width:100%;max-height:20rem;object-fit:contain;border:1px solid rgb(229 231 235);border-radius:0.5rem;background:#f9fafb;" loading="lazy">'
                                 );
                             })
                             ->visible(fn (?TourWaypoint $record): bool => filled($record?->panorama_image))
@@ -115,7 +141,7 @@ class VirtualTourResource extends Resource
                             ->searchable()
                             ->preload()
                             ->nullable()
-                            ->helperText('Select a room type to show room information during the tour'),
+                            ->helperText('Select a room type to let guests view details and request a stay during the tour'),
                     ]),
 
                 Forms\Components\Section::make('Description & Narration')
@@ -191,8 +217,10 @@ class VirtualTourResource extends Resource
                     ->label('Active'),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\EditAction::make()
+                    ->visible(fn () => auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE) ?? false),
+                Tables\Actions\DeleteAction::make()
+                    ->visible(fn () => auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE) ?? false),
             ])
             ->recordUrl(fn (TourWaypoint $record): string => Pages\ManageTourHotspots::getUrl(['record' => $record]))
             ->bulkActions([
@@ -200,8 +228,11 @@ class VirtualTourResource extends Resource
                     Tables\Actions\BulkAction::make('activate')
                         ->label('Activate')
                         ->icon('heroicon-o-check-circle')
+                        ->visible(fn () => auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE) ?? false)
                         ->requiresConfirmation()
                         ->action(function ($records) {
+                            abort_unless(auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE), 403);
+
                             foreach ($records as $record) {
                                 $record->update(['is_active' => true]);
                             }
@@ -213,8 +244,11 @@ class VirtualTourResource extends Resource
                     Tables\Actions\BulkAction::make('deactivate')
                         ->label('Deactivate')
                         ->icon('heroicon-o-x-circle')
+                        ->visible(fn () => auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE) ?? false)
                         ->requiresConfirmation()
                         ->action(function ($records) {
+                            abort_unless(auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE), 403);
+
                             foreach ($records as $record) {
                                 $record->update(['is_active' => false]);
                             }
@@ -223,7 +257,8 @@ class VirtualTourResource extends Resource
                                 ->success()
                                 ->send();
                         }),
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->visible(fn () => auth()->user()?->hasPermission(User::VIRTUAL_TOUR_MANAGE) ?? false),
                 ]),
             ])
             ->reorderable('position_order')

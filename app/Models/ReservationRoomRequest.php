@@ -10,6 +10,7 @@ class ReservationRoomRequest extends Model
     protected $fillable = [
         'reservation_id',
         'room_type_id',
+        'requested_capacity',
         'requested_room_count',
         'occupant_count',
         'sort_order',
@@ -20,6 +21,7 @@ class ReservationRoomRequest extends Model
     {
         return [
             'requested_room_count' => 'integer',
+            'requested_capacity' => 'integer',
             'occupant_count' => 'integer',
             'sort_order' => 'integer',
         ];
@@ -42,7 +44,8 @@ class ReservationRoomRequest extends Model
         $roomWord = $roomCount === 1 ? 'room' : 'rooms';
         $guestWord = $guestCount === 1 ? 'guest' : 'guests';
         $typeName = $this->roomType?->name ?? 'Room type';
+        $capacity = $this->requested_capacity ? " (up to {$this->requested_capacity} guests)" : '';
 
-        return "{$roomCount} {$typeName} {$roomWord}, {$guestCount} {$guestWord}";
+        return "{$roomCount} {$typeName}{$capacity} {$roomWord}, {$guestCount} {$guestWord}";
     }
 }

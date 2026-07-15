@@ -24,8 +24,9 @@ class TourController extends Controller
         $startWaypoint = $slug;
         $waypointCount = TourWaypoint::query()->active()->count();
         $hasWaypoints = $waypointCount > 0;
+        $guestAccount = auth('guest')->user();
 
-        return view('guest.virtual-tour-viewer', compact('startWaypoint', 'hasWaypoints', 'waypointCount'));
+        return view('guest.virtual-tour-viewer', compact('startWaypoint', 'hasWaypoints', 'waypointCount', 'guestAccount'));
     }
 
     /**
@@ -163,6 +164,7 @@ class TourController extends Controller
         $checkIn = $request->get('check_in');
         $checkOut = $request->get('check_out');
         $guests = $request->get('guests', 1);
+        $capacity = $request->filled('capacity') ? max(1, (int) $request->get('capacity')) : null;
 
         $availabilityData = $this->formatRoomTypeData($roomType);
         $requestedGuests = max(1, (int) $guests);
@@ -174,23 +176,24 @@ class TourController extends Controller
                 $checkOutDate = Carbon::parse($checkOut);
                 $availabilityData = array_merge(
                     $availabilityData,
-                    app(RoomHoldService::class)->getDateAvailabilitySummary($roomType, $checkInDate, $checkOutDate, $requestedGuests)
+                    app(RoomHoldService::class)->getDateAvailabilitySummary($roomType, $checkInDate, $checkOutDate, $requestedGuests, $capacity)
                 );
             } catch (\Exception $e) {
                 $availabilityData = array_merge(
                     $availabilityData,
-                    app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType, $requestedGuests)
+                    app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType, $requestedGuests, $capacity)
                 );
             }
         } else {
             $availabilityData = array_merge(
                 $availabilityData,
-                app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType, $requestedGuests)
+                app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType, $requestedGuests, $capacity)
             );
         }
 
         $availabilityData['pricing_display'] = $roomType->getFormattedPrice();
         $availabilityData['requested_guests'] = $requestedGuests;
+        $availabilityData['capacity'] = $capacity ?? $roomType->capacity;
         unset($availabilityData['available_rooms']);
 
         return response()->json([
@@ -266,9 +269,11 @@ class TourController extends Controller
             'guest_gender' => 'required|in:Male,Female,Other',
             'guest_address' => 'nullable|string|max:1000',
             'preferred_room_type_id' => 'required|exists:room_types,id',
+            'preferred_room_capacity' => 'nullable|integer|min:1|max:100',
             'requested_room_count' => 'nullable|integer|min:1|max:20',
             'room_requests' => 'nullable|array|max:7',
             'room_requests.*.room_type_id' => 'nullable|exists:room_types,id',
+            'room_requests.*.requested_capacity' => 'nullable|integer|min:1|max:100',
             'room_requests.*.requested_room_count' => 'nullable|integer|min:1|max:20',
             'room_requests.*.occupant_count' => 'nullable|integer|min:1|max:200',
             'room_requests.*.notes' => 'nullable|string|max:500',
@@ -351,7 +356,7 @@ class TourController extends Controller
         // source is metadata for validation/context only and is not persisted on reservations.
         unset($validated['source']);
         unset($validated['availability_acknowledged']);
-        unset($validated['requested_room_count'], $validated['room_requests']);
+        unset($validated['requested_room_count'], $validated['preferred_room_capacity'], $validated['room_requests']);
 
         $validated = ReservationRoomRequests::applyToReservationData($validated, $roomRequestLines);
 
@@ -385,6 +390,10 @@ class TourController extends Controller
             'pricing_type' => $roomType->pricing_type,
             'room_sharing_type' => $roomType->room_sharing_type,
             'capacity' => (int) ($roomType->capacity ?? 1),
+            'capacity_variants' => app(RoomHoldService::class)
+                ->getSellableCapacities($roomType)
+                ->values()
+                ->all(),
             'formatted_price' => $roomType->getFormattedPrice(),
             'is_private' => $roomType->isPrivate(),
             'is_public' => $roomType->isPublic(),

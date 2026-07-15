@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Amenity;
 use App\Models\Reservation;
+use App\Models\ReservationFeedback;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
 use App\Models\Service;
@@ -23,15 +24,15 @@ class GuestController extends Controller
     public function home()
     {
         $roomTypes = RoomType::where('is_active', true)
-            ->with('amenities')
+            ->with([
+                'amenities',
+                'rooms:id,room_type_id,capacity,status,is_active',
+            ])
             ->get();
 
         $roomHoldService = app(RoomHoldService::class);
 
-        $roomTypes->each(function (RoomType $roomType) use ($roomHoldService) {
-            $this->applyAvailabilitySummary($roomType, $roomHoldService->getCurrentAvailabilitySummary($roomType));
-            $roomType->is_date_filtered = false;
-        });
+        $roomTypes = $this->expandCapacityVariants($roomTypes, $roomHoldService);
 
         $stayInclusions = Amenity::query()
             ->where('is_active', true)
@@ -50,7 +51,14 @@ class GuestController extends Controller
             ->limit(4)
             ->get();
 
-        return view('guest.home', compact('roomTypes', 'stayInclusions', 'optionalAddOns'));
+        $testimonials = ReservationFeedback::query()
+            ->publicTestimonials()
+            ->with('reservation.roomAssignments.room.roomType:id,name')
+            ->latest('reviewed_at')
+            ->limit(6)
+            ->get();
+
+        return view('guest.home', compact('roomTypes', 'stayInclusions', 'optionalAddOns', 'testimonials'));
     }
 
     /**
@@ -135,43 +143,19 @@ class GuestController extends Controller
             $roomTypesQuery->where('base_rate', '<=', $priceMax);
         }
 
-        $roomTypes = $roomTypesQuery
-            ->get();
+        $roomTypes = $roomTypesQuery->get();
 
         $roomHoldService = app(RoomHoldService::class);
 
-        // Calculate availability based on whether dates are provided
-        if ($checkIn && $checkOut) {
-            foreach ($roomTypes as $roomType) {
-                $this->applyAvailabilitySummary(
-                    $roomType,
-                    $roomHoldService->getDateAvailabilitySummary($roomType, $checkIn, $checkOut, $guests)
-                );
-                $roomType->is_date_filtered = true;
-            }
-        } else {
-            foreach ($roomTypes as $roomType) {
-                $this->applyAvailabilitySummary($roomType, $roomHoldService->getCurrentAvailabilitySummary($roomType, $guests));
-                $roomType->is_date_filtered = false;
-            }
-        }
+        $roomTypes = $this->expandCapacityVariants($roomTypes, $roomHoldService, $checkIn, $checkOut, $guests);
 
         $roomTypes = match ($sort) {
             'price_low' => $roomTypes->sortBy([
-                fn (RoomType $roomType): int => ($roomType->can_accommodate_requested_guests ?? false) ? 0 : 1,
                 fn (RoomType $roomType): float => (float) $roomType->base_rate,
                 fn (RoomType $roomType): string => Str::lower($roomType->name),
             ]),
-            'price_high' => $roomTypes->sortBy([
-                fn (RoomType $roomType): int => ($roomType->can_accommodate_requested_guests ?? false) ? 0 : 1,
-                fn (RoomType $roomType): float => -1 * (float) $roomType->base_rate,
-                fn (RoomType $roomType): string => Str::lower($roomType->name),
-            ]),
-            'capacity' => $roomTypes->sortBy([
-                fn (RoomType $roomType): int => ($roomType->can_accommodate_requested_guests ?? false) ? 0 : 1,
-                fn (RoomType $roomType): int => -1 * (int) $roomType->capacity,
-                fn (RoomType $roomType): string => Str::lower($roomType->name),
-            ]),
+            'price_high' => $roomTypes->sortByDesc('base_rate'),
+            'capacity' => $roomTypes->sortByDesc(fn (RoomType $roomType): int => (int) ($roomType->variant_capacity ?? $roomType->capacity)),
             'name' => $roomTypes->sortBy([
                 fn (RoomType $roomType): string => Str::lower($roomType->name),
                 fn (RoomType $roomType): int => $roomType->id,
@@ -280,6 +264,7 @@ class GuestController extends Controller
         $checkIn = null;
         $checkOut = null;
         $guests = $request->filled('guests') ? max(1, (int) $request->guests) : null;
+        $capacity = $request->filled('capacity') ? max(1, (int) $request->capacity) : null;
         $roomHoldService = app(RoomHoldService::class);
 
         try {
@@ -290,14 +275,18 @@ class GuestController extends Controller
             $checkOut = null;
         }
 
+        if ($capacity !== null && ! app(RoomHoldService::class)->getSellableCapacities($roomType)->contains($capacity)) {
+            abort(404);
+        }
+
         if ($checkIn && $checkOut && $checkOut->gt($checkIn)) {
             $this->applyAvailabilitySummary(
                 $roomType,
-                $roomHoldService->getDateAvailabilitySummary($roomType, $checkIn, $checkOut, $guests)
+                $roomHoldService->getDateAvailabilitySummary($roomType, $checkIn, $checkOut, $guests, $capacity)
             );
             $roomType->is_date_filtered = true;
         } else {
-            $this->applyAvailabilitySummary($roomType, $roomHoldService->getCurrentAvailabilitySummary($roomType, $guests));
+            $this->applyAvailabilitySummary($roomType, $roomHoldService->getCurrentAvailabilitySummary($roomType, $guests, $capacity));
             $roomType->is_date_filtered = false;
         }
 
@@ -314,7 +303,10 @@ class GuestController extends Controller
             ->ordered()
             ->value('slug');
 
-        return view('guest.room-detail', compact('roomType', 'tourWaypointSlug', 'checkIn', 'checkOut', 'guests'));
+        $roomType->variant_capacity = $capacity;
+        $roomType->has_capacity_variants = app(RoomHoldService::class)->getSellableCapacities($roomType)->count() > 1;
+
+        return view('guest.room-detail', compact('roomType', 'tourWaypointSlug', 'checkIn', 'checkOut', 'guests', 'capacity'));
     }
 
     /**
@@ -334,9 +326,9 @@ class GuestController extends Controller
         $roomTypes = RoomType::where('is_active', true)
             ->with('rooms')
             ->get()
-            ->each(function (RoomType $roomType) {
-                $this->applyAvailabilitySummary($roomType, app(RoomHoldService::class)->getCurrentAvailabilitySummary($roomType));
-            });
+            ;
+
+        $roomTypes = $this->expandCapacityVariants($roomTypes, app(RoomHoldService::class));
 
         return view('guest.reserve', compact('roomTypes', 'guestAccount'));
     }
@@ -363,9 +355,11 @@ class GuestController extends Controller
             'guest_age' => 'required|integer|min:18|max:120',
             'guest_address' => 'nullable|string|max:1000',
             'preferred_room_type_id' => 'required|exists:room_types,id',
+            'preferred_room_capacity' => 'nullable|integer|min:1|max:100',
             'requested_room_count' => 'nullable|integer|min:1|max:20',
             'room_requests' => 'nullable|array|max:7',
             'room_requests.*.room_type_id' => 'nullable|exists:room_types,id',
+            'room_requests.*.requested_capacity' => 'nullable|integer|min:1|max:100',
             'room_requests.*.requested_room_count' => 'nullable|integer|min:1|max:20',
             'room_requests.*.occupant_count' => 'nullable|integer|min:1|max:200',
             'room_requests.*.notes' => 'nullable|string|max:500',
@@ -425,7 +419,7 @@ class GuestController extends Controller
         }
 
         unset($validated['availability_acknowledged']);
-        unset($validated['requested_room_count'], $validated['room_requests']);
+        unset($validated['requested_room_count'], $validated['preferred_room_capacity'], $validated['room_requests']);
 
         $validated = ReservationRoomRequests::applyToReservationData($validated, $roomRequestLines);
 
@@ -536,6 +530,48 @@ class GuestController extends Controller
         $roomType->availability_display_unit = $summary['availability_display_unit'] ?? 'rooms';
         $roomType->availability_label = $summary['availability_label'] ?? '0 rooms available';
         $roomType->can_accommodate_requested_guests = $summary['can_accommodate_requested_guests'] ?? false;
+    }
+
+    /**
+     * Turn room types with mixed room capacities into guest-facing capacity options.
+     *
+     * @param  \Illuminate\Support\Collection<int, RoomType>  $roomTypes
+     * @return \Illuminate\Support\Collection<int, RoomType>
+     */
+    private function expandCapacityVariants(
+        \Illuminate\Support\Collection $roomTypes,
+        RoomHoldService $roomHoldService,
+        ?Carbon $checkIn = null,
+        ?Carbon $checkOut = null,
+        ?int $guests = null,
+    ): \Illuminate\Support\Collection {
+        return $roomTypes
+            ->flatMap(function (RoomType $roomType) use ($roomHoldService, $checkIn, $checkOut, $guests) {
+                $capacities = $roomHoldService->getSellableCapacities($roomType);
+                if ($capacities->isEmpty()) {
+                    $capacities = collect([max(1, (int) $roomType->capacity)]);
+                }
+                $hasVariants = $capacities->count() > 1;
+                $displayCapacities = $guests === null
+                    ? $capacities
+                    : (($matching = $capacities->filter(fn (int $capacity): bool => $capacity >= $guests))->isNotEmpty() ? $matching : $capacities);
+
+                return $displayCapacities
+                    ->map(function (int $capacity) use ($roomType, $roomHoldService, $checkIn, $checkOut, $guests, $hasVariants): RoomType {
+                        $variant = clone $roomType;
+                        $summary = $checkIn && $checkOut && $checkOut->gt($checkIn)
+                            ? $roomHoldService->getDateAvailabilitySummary($variant, $checkIn, $checkOut, $guests, $capacity)
+                            : $roomHoldService->getCurrentAvailabilitySummary($variant, $guests, $capacity);
+
+                        $this->applyAvailabilitySummary($variant, $summary);
+                        $variant->variant_capacity = $capacity;
+                        $variant->has_capacity_variants = $hasVariants;
+                        $variant->is_date_filtered = $checkIn !== null && $checkOut !== null;
+
+                        return $variant;
+                    });
+            })
+            ->values();
     }
 
     /**

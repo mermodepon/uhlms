@@ -1,26 +1,35 @@
 @extends('layouts.guest')
 
-@section('title', 'Request a Reservation')
+@section('title', 'Request a Stay')
 
-@section('content')
-    @php
-        $guestDateDefaults = \App\Support\GuestDatePolicy::defaults(
-            old('check_in_date', request('check_in')),
-            old('check_out_date', request('check_out')),
-            old('check_in_date') !== null
-        );
-        $defaultCheckIn = $guestDateDefaults['check_in'];
-        $defaultCheckOut = $guestDateDefaults['check_out'];
-        $defaultMinCheckIn = $guestDateDefaults['min_check_in'];
-        $defaultMinCheckOut = $guestDateDefaults['min_check_out'];
-    @endphp
+@php
+    $guestDateDefaults = \App\Support\GuestDatePolicy::defaults(
+        old('check_in_date', request('check_in')),
+        old('check_out_date', request('check_out')),
+        old('check_in_date') !== null
+    );
+    $defaultCheckIn = $guestDateDefaults['check_in'];
+    $defaultCheckOut = $guestDateDefaults['check_out'];
+    $defaultMinCheckIn = $guestDateDefaults['min_check_in'];
+    $defaultMinCheckOut = $guestDateDefaults['min_check_out'];
+@endphp
+
+@section('page-header')
     <section class="bg-gradient-to-r from-[#00491E] to-[#02681E] text-white py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h1 class="text-3xl font-bold mb-2">Request a Reservation</h1>
+            <h1 class="text-3xl font-bold mb-2">Request a Stay</h1>
             <p class="text-gray-200">Fill out the form below to submit a reservation request. Room assignment and confirmation happen after staff review.</p>
+            <div class="mt-4 inline-flex items-start gap-2 rounded-lg border border-[#FFC600]/50 bg-black/15 px-4 py-3 text-sm font-semibold text-white" role="note">
+                <svg class="mt-0.5 h-5 w-5 shrink-0 text-[#FFC600]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6l4 2m5-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span>{{ \App\Support\GuestSiteSettings::get('guest_reservation_processing_time') }} Confirmation is sent after staff approval.</span>
+            </div>
         </div>
     </section>
+@endsection
 
+@section('content')
     <section class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <form action="{{ route('guest.reserve.submit', [], false) }}" method="POST" class="space-y-8" data-guest-validate novalidate>
             @csrf
@@ -106,18 +115,21 @@
                                         ? ($rt->availability_label ?? (($rt->available_beds_count ?? 0) . ' beds available'))
                                         : ($rt->availability_label ?? "{$rt->available_rooms_count} rooms available");
                                     
-                                    $displayText = "{$rt->name} - {$rt->getFormattedPrice()} ({$availabilityText}, Up to {$rt->capacity} guests)";
+                                    $capacity = (int) ($rt->variant_capacity ?? $rt->capacity);
+                                    $name = $rt->has_capacity_variants ? "{$rt->name} — up to {$capacity} guests" : $rt->name;
+                                    $displayText = "{$name} - {$rt->getFormattedPrice()} ({$availabilityText}, Up to {$capacity} guests)";
                                 @endphp
                                 <option value="{{ $rt->id }}"
                                         data-room-sharing-type="{{ $rt->room_sharing_type }}"
-                                        data-capacity="{{ (int) $rt->capacity }}"
+                                        data-capacity="{{ $capacity }}"
                                         data-available-beds="{{ $rt->available_beds_count ?? '' }}"
                                         data-available-rooms="{{ $rt->available_rooms_count ?? '' }}"
-                                        {{ old('preferred_room_type_id', request('room_type')) == $rt->id ? 'selected' : '' }}>
+                                        {{ old('preferred_room_type_id', request('room_type')) == $rt->id && blank(old('preferred_room_capacity', request('capacity'))) || old('preferred_room_type_id', request('room_type')) == $rt->id && old('preferred_room_capacity', request('capacity')) == $capacity ? 'selected' : '' }}>
                                     {{ $displayText }}
                                 </option>
                             @endforeach
                         </select>
+                        <input type="hidden" name="preferred_room_capacity" id="preferred_room_capacity" value="{{ old('preferred_room_capacity', request('capacity')) }}">
                         <div id="primary-room-preview"></div>
                         @error('preferred_room_type_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
@@ -248,7 +260,7 @@
                     ← Back to Rooms
                 </a>
                 <button type="submit" class="bg-[#FFC600] text-[#00491E] px-8 py-3 rounded-lg font-bold text-lg hover:bg-yellow-400 transition shadow-lg">
-                    Submit Reservation Request
+                    Submit Stay Request
                 </button>
             </div>
         </form>
@@ -256,10 +268,11 @@
 @endsection
 
 @push('scripts')
-<script>
+<script @if(request()->attributes->get('csp_nonce')) nonce="{{ request()->attributes->get('csp_nonce') }}" @endif>
     const checkInDateInput = document.getElementById('check_in_date');
     const checkOutDateInput = document.getElementById('check_out_date');
-    const roomTypeInput = document.getElementById('preferred_room_type_id');
+        const roomTypeInput = document.getElementById('preferred_room_type_id');
+    const preferredRoomCapacityInput = document.getElementById('preferred_room_capacity');
     const requestedRoomCountInput = document.getElementById('requested_room_count');
     const occupantsInput = document.getElementById('number_of_occupants');
     const reservationForm = document.querySelector('form[data-guest-validate]');
@@ -351,6 +364,11 @@
 
         const currentRoomTypeOption = () => roomTypeInput.options[roomTypeInput.selectedIndex] || null;
 
+        const syncSelectedCapacity = () => {
+            const selectedOption = currentRoomTypeOption();
+            if (preferredRoomCapacityInput) preferredRoomCapacityInput.value = selectedOption?.dataset.capacity || '';
+        };
+
         const occupantLimitMessage = (max, isPrivate) => {
             if (isPrivate) return `This room type allows up to ${max} occupants.`;
             return max > 0
@@ -407,6 +425,7 @@
             url.searchParams.set('check_in', checkInDateInput.value);
             url.searchParams.set('check_out', checkOutDateInput.value);
             url.searchParams.set('guests', occupantsInput.value || '1');
+            url.searchParams.set('capacity', selectedOption.dataset.capacity || '');
 
             try {
                 const response = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -424,7 +443,7 @@
             }
         };
 
-        roomTypeInput.addEventListener('change', syncOccupantLimit);
+        roomTypeInput.addEventListener('change', () => { syncSelectedCapacity(); syncOccupantLimit(); });
         requestedRoomCountInput?.addEventListener('input', syncOccupantLimit);
         checkInDateInput.addEventListener('change', syncOccupantLimit);
         checkOutDateInput.addEventListener('change', syncOccupantLimit);
@@ -434,6 +453,7 @@
             }
         });
 
+        syncSelectedCapacity();
         syncOccupantLimit();
 
         const primaryPreviewContainer = document.getElementById('primary-room-preview');
@@ -455,7 +475,7 @@
             .replace(/'/g, '&#039;');
 
         const roomTypeOptionsHtml = () => Array.from(roomTypeInput.options)
-            .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.textContent)}</option>`)
+            .map((option) => `<option value="${escapeHtml(option.value)}" data-capacity="${escapeHtml(option.dataset.capacity || '')}" data-room-sharing-type="${escapeHtml(option.dataset.roomSharingType || '')}">${escapeHtml(option.textContent)}</option>`)
             .join('');
 
         const refreshExtraAvailability = async (row) => {
@@ -477,6 +497,10 @@
             url.searchParams.set('check_in', checkInDateInput.value);
             url.searchParams.set('check_out', checkOutDateInput.value);
             url.searchParams.set('guests', occupants?.value || '1');
+            url.searchParams.set('capacity', selected?.dataset?.capacity || '');
+
+            const capacityInput = row.querySelector('[data-extra-capacity]');
+            if (capacityInput) capacityInput.value = selected?.dataset?.capacity || '';
 
             try {
                 const response = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -514,6 +538,7 @@
                         <select name="room_requests[${index}][room_type_id]" data-extra-room-type class="guest-select w-full rounded-lg border-gray-300 shadow-sm focus:border-[#00491E] focus:ring-[#00491E]">
                             ${roomTypeOptionsHtml()}
                         </select>
+                        <input type="hidden" name="room_requests[${index}][requested_capacity]" data-extra-capacity>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Rooms</label>

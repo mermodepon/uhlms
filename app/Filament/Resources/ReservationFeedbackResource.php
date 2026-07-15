@@ -60,6 +60,18 @@ class ReservationFeedbackResource extends Resource
                         ])
                         ->required()
                         ->native(false),
+                    Forms\Components\Select::make('visibility_status')
+                        ->label('Public Display')
+                        ->options([
+                            'internal' => 'Internal only',
+                            'public' => 'Approved testimonial',
+                        ])
+                        ->helperText(fn (?ReservationFeedback $record): string => $record?->public_display_consent
+                            ? 'The guest consented to public display. Public testimonials must also be reviewed and contain a written comment.'
+                            : 'The guest did not consent to public display, so this feedback must remain internal.')
+                        ->disabled(fn (?ReservationFeedback $record): bool => ! ($record?->public_display_consent ?? false))
+                        ->dehydrated()
+                        ->required(),
                     Forms\Components\Textarea::make('admin_notes')
                         ->label('Internal Notes')
                         ->rows(5)
@@ -86,6 +98,9 @@ class ReservationFeedbackResource extends Resource
                         'archived' => 'gray',
                         default => 'gray',
                     }),
+                    Infolists\Components\IconEntry::make('public_display_consent')->boolean()->label('Guest Consent'),
+                    Infolists\Components\IconEntry::make('public_display_room_type')->boolean()->label('Show Room Type'),
+                    Infolists\Components\TextEntry::make('visibility_status')->label('Public Display')->badge(),
                     Infolists\Components\TextEntry::make('submitted_at')->dateTime('M d, Y g:i A'),
                     Infolists\Components\IconEntry::make('would_stay_again')->boolean()->label('Would Stay Again'),
                     Infolists\Components\TextEntry::make('comments')->columnSpanFull()->placeholder('-'),
@@ -163,6 +178,13 @@ class ReservationFeedbackResource extends Resource
                         'archived' => 'gray',
                         default => 'gray',
                     }),
+                Tables\Columns\IconColumn::make('public_display_consent')->boolean()->label('Public Consent'),
+                Tables\Columns\IconColumn::make('public_display_room_type')->boolean()->label('Show Room Type'),
+                Tables\Columns\TextColumn::make('visibility_status')
+                    ->label('Visibility')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state): string => $state === 'public' ? 'Public testimonial' : 'Internal')
+                    ->color(fn (string $state): string => $state === 'public' ? 'success' : 'gray'),
                 Tables\Columns\TextColumn::make('submitted_at')->dateTime('M d, Y')->sortable(),
             ])
             ->filters([
@@ -201,6 +223,25 @@ class ReservationFeedbackResource extends Resource
                     ->color('success')
                     ->visible(fn (ReservationFeedback $record) => $record->status !== 'reviewed' && (auth()->user()?->hasPermission('guest_feedback_edit') ?? false))
                     ->action(fn (ReservationFeedback $record) => $record->markReviewed(auth()->user())),
+                Tables\Actions\Action::make('approve_testimonial')
+                    ->label('Approve Testimonial')
+                    ->icon('heroicon-o-megaphone')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->visible(fn (ReservationFeedback $record) => $record->status === 'reviewed'
+                        && $record->visibility_status !== 'public'
+                        && $record->public_display_consent
+                        && filled($record->comments)
+                        && (auth()->user()?->hasPermission('guest_feedback_edit') ?? false))
+                    ->action(fn (ReservationFeedback $record) => $record->update(['visibility_status' => 'public'])),
+                Tables\Actions\Action::make('remove_testimonial')
+                    ->label('Remove from Public Display')
+                    ->icon('heroicon-o-eye-slash')
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->visible(fn (ReservationFeedback $record) => $record->visibility_status === 'public'
+                        && (auth()->user()?->hasPermission('guest_feedback_edit') ?? false))
+                    ->action(fn (ReservationFeedback $record) => $record->update(['visibility_status' => 'internal'])),
             ])
             ->defaultSort('submitted_at', 'desc');
     }

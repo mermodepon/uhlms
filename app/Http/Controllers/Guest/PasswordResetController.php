@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Guest;
 
 use App\Http\Controllers\Controller;
 use App\Models\GuestAccount;
+use App\Support\CanonicalAppUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -30,7 +31,10 @@ class PasswordResetController extends Controller
                 ['token' => Hash::make($token), 'created_at' => now()]
             );
 
-            $url = $request->getSchemeAndHttpHost().route('guest.account.password.reset', ['token' => $token, 'email' => $account->email], false);
+            $url = CanonicalAppUrl::fromRelative(route('guest.account.password.reset', [
+                'token' => $token,
+                'email' => $account->email,
+            ], false));
             Mail::raw(
                 "Reset your University Homestay guest account password using this link:\n{$url}\n\nThis link expires in 60 minutes.",
                 fn ($message) => $message->to($account->email)->subject('Reset your guest account password')

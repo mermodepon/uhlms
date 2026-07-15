@@ -12,7 +12,7 @@ use App\Models\ReservationRoomRequest;
 use App\Models\Room;
 use App\Models\RoomHold;
 use App\Models\RoomType;
-use Illuminate\Http\Request;
+use App\Support\CanonicalAppUrl;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -37,6 +37,7 @@ class AlternativeRoomOfferService
             $checkIn,
             $checkOut,
             (int) $requestLine->occupant_count,
+            $requestLine->requested_capacity,
         );
         if ($requestedAvailability['available_rooms_count'] >= (int) $requestLine->requested_room_count
             && $requestedAvailability['can_accommodate_requested_guests']) {
@@ -110,10 +111,10 @@ class AlternativeRoomOfferService
         });
     }
 
-    public function sendOfferEmail(ReservationAlternativeOffer $offer, Request $request): void
+    public function sendOfferEmail(ReservationAlternativeOffer $offer): void
     {
         $relativeUrl = URL::temporarySignedRoute('guest.alternative-offers.show', $offer->expires_at, ['offer' => $offer->id], false);
-        $offerUrl = $request->getSchemeAndHttpHost().$relativeUrl;
+        $offerUrl = CanonicalAppUrl::fromRelative($relativeUrl);
         Mail::to($offer->reservation->guest_email)->send(new AlternativeRoomOfferMail($offer, $offerUrl));
     }
 

@@ -55,6 +55,23 @@ class ReservationResource extends Resource
                             ->getOptionLabelFromRecordUsing(fn (GuestAccount $record) => $record->name.' <'.$record->email.'>')
                             ->searchable(['name', 'email'])
                             ->preload()
+                            ->live()
+                            ->afterStateUpdated(function ($state, callable $set): void {
+                                $account = GuestAccount::find($state);
+
+                                if (! $account) {
+                                    return;
+                                }
+
+                                $set('guest_last_name', $account->last_name);
+                                $set('guest_first_name', $account->first_name);
+                                $set('guest_middle_initial', $account->middle_initial);
+                                $set('guest_age', $account->age);
+                                $set('guest_email', $account->email);
+                                $set('guest_phone', $account->phone);
+                                $set('guest_gender', $account->gender);
+                                $set('guest_address', $account->address);
+                            })
                             ->helperText('Optional account link. Reservation guest fields remain the submitted snapshot.')
                             ->visible(fn () => auth()->user()?->hasPermission('guest_accounts_edit') ?? false)
                             ->columnSpanFull(),
@@ -62,40 +79,61 @@ class ReservationResource extends Resource
                             ->label('Last Name')
                             ->required()
                             ->maxLength(255)
+                            ->live(onBlur: true)
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\TextInput::make('guest_first_name')
                             ->label('First Name')
                             ->required()
                             ->maxLength(255)
+                            ->live(onBlur: true)
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\TextInput::make('guest_middle_initial')
                             ->label('Middle Initial')
                             ->maxLength(10)
+                            ->live(onBlur: true)
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\TextInput::make('guest_age')
                             ->label('Age')
+                            ->required()
                             ->numeric()
-                            ->minValue(1)
+                            ->integer()
+                            ->minValue(18)
                             ->maxValue(120)
+                            ->live(onBlur: true)
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\TextInput::make('guest_email')
                             ->email()
                             ->required()
                             ->maxLength(255)
+                            ->live(onBlur: true)
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\TextInput::make('guest_phone')
-                            ->maxLength(30)
+                            ->label('Mobile Number')
+                            ->tel()
+                            ->required()
+                            ->regex('/^(09\d{9}|\+639\d{9}|639\d{9})$/')
+                            ->maxLength(20)
+                            ->helperText('Use 09171234567, +639171234567, or 639171234567.')
+                            ->validationMessages([
+                                'regex' => 'Enter a valid Philippine mobile number, e.g. 09171234567 or +639171234567.',
+                            ])
+                            ->live(onBlur: true)
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\Select::make('guest_gender')
                             ->label('Gender')
                             ->options([
                                 'Male' => 'Male',
                                 'Female' => 'Female',
+                                'Other' => 'Other',
                             ])
+                            ->required()
                             ->native(false)
+                            ->live()
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\Textarea::make('guest_address')
                             ->rows(2)
+                            ->maxLength(1000)
+                            ->live(onBlur: true)
                             ->columnSpanFull()
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                     ])->columns(2),
@@ -111,24 +149,34 @@ class ReservationResource extends Resource
                             ->required()
                             ->preload()
                             ->searchable()
+                            ->live()
+                            ->hiddenOn('create')
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\DatePicker::make('check_in_date')
                             ->required()
+                            ->minDate(today())
                             ->native(false)
+                            ->live()
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\DatePicker::make('check_out_date')
                             ->required()
                             ->after('check_in_date')
+                            ->minDate(fn (Get $get): Carbon => filled($get('check_in_date'))
+                                ? Carbon::parse($get('check_in_date'))->addDay()
+                                : today()->addDay())
                             ->native(false)
+                            ->live()
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\TextInput::make('number_of_occupants')
                             ->label('Number of Occupants')
                             ->required()
                             ->numeric()
                             ->minValue(1)
-                            ->maxValue(20)
+                            ->maxValue(fn (Get $get): int => static::maximumOccupantsForRoomType($get('preferred_room_type_id')))
                             ->default(1)
-                            ->visibleOn('create'),
+                            ->live(onBlur: true)
+                            ->helperText(fn (Get $get): string => 'Maximum '.static::maximumOccupantsForRoomType($get('preferred_room_type_id')).' guest(s) for one selected room.')
+                            ->hiddenOn('create'),
                         Forms\Components\Select::make('purpose')
                             ->options([
                                 'academic' => 'Academic',
@@ -137,29 +185,118 @@ class ReservationResource extends Resource
                                 'event' => 'Event / Conference',
                                 'other' => 'Other',
                             ])
+                            ->native(false)
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\Textarea::make('special_requests')
                             ->rows(3)
+                            ->maxLength(2000)
+                            ->live(onBlur: true)
                             ->columnSpanFull()
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
+                        Forms\Components\Repeater::make('direct_room_assignments')
+                            ->label('Room Assignment')
+                            ->visibleOn('create')
+                            ->defaultItems(1)
+                            ->minItems(1)
+                            ->maxItems(7)
+                            ->addActionLabel('Add another room type or capacity')
+                            ->reorderableWithButtons()
+                            ->collapsible()
+                            ->itemLabel(function (array $state): ?string {
+                                $roomType = RoomType::find($state['room_type_id'] ?? null);
+                                $roomCount = count((array) ($state['room_ids'] ?? []));
+
+                                if (! $roomType) {
+                                    return 'Select rooms';
+                                }
+
+                                $capacity = filled($state['requested_capacity'] ?? null)
+                                    ? ' — up to '.$state['requested_capacity'].' guests'
+                                    : '';
+
+                                return $roomType->name.$capacity.' ('.$roomCount.' room'.($roomCount === 1 ? '' : 's').')';
+                            })
+                            ->schema([
+                                Forms\Components\Select::make('room_type_id')
+                                    ->label('Room Type')
+                                    ->options(fn (): array => RoomType::query()
+                                        ->where('is_active', true)
+                                        ->orderBy('name')
+                                        ->pluck('name', 'id')
+                                        ->all())
+                                    ->searchable()
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, callable $set): void {
+                                        $roomType = RoomType::find($state);
+                                        $capacities = $roomType
+                                            ? app(RoomHoldService::class)->getSellableCapacities($roomType)
+                                            : [];
+
+                                        $set('requested_capacity', count($capacities) === 1 ? $capacities[0] : null);
+                                        $set('room_ids', []);
+                                    }),
+                                Forms\Components\Select::make('requested_capacity')
+                                    ->label('Room Capacity')
+                                    ->options(fn (Get $get): array => static::directAssignmentCapacityOptions($get('room_type_id')))
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(fn (callable $set) => $set('room_ids', []))
+                                    ->helperText('Select the capacity of the rooms being reserved.'),
+                                Forms\Components\TextInput::make('occupant_count')
+                                    ->label('Guests in these rooms')
+                                    ->required()
+                                    ->integer()
+                                    ->numeric()
+                                    ->minValue(1)
+                                    ->maxValue(fn (Get $get): int => static::directAssignmentMaximumOccupants(
+                                        $get('room_type_id'),
+                                        $get('requested_capacity'),
+                                        $get('room_ids')
+                                    ))
+                                    ->default(1)
+                                    ->live(onBlur: true)
+                                    ->helperText(fn (Get $get): string => static::directAssignmentOccupantHelp(
+                                        $get('room_type_id'),
+                                        $get('requested_capacity'),
+                                        $get('room_ids')
+                                    )),
+                                Forms\Components\Select::make('room_ids')
+                                    ->label('Available Rooms')
+                                    ->multiple()
+                                    ->required()
+                                    ->searchable()
+                                    ->preload()
+                                    ->options(fn (Get $get): array => static::directAssignmentRoomOptions(
+                                        $get('room_type_id'),
+                                        $get('requested_capacity'),
+                                        $get('../../check_in_date'),
+                                        $get('../../check_out_date'),
+                                    ))
+                                    ->helperText('Only rooms available for the selected dates and capacity are shown.')
+                                    ->live(),
+                                Forms\Components\Textarea::make('notes')
+                                    ->label('Line Notes')
+                                    ->rows(2)
+                                    ->maxLength(500)
+                                    ->columnSpanFull(),
+                            ])
+                            ->columns(2)
+                            ->columnSpanFull(),
                     ])->columns(2),
 
                 Forms\Components\Section::make('Status & Review')
                     ->schema([
                         Forms\Components\Select::make('status')
-                            ->options([
-                                'pending' => 'Pending',
-                                'awaiting_alternative_confirmation' => 'Awaiting Alternative Confirmation',
-                                'approved' => 'Approved',
-                                'confirmed' => 'Confirmed',
-                                'declined' => 'Declined',
-                                'cancelled' => 'Cancelled',
-                                'checked_in' => 'Checked In',
-                                'checked_out' => 'Checked Out',
-                            ])
+                            ->options(Reservation::statusOptions())
                             ->default('pending')
                             ->required()
+                            ->hiddenOn('create')
                             ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
+                        Forms\Components\Placeholder::make('direct_booking_status')
+                            ->label('Direct booking status')
+                            ->visibleOn('create')
+                            ->content('Selected rooms are held immediately. A successful staff-created reservation is confirmed and ready for payment follow-up.'),
                         Forms\Components\Textarea::make('admin_notes')
                             ->label('Staff Notes')
                             ->rows(3)
@@ -630,19 +767,8 @@ class ReservationResource extends Resource
                                         Infolists\Components\TextEntry::make('status')
                                             ->label('Reservation Status')
                                             ->badge()
-                                            ->formatStateUsing(fn ($state) => str_replace('_', ' ', ucfirst((string) $state)))
-                                            ->color(fn ($state) => match ((string) $state) {
-                                                'pending' => 'warning',
-                                                'awaiting_alternative_confirmation' => 'warning',
-                                                'approved' => 'info',
-                                                'confirmed' => 'primary',
-
-                                                'declined' => 'danger',
-                                                'cancelled' => 'gray',
-                                                'checked_in' => 'success',
-                                                'checked_out' => 'gray',
-                                                default => 'gray',
-                                            }),
+                                            ->formatStateUsing(fn ($state) => Reservation::statusPresentation((string) $state)['admin_label'])
+                                            ->color(fn ($state) => Reservation::statusPresentation((string) $state)['filament_color']),
                                         Infolists\Components\TextEntry::make('feedback_status')
                                             ->label('Guest Feedback')
                                             ->default(fn (Reservation $record) => $record->feedback ? 'Submitted' : 'Not submitted')
@@ -1006,18 +1132,8 @@ class ReservationResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->width('120px')
-                    ->formatStateUsing(fn ($state) => str_replace('_', ' ', ucfirst($state)))
-                    ->color(fn ($state): array => match ((string) $state) {
-                        'pending' => Color::hex('#fbbf24'),
-                        'awaiting_alternative_confirmation' => Color::hex('#f59e0b'),
-                        'approved' => Color::hex('#919F02'),
-                        'confirmed' => Color::hex('#10B981'),
-                        'declined' => Color::hex('#EF4444'),
-                        'cancelled' => Color::hex('#6B7280'),
-                        'checked_in' => Color::hex('#16a34a'),
-                        'checked_out' => Color::hex('#94a3b8'),
-                        default => Color::hex('#6B7280'),
-                    }),
+                    ->formatStateUsing(fn ($state) => Reservation::statusPresentation((string) $state)['admin_label'])
+                    ->color(fn ($state): array => Color::hex(Reservation::statusPresentation((string) $state)['hex'])),
                 Tables\Columns\TextColumn::make('feedback.id')
                     ->label('Feedback')
                     ->badge()
@@ -1061,16 +1177,7 @@ class ReservationResource extends Resource
             ]))
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
-                    ->options([
-                        'pending' => 'Pending',
-                        'awaiting_alternative_confirmation' => 'Awaiting Alternative Confirmation',
-                        'approved' => 'Approved',
-                        'confirmed' => 'Confirmed',
-                        'declined' => 'Declined',
-                        'cancelled' => 'Cancelled',
-                        'checked_in' => 'Checked In',
-                        'checked_out' => 'Checked out',
-                    ]),
+                    ->options(Reservation::statusOptions()),
                 Tables\Filters\SelectFilter::make('preferred_room_type_id')
                     ->relationship('preferredRoomType', 'name')
                     ->label('Room Type')
@@ -1192,7 +1299,7 @@ class ReservationResource extends Resource
                         ->action(function (Reservation $record, array $data): void {
                             try {
                                 $offer = app(AlternativeRoomOfferService::class)->propose($record, $data);
-                                app(AlternativeRoomOfferService::class)->sendOfferEmail($offer, request());
+                                app(AlternativeRoomOfferService::class)->sendOfferEmail($offer);
 
                                 Notification::make()
                                     ->success()
@@ -1497,7 +1604,7 @@ class ReservationResource extends Resource
                         ->label('Approve selected')
                         ->icon('heroicon-o-check-circle')
                         ->color('success')
-                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->visible(fn () => auth()->user()?->hasPermission('reservations_edit') ?? false)
                         ->requiresConfirmation()
                         ->modalHeading('Approve selected reservations')
                         ->modalDescription('Only reservations with status "Pending" will be approved. Others will be skipped.')
@@ -1523,7 +1630,7 @@ class ReservationResource extends Resource
                         ->label('Decline selected')
                         ->icon('heroicon-o-x-circle')
                         ->color('danger')
-                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->visible(fn () => auth()->user()?->hasPermission('reservations_edit') ?? false)
                         ->requiresConfirmation()
                         ->modalHeading('Decline selected reservations')
                         ->modalDescription('Only reservations with status "Pending" will be declined. Others will be skipped.')
@@ -1555,7 +1662,7 @@ class ReservationResource extends Resource
                         ->label('Cancel selected')
                         ->icon('heroicon-o-no-symbol')
                         ->color('warning')
-                        ->visible(fn () => auth()->user()->isAdmin())
+                        ->visible(fn () => auth()->user()?->hasPermission('reservations_edit') ?? false)
                         ->requiresConfirmation()
                         ->modalHeading('Cancel selected reservations')
                         ->modalDescription('Only reservations with status "Pending" or "Approved" will be cancelled. Checked-in reservations will be skipped.')
@@ -1733,7 +1840,7 @@ class ReservationResource extends Resource
                 }
 
                 $availableRooms = app(RoomHoldService::class)
-                    ->getAvailableRooms($roomType, $checkIn, $checkOut);
+                    ->getAvailableRooms($roomType, $checkIn, $checkOut, $requestLine->requested_capacity);
                 $requestedRooms = max(1, (int) $requestLine->requested_room_count);
                 $occupants = max(1, (int) $requestLine->occupant_count);
                 $options = $availableRooms
@@ -1742,10 +1849,15 @@ class ReservationResource extends Resource
                     ])
                     ->all();
 
-                return Forms\Components\Select::make("assigned_room_ids_by_type.{$roomType->id}")
-                    ->label("{$roomType->name} ({$requestedRooms} room(s), {$occupants} guest(s))")
+                $capacityLabel = $requestLine->requested_capacity ? " — up to {$requestLine->requested_capacity} guests" : '';
+
+                return Forms\Components\Select::make("assigned_room_ids_by_type.request_{$requestLine->id}")
+                    ->label("{$roomType->name}{$capacityLabel} ({$requestedRooms} room(s), {$occupants} guest(s))")
                     ->multiple()
                     ->required()
+                    ->minItems($requestedRooms)
+                    ->maxItems($requestedRooms)
+                    ->maxItemsMessage("Select exactly {$requestedRooms} room(s) for this request.")
                     ->searchable()
                     ->preload()
                     ->options($options)
@@ -2231,6 +2343,108 @@ class ReservationResource extends Resource
         }
 
         return $names->isEmpty() ? 'No add-ons selected' : $names->implode(', ');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function directAssignmentCapacityOptions(mixed $roomTypeId): array
+    {
+        if (! is_numeric($roomTypeId) || ! ($roomType = RoomType::find((int) $roomTypeId))) {
+            return [];
+        }
+
+        return collect(app(RoomHoldService::class)->getSellableCapacities($roomType))
+            ->mapWithKeys(fn (int $capacity): array => [$capacity => "Up to {$capacity} guests"])
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function directAssignmentRoomOptions(
+        mixed $roomTypeId,
+        mixed $capacity,
+        mixed $checkInDate,
+        mixed $checkOutDate,
+    ): array {
+        if (! is_numeric($roomTypeId) || ! is_numeric($capacity) || blank($checkInDate) || blank($checkOutDate)) {
+            return [];
+        }
+
+        try {
+            $checkIn = Carbon::parse($checkInDate)->startOfDay();
+            $checkOut = Carbon::parse($checkOutDate)->startOfDay();
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if ($checkOut->lte($checkIn) || ! ($roomType = RoomType::find((int) $roomTypeId))) {
+            return [];
+        }
+
+        return app(RoomHoldService::class)
+            ->getAvailableRooms($roomType, $checkIn, $checkOut, (int) $capacity)
+            ->mapWithKeys(fn (Room $room): array => [
+                $room->id => $room->room_number.($room->floor?->name ? ' - '.$room->floor->name : ''),
+            ])
+            ->all();
+    }
+
+    public static function directAssignmentOccupantHelp(mixed $roomTypeId, mixed $capacity, mixed $roomIds): string
+    {
+        $roomCount = count(array_filter((array) $roomIds));
+
+        if (! is_numeric($roomTypeId) || ! ($roomType = RoomType::find((int) $roomTypeId))) {
+            return 'Select a room type, capacity, and rooms first.';
+        }
+
+        if (! $roomType->isPrivate()) {
+            return 'Guests will be allocated across the selected shared rooms according to available beds.';
+        }
+
+        if (! is_numeric($capacity) || $roomCount < 1) {
+            return 'Select the rooms first to see the guest limit.';
+        }
+
+        $maximum = max(1, (int) $capacity) * $roomCount;
+
+        return "Up to {$maximum} guests across {$roomCount} selected room".($roomCount === 1 ? '.' : 's.');
+    }
+
+    public static function directAssignmentMaximumOccupants(mixed $roomTypeId, mixed $capacity, mixed $roomIds): int
+    {
+        if (! is_numeric($roomTypeId) || ! ($roomType = RoomType::find((int) $roomTypeId)) || ! $roomType->isPrivate()) {
+            return 200;
+        }
+
+        if (! is_numeric($capacity)) {
+            return 200;
+        }
+
+        $roomCount = count(array_filter((array) $roomIds));
+
+        return $roomCount > 0 ? max(1, (int) $capacity) * $roomCount : 200;
+    }
+
+    /**
+     * Match the guest reservation form's client-side occupant limit for a
+     * single room. Public/shared room types continue to use the form-wide
+     * limit; private rooms use the selected room type's actual capacity.
+     */
+    protected static function maximumOccupantsForRoomType(mixed $roomTypeId): int
+    {
+        if (! is_numeric($roomTypeId)) {
+            return 20;
+        }
+
+        $roomType = RoomType::find((int) $roomTypeId);
+
+        if (! $roomType || $roomType->room_sharing_type === 'public') {
+            return 20;
+        }
+
+        return min(20, max(1, (int) $roomType->capacity));
     }
 
     public static function getPages(): array
