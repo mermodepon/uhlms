@@ -25,6 +25,16 @@ class ReservationDemoSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->seedReservations(1, $this->buildStatusPlan());
+    }
+
+    /**
+     * Seed a deterministic set of reservations without clearing existing data.
+     *
+     * @param  array<int, string>  $statusPlan
+     */
+    protected function seedReservations(int $startSequence, array $statusPlan): void
+    {
         mt_srand(20260429);
 
         $today = Carbon::today();
@@ -42,13 +52,12 @@ class ReservationDemoSeeder extends Seeder
         $services = Service::query()->where('is_active', true)->orderBy('id')->get();
 
         $roomSchedules = [];
-        $statusPlan = $this->buildStatusPlan();
         shuffle($statusPlan);
 
         $nameData = $this->nameData();
 
-        foreach (range(1, 100) as $sequence) {
-            $status = $statusPlan[$sequence - 1];
+        foreach (array_values($statusPlan) as $offset => $status) {
+            $sequence = $startSequence + $offset;
             /** @var RoomType $roomType */
             $roomType = $roomTypePool[($sequence - 1) % $roomTypePool->count()];
             $requiresAllocatedRoom = in_array($status, ['confirmed', 'checked_in', 'checked_out'], true);
@@ -210,7 +219,7 @@ class ReservationDemoSeeder extends Seeder
         return mt_rand($lowerBound, $maxCapacity);
     }
 
-    private function buildDateWindow(string $status, Carbon $today, int $sequence, int $attempt): array
+    protected function buildDateWindow(string $status, Carbon $today, int $sequence, int $attempt): array
     {
         $seed = $sequence + $attempt;
 
@@ -226,7 +235,7 @@ class ReservationDemoSeeder extends Seeder
         };
     }
 
-    private function window(Carbon $checkIn, int $nights): array
+    protected function window(Carbon $checkIn, int $nights): array
     {
         return [
             'check_in' => $checkIn->copy(),

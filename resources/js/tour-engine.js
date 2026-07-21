@@ -2784,6 +2784,14 @@ class VirtualTourEngine {
             }), panelPosition(0, hasImage ? 1.04 : (hasPreviewMedia ? 0.78 : 0)), { x: hasImage ? 1.75 : 1.95, y: hasImage ? 0.4 : (hasPreviewMedia ? 0.96 : 1.45) }, { panel: true, action: 'noop' });
             panelGroup.add(panel);
 
+            const imageCenterY = descriptionText ? 0.2 : 0.03;
+            const imageMaxHeight = descriptionText ? 1.08 : 1.28;
+            const descriptionCenterY = -0.68;
+            const descriptionHeight = 0.42;
+            const navigationHeight = 0.25;
+            const closeHeight = 0.25;
+            const verticalGap = 0.18;
+            let imageHeightForLayout = imageMaxHeight;
             const buttons = [];
             if (hasImage) {
                 const imageUrl = new URL(imageUrls[currentImageIndex], window.location.href).href;
@@ -2793,14 +2801,15 @@ class VirtualTourEngine {
                     const image = imageTexture.image;
                     const aspect = image?.width && image?.height ? image.width / image.height : 16 / 9;
                     const maxWidth = 2.85;
-                    const maxHeight = descriptionText ? 1.08 : 1.28;
+                    const maxHeight = imageMaxHeight;
                     let imageWidth = maxWidth;
                     let imageHeight = imageWidth / aspect;
                     if (imageHeight > maxHeight) {
                         imageHeight = maxHeight;
                         imageWidth = imageHeight * aspect;
                     }
-                    const imagePlane = makePlane(imageTexture, panelPosition(0, descriptionText ? 0.2 : 0.03), { x: imageWidth, y: imageHeight }, { panel: true, action: 'noop' });
+                    imageHeightForLayout = imageHeight;
+                    const imagePlane = makePlane(imageTexture, panelPosition(0, imageCenterY), { x: imageWidth, y: imageHeight }, { panel: true, action: 'noop' });
                     panelGroup.add(imagePlane);
                     clearGroup(statusGroup);
                 } catch (error) {
@@ -2824,13 +2833,16 @@ class VirtualTourEngine {
                 }
 
                 if (imageUrls.length > 1) {
+                    const navigationY = descriptionText
+                        ? descriptionCenterY - (descriptionHeight / 2) - verticalGap - (navigationHeight / 2)
+                        : imageCenterY - (imageHeightForLayout / 2) - verticalGap - (navigationHeight / 2);
                     buttons.push(makePlane(makeTextTexture('Prev', {
                         width: 360,
                         height: 100,
                         background: '#FFC600',
                         color: '#00491E',
                         font: 'bold 34px sans-serif',
-                    }), panelPosition(-0.95, -0.86), { x: 0.9, y: 0.25 }, {
+                    }), panelPosition(-0.95, navigationY), { x: 0.9, y: navigationHeight }, {
                         panel: true,
                         action: 'info-image',
                         hotspot: hs,
@@ -2843,7 +2855,7 @@ class VirtualTourEngine {
                         background: '#FFC600',
                         color: '#00491E',
                         font: 'bold 34px sans-serif',
-                    }), panelPosition(0.95, -0.86), { x: 0.9, y: 0.25 }, {
+                    }), panelPosition(0.95, navigationY), { x: 0.9, y: navigationHeight }, {
                         panel: true,
                         action: 'info-image',
                         hotspot: hs,
@@ -2889,7 +2901,11 @@ class VirtualTourEngine {
             }
 
             const closeY = hasImage
-                ? (descriptionText ? (buttons.length > 1 ? -1.48 : -1.3) : (buttons.length > 1 ? -1.24 : -1.02))
+                ? (buttons.length > 1
+                    ? (descriptionText
+                        ? descriptionCenterY - (descriptionHeight / 2) - verticalGap - navigationHeight - verticalGap - (closeHeight / 2)
+                        : imageCenterY - (imageHeightForLayout / 2) - verticalGap - navigationHeight - verticalGap - (closeHeight / 2))
+                    : (descriptionText ? -1.3 : -1.02))
                 : (hasVideo ? -1.5 : -1.05);
             buttons.push(makePlane(makeTextTexture('Close', {
                 width: 360,
@@ -2897,7 +2913,7 @@ class VirtualTourEngine {
                 background: '#374151',
                 color: '#ffffff',
                 font: 'bold 34px sans-serif',
-            }), panelPosition(0, closeY), { x: 0.9, y: 0.25 }, { panel: true, action: 'close-panel' }));
+            }), panelPosition(0, closeY), { x: 0.9, y: hasImage ? closeHeight : 0.25 }, { panel: true, action: 'close-panel' }));
 
             panelGroup.add(...buttons);
         };
