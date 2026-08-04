@@ -6,6 +6,7 @@ use App\Models\Floor;
 use App\Models\Reservation;
 use App\Models\ReservationPayment;
 use App\Models\Room;
+use App\Models\RoomHold;
 use App\Models\RoomType;
 use App\Models\User;
 use App\Services\CheckInService;
@@ -393,5 +394,88 @@ class CheckInServiceTest extends TestCase
             'payment_amount' => 0,
             'payment_or_number' => null,
         ]);
+    }
+
+    public function test_complete_onsite_check_in_accepts_the_reservation_own_reserved_room(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+
+        $roomType = $this->createRoomType('private', 'flat_rate');
+        $room = $this->createRoom($roomType, 'reserved', 2);
+        $reservation = $this->createReservation($roomType);
+
+        RoomHold::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $room->id,
+            'hold_from' => $reservation->check_in_date,
+            'hold_to' => $reservation->check_out_date,
+            'hold_type' => 'advance',
+        ]);
+
+        $result = $this->service->completeOnsiteCheckIn($reservation, [
+            'guest_first_name' => 'John',
+            'guest_last_name' => 'Doe',
+            'guest_gender' => 'Male',
+            'payment_mode' => 'cash',
+            'payment_amount' => 1000,
+            'payment_or_number' => 'OR-HELD-1',
+            'or_date' => now()->toDateString(),
+            'reservation_rooms' => [[
+                'room_mode' => 'private',
+                'room_id' => $room->id,
+                'includes_primary_guest' => true,
+                'guests' => [],
+            ]],
+        ]);
+
+        $this->assertTrue($result['all_succeeded']);
+        $this->assertDatabaseHas('reservations', ['id' => $reservation->id, 'status' => 'checked_in']);
+        $this->assertDatabaseHas('room_assignments', ['reservation_id' => $reservation->id, 'room_id' => $room->id]);
+        $this->assertDatabaseMissing('room_holds', ['reservation_id' => $reservation->id]);
+    }
+
+    public function test_failed_normal_check_in_keeps_its_advance_hold_and_creates_no_partial_assignment(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+
+        $roomType = $this->createRoomType('private', 'flat_rate');
+        $heldRoom = $this->createRoom($roomType, 'reserved', 2);
+        $otherRoom = $this->createRoom($roomType, 'available', 2);
+        $reservation = $this->createReservation($roomType);
+
+        RoomHold::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $heldRoom->id,
+            'hold_from' => $reservation->check_in_date,
+            'hold_to' => $reservation->check_out_date,
+            'hold_type' => 'advance',
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('selected rooms no longer match');
+
+        try {
+            $this->service->completeOnsiteCheckIn($reservation, [
+                'guest_first_name' => 'John',
+                'guest_last_name' => 'Doe',
+                'guest_gender' => 'Male',
+                'payment_mode' => 'cash',
+                'payment_amount' => 1000,
+                'payment_or_number' => 'OR-HELD-2',
+                'or_date' => now()->toDateString(),
+                'reservation_rooms' => [[
+                    'room_mode' => 'private',
+                    'room_id' => $otherRoom->id,
+                    'includes_primary_guest' => true,
+                    'guests' => [],
+                ]],
+            ]);
+        } finally {
+            $this->assertDatabaseHas('room_holds', ['reservation_id' => $reservation->id, 'room_id' => $heldRoom->id]);
+            $this->assertDatabaseMissing('room_assignments', ['reservation_id' => $reservation->id]);
+            $this->assertDatabaseHas('reservations', ['id' => $reservation->id, 'status' => 'approved']);
+        }
     }
 }

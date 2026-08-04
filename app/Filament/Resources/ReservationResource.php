@@ -7,6 +7,7 @@ use App\Models\ForceDeletionLog;
 use App\Models\Guest;
 use App\Models\GuestAccount;
 use App\Models\Reservation;
+use App\Models\ReservationCharge;
 use App\Models\RoomType;
 use App\Models\ReservationLog;
 use App\Models\Room;
@@ -14,9 +15,12 @@ use App\Models\RoomAssignment;
 use App\Models\Service;
 use App\Models\Setting;
 use App\Services\CheckInService;
+use App\Services\InStayAddonService;
+use App\Services\InStayExtensionService;
 use App\Services\AlternativeRoomOfferService;
 use App\Services\RoomHoldService;
 use App\Services\ReservationWorkflowService;
+use App\Services\PreStayReservationAmendmentService;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -285,18 +289,12 @@ class ReservationResource extends Resource
                             ->columnSpanFull(),
                     ])->columns(2),
 
-                Forms\Components\Section::make('Status & Review')
+                Forms\Components\Section::make('Staff Notes')
                     ->schema([
-                        Forms\Components\Select::make('status')
-                            ->options(Reservation::statusOptions())
-                            ->default('pending')
-                            ->required()
-                            ->hiddenOn('create')
-                            ->disabled(fn ($record) => $record && $record->status === 'checked_in'),
                         Forms\Components\Placeholder::make('direct_booking_status')
                             ->label('Direct booking status')
                             ->visibleOn('create')
-                            ->content('Selected rooms are held immediately. A successful staff-created reservation is confirmed and ready for payment follow-up.'),
+                            ->content('Staff-created reservations begin pending. Selected room requests are revalidated and held only when a staff member approves the reservation.'),
                         Forms\Components\Textarea::make('admin_notes')
                             ->label('Staff Notes')
                             ->rows(3)
@@ -304,8 +302,8 @@ class ReservationResource extends Resource
                     ]),
 
                 Forms\Components\Section::make('Check-In Details')
-                    ->description('Edit payment, add-ons, and identification details captured during check-in.')
-                    ->visible(fn ($record) => $record && in_array($record->status, ['checked_in', 'checked_out'], true))
+                    ->description('Deprecated: in-stay details are changed only through audited workflow actions.')
+                    ->visible(false)
                     ->schema([
                         Forms\Components\Select::make('checkin_id_type')
                             ->label('ID Type')
@@ -727,6 +725,11 @@ class ReservationResource extends Resource
                                             ->label('Total Payment Amount')
                                             ->money('PHP')
                                             ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['payment_amount']),
+                                        Infolists\Components\TextEntry::make('billing_outstanding_balance')
+                                            ->label('Outstanding Balance')
+                                            ->money('PHP')
+                                            ->default(fn (Reservation $record) => (float) $record->balance_due)
+                                            ->color(fn (Reservation $record) => (float) $record->balance_due > 0.01 ? 'danger' : 'success'),
                                         Infolists\Components\TextEntry::make('billing_or_number')
                                             ->label('Official Receipt Number')
                                             ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['or_number'] ?? '-')
@@ -756,6 +759,22 @@ class ReservationResource extends Resource
                                             ->default(fn (Reservation $record) => self::resolveBillingSnapshot($record)['addons_label'])
                                             ->columnSpanFull()
                                             ->badge(),
+                                        Infolists\Components\TextEntry::make('billing_in_stay_addons')
+                                            ->label('In-Stay Add-On Ledger')
+                                            ->default(function (Reservation $record): string {
+                                                $charges = $record->charges()
+                                                    ->whereIn('charge_type', ['addon', 'discount'])
+                                                    ->get()
+                                                    ->filter(fn (ReservationCharge $charge) => str_starts_with((string) data_get($charge->meta, 'source', ''), 'in_stay_addon'));
+
+                                                if ($charges->isEmpty()) {
+                                                    return 'No in-stay add-ons posted.';
+                                                }
+
+                                                return $charges->map(fn (ReservationCharge $charge) => $charge->created_at->format('M d, g:i A').' — '.$charge->description.' (PHP '.number_format((float) $charge->amount, 2).')')->implode("\n");
+                                            })
+                                            ->columnSpanFull()
+                                            ->extraAttributes(['class' => 'whitespace-pre-line']),
                                     ])->columns(2),
                             ]),
 
@@ -1043,27 +1062,21 @@ class ReservationResource extends Resource
                     ->color(fn ($state) => filled($state) ? 'success' : 'gray')
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->searchable(),
-                Tables\Columns\TextColumn::make('preferredRoomType.name')
-                    ->label('Room Type')
-                    ->searchable()
-                    ->sortable()
+                Tables\Columns\TextColumn::make('requested_room_types')
+                    ->label('Room Types')
+                    ->searchable(query: fn (Builder $query, string $search): Builder => $query->where(function (Builder $typesQuery) use ($search): void {
+                        $typesQuery
+                            ->whereHas('roomRequests.roomType', fn (Builder $roomTypeQuery) => $roomTypeQuery->where('name', 'like', "%{$search}%"))
+                            ->orWhereHas('preferredRoomType', fn (Builder $roomTypeQuery) => $roomTypeQuery->where('name', 'like', "%{$search}%"));
+                    }))
                     ->wrap()
                     ->width('130px')
                     ->getStateUsing(function (Reservation $record) {
-                        // Show actual room type from assignment when checked in/out
-                        if (in_array($record->status, ['checked_in', 'checked_out'], true)) {
-                            $actualType = $record->roomAssignments
-                                ->pluck('room.roomType.name')
-                                ->filter()
-                                ->unique()
-                                ->implode(', ');
-
-                            if (filled($actualType)) {
-                                return $actualType;
-                            }
-                        }
-
-                        return $record->preferredRoomType?->name;
+                        return $record->getEffectiveRoomRequests()
+                            ->map(fn ($request) => $request->roomType?->name)
+                            ->filter()
+                            ->unique()
+                            ->implode(', ') ?: '—';
                     }),
                 Tables\Columns\TextColumn::make('room_display')
                     ->label('Room')
@@ -1243,7 +1256,8 @@ class ReservationResource extends Resource
                     Tables\Actions\ViewAction::make()
                         ->slideOver(),
                     Tables\Actions\EditAction::make()
-                        ->slideOver(),
+                        ->slideOver()
+                        ->visible(fn (Reservation $record) => $record->status === 'pending'),
 
                     // Approve action
                     Tables\Actions\Action::make('approve')
@@ -1313,6 +1327,50 @@ class ReservationResource extends Resource
                             }
                         }),
 
+                    Tables\Actions\Action::make('withdraw_alternative')
+                        ->label('Withdraw Alternative Offer')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Withdraw Alternative Offer')
+                        ->modalDescription('The temporary room holds will be released and the reservation will return to pending review.')
+                        ->visible(fn (Reservation $record) => $record->status === 'awaiting_alternative_confirmation')
+                        ->form([
+                            Forms\Components\Textarea::make('reason')
+                                ->label('Reason for withdrawal')
+                                ->required()
+                                ->rows(3)
+                                ->maxLength(500),
+                        ])
+                        ->action(function (Reservation $record, array $data): void {
+                            app(AlternativeRoomOfferService::class)->withdraw($record, $data['reason']);
+                            Notification::make()->success()->title('Alternative offer withdrawn and temporary holds released.')->send();
+                        }),
+
+                    Tables\Actions\Action::make('modify_pre_stay')
+                        ->label('Modify Pre-Stay Reservation')
+                        ->icon('heroicon-o-pencil-square')
+                        ->color('primary')
+                        ->modalWidth('3xl')
+                        ->visible(fn (Reservation $record) => in_array($record->status, ['approved', 'confirmed'], true))
+                        ->form(fn (Reservation $record) => [
+                            Forms\Components\TextInput::make('guest_name')->default($record->guest_name)->required(),
+                            Forms\Components\TextInput::make('guest_email')->email()->default($record->guest_email)->required(),
+                            Forms\Components\TextInput::make('guest_phone')->default($record->guest_phone),
+                            Forms\Components\DatePicker::make('check_in_date')->default($record->check_in_date)->required()->native(false),
+                            Forms\Components\DatePicker::make('check_out_date')->default($record->check_out_date)->required()->native(false),
+                            Forms\Components\TextInput::make('number_of_occupants')->numeric()->minValue(1)->default($record->number_of_occupants)->required(),
+                            Forms\Components\Select::make('room_ids')->label('Held / Replacement Rooms')->multiple()->required()->searchable()
+                                ->options(Room::query()->where('is_active', true)->whereNotIn('status', ['maintenance', 'inactive'])->orderBy('room_number')->pluck('room_number', 'id'))
+                                ->default($record->roomHolds()->where('hold_type', 'advance')->pluck('room_id')->all()),
+                            Forms\Components\Textarea::make('purpose')->default($record->purpose),
+                            Forms\Components\Textarea::make('special_requests')->default($record->special_requests),
+                        ])
+                        ->action(function (Reservation $record, array $data): void {
+                            app(PreStayReservationAmendmentService::class)->amend($record, $data);
+                            Notification::make()->success()->title('Pre-stay reservation amended and holds revalidated.')->send();
+                        }),
+
                     // Decline action
                     Tables\Actions\Action::make('decline')
                         ->icon('heroicon-o-x-circle')
@@ -1338,6 +1396,192 @@ class ReservationResource extends Resource
                         ->visible(fn (Reservation $record) => in_array($record->status, ['approved', 'confirmed']))
                         ->url(fn (Reservation $record): string => static::getUrl('check-in', ['record' => $record])),
 
+                    Tables\Actions\Action::make('post_addon')
+                        ->label('Post Add-On')
+                        ->icon('heroicon-o-plus-circle')
+                        ->color('primary')
+                        ->modalHeading('Post In-Stay Add-On')
+                        ->modalDescription('Posted add-ons increase the outstanding balance and are collected at checkout.')
+                        ->visible(fn (Reservation $record) => $record->status === 'checked_in' && (auth()->user()?->can('update', $record) ?? false))
+                        ->form([
+                            Forms\Components\Repeater::make('items')
+                                ->label('Add-Ons')
+                                ->schema([
+                                    Forms\Components\Select::make('code')
+                                        ->label('Add-On')
+                                        ->options(fn () => Service::active()->ordered()->get()->mapWithKeys(fn (Service $service) => [
+                                            $service->code => $service->name.' ('.$service->formatted_price.')',
+                                        ]))
+                                        ->required()
+                                        ->searchable()
+                                        ->distinct(),
+                                    Forms\Components\TextInput::make('qty')
+                                        ->label('Quantity')
+                                        ->numeric()
+                                        ->minValue(1)
+                                        ->default(1)
+                                        ->required(),
+                                ])
+                                ->minItems(1)
+                                ->defaultItems(1)
+                                ->addActionLabel('Add another add-on')
+                                ->columns(2),
+                            Forms\Components\Textarea::make('note')
+                                ->label('Staff Note')
+                                ->rows(2)
+                                ->maxLength(500),
+                        ])
+                        ->action(function (Reservation $record, array $data): void {
+                            try {
+                                $charges = app(InStayAddonService::class)->post($record, $data['items'] ?? [], $data['note'] ?? null);
+                                $record->refresh();
+
+                                Notification::make()
+                                    ->success()
+                                    ->title('Add-on posted')
+                                    ->body(count($charges).' add-on(s) posted. Outstanding balance: PHP '.number_format((float) $record->balance_due, 2).'.')
+                                    ->send();
+                            } catch (\RuntimeException $exception) {
+                                Notification::make()->danger()->title($exception->getMessage())->send();
+                            }
+                        }),
+
+                    Tables\Actions\Action::make('void_addon')
+                        ->label('Void Add-On')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('danger')
+                        ->modalHeading('Void Posted Add-On')
+                        ->visible(fn (Reservation $record) => $record->status === 'checked_in' && (auth()->user()?->can('update', $record) ?? false))
+                        ->form(fn (Reservation $record) => [
+                            Forms\Components\Select::make('charge_id')
+                                ->label('Posted Add-On')
+                                ->options(function () use ($record): array {
+                                    $voidedIds = $record->charges()->where('charge_type', 'addon')->get()
+                                        ->pluck('meta.voids_charge_id')->filter()->map(fn ($id) => (int) $id)->all();
+
+                                    return $record->charges()
+                                        ->where('charge_type', 'addon')
+                                        ->get()
+                                        ->filter(fn (ReservationCharge $charge) => data_get($charge->meta, 'source') === 'in_stay_addon' && ! in_array($charge->id, $voidedIds, true))
+                                        ->mapWithKeys(fn (ReservationCharge $charge) => [$charge->id => $charge->description.' — PHP '.number_format((float) $charge->amount, 2).' ('.optional($charge->created_at)->format('M d, g:i A').')'])
+                                        ->all();
+                                })
+                                ->required()
+                                ->searchable(),
+                            Forms\Components\Textarea::make('reason')
+                                ->label('Reason for voiding')
+                                ->required()
+                                ->rows(3)
+                                ->maxLength(500),
+                        ])
+                        ->action(function (Reservation $record, array $data): void {
+                            try {
+                                $charge = $record->charges()->findOrFail($data['charge_id']);
+                                app(InStayAddonService::class)->void($record, $charge, $data['reason']);
+                                $record->refresh();
+
+                                Notification::make()
+                                    ->success()
+                                    ->title('Add-on voided')
+                                    ->body('The reversal was posted. Outstanding balance: PHP '.number_format((float) $record->balance_due, 2).'.')
+                                    ->send();
+                            } catch (\RuntimeException $exception) {
+                                Notification::make()->danger()->title($exception->getMessage())->send();
+                            }
+                        }),
+
+                    Tables\Actions\Action::make('extend_stay')
+                        ->label('Extend Stay')
+                        ->icon('heroicon-o-calendar-days')
+                        ->color('primary')
+                        ->modalHeading('Extend Checked-In Stay')
+                        ->modalDescription('The current assigned room(s) must be available for every added night. The added room charge is posted to the guest balance.')
+                        ->visible(fn (Reservation $record) => $record->status === 'checked_in' && (auth()->user()?->can('update', $record) ?? false))
+                        ->form(fn (Reservation $record) => [
+                            Forms\Components\DatePicker::make('new_checkout_date')->label('New Check-out Date')->required()->native(false)
+                                ->minDate(Carbon::parse($record->check_out_date)->addDay()),
+                            Forms\Components\Textarea::make('note')->label('Staff Note')->rows(2)->maxLength(500),
+                        ])
+                        ->action(function (Reservation $record, array $data): void {
+                            try {
+                                $charges = app(InStayExtensionService::class)->extend($record, $data['new_checkout_date'], $data['note'] ?? null);
+                                $record->refresh();
+                                Notification::make()->success()->title('Stay extended')->body(count($charges).' room extension charge(s) posted. Outstanding balance: PHP '.number_format((float) $record->balance_due, 2).'.')->send();
+                            } catch (\RuntimeException $exception) {
+                                Notification::make()->danger()->title($exception->getMessage())->send();
+                            }
+                        }),
+
+                    Tables\Actions\Action::make('void_stay_extension')
+                        ->label('Void Stay Extension')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('danger')
+                        ->modalHeading('Void Stay Extension')
+                        ->visible(fn (Reservation $record) => $record->status === 'checked_in' && (auth()->user()?->can('update', $record) ?? false))
+                        ->form(fn (Reservation $record) => [
+                            Forms\Components\Select::make('charge_id')->label('Posted extension')->required()->searchable()
+                                ->options($record->charges()->where('charge_type', 'room_rate')->get()->filter(fn (ReservationCharge $charge) => data_get($charge->meta, 'source') === 'in_stay_extension')->mapWithKeys(fn (ReservationCharge $charge) => [$charge->id => $charge->description.' — PHP '.number_format((float) $charge->amount, 2)])),
+                            Forms\Components\Textarea::make('reason')->label('Reason for voiding')->required()->rows(3)->maxLength(500),
+                        ])
+                        ->action(function (Reservation $record, array $data): void {
+                            try {
+                                app(InStayExtensionService::class)->void($record, $record->charges()->findOrFail($data['charge_id']), $data['reason']);
+                                $record->refresh();
+                                Notification::make()->success()->title('Stay extension voided')->body('The reversing entries were posted.')->send();
+                            } catch (\RuntimeException $exception) {
+                                Notification::make()->danger()->title($exception->getMessage())->send();
+                            }
+                        }),
+
+                    Tables\Actions\Action::make('correct_guest_identity')
+                        ->label('Correct Guest Identity')
+                        ->icon('heroicon-o-identification')
+                        ->color('gray')
+                        ->visible(fn (Reservation $record) => $record->status === 'checked_in' && (auth()->user()?->can('update', $record) ?? false))
+                        ->form(fn (Reservation $record) => [
+                            Forms\Components\Select::make('assignment_id')->label('Checked-in guest')->required()->searchable()
+                                ->options($record->roomAssignments()->where('status', 'checked_in')->get()->mapWithKeys(fn (RoomAssignment $a) => [$a->id => trim($a->guest_first_name.' '.$a->guest_last_name).' — Room '.$a->room?->room_number])),
+                            Forms\Components\TextInput::make('guest_first_name')->required(),
+                            Forms\Components\TextInput::make('guest_last_name')->required(),
+                            Forms\Components\TextInput::make('id_number')->label('ID number'),
+                            Forms\Components\Textarea::make('reason')->required()->rows(2)->columnSpanFull(),
+                        ])
+                        ->action(function (Reservation $record, array $data): void {
+                            \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data): void {
+                                $assignment = $record->roomAssignments()->lockForUpdate()->findOrFail($data['assignment_id']);
+                                $before = $assignment->only(['guest_first_name', 'guest_last_name', 'id_number']);
+                                $assignment->update(collect($data)->only(['guest_first_name', 'guest_last_name', 'id_number'])->all());
+                                ReservationLog::record($record, 'guest_identity_corrected', 'Checked-in guest identity corrected.', ['assignment_id' => $assignment->id, 'before' => $before, 'reason' => $data['reason']]);
+                            });
+                            Notification::make()->success()->title('Guest identity correction recorded.')->send();
+                        }),
+
+                    Tables\Actions\Action::make('correct_room_assignment')
+                        ->label('Correct Room Assignment')
+                        ->icon('heroicon-o-home-modern')
+                        ->color('gray')
+                        ->visible(fn (Reservation $record) => $record->status === 'checked_in' && (auth()->user()?->can('update', $record) ?? false))
+                        ->form(fn (Reservation $record) => [
+                            Forms\Components\Select::make('assignment_id')->label('Checked-in guest')->required()->searchable()
+                                ->options($record->roomAssignments()->where('status', 'checked_in')->get()->mapWithKeys(fn (RoomAssignment $a) => [$a->id => trim($a->guest_first_name.' '.$a->guest_last_name).' — Room '.$a->room?->room_number])),
+                            Forms\Components\Select::make('room_id')->label('Correct room')->required()->searchable()
+                                ->options(Room::query()->where('is_active', true)->whereNotIn('status', ['maintenance', 'inactive'])->orderBy('room_number')->pluck('room_number', 'id')),
+                            Forms\Components\Textarea::make('reason')->required()->rows(2)->columnSpanFull(),
+                        ])
+                        ->action(function (Reservation $record, array $data): void {
+                            \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data): void {
+                                $assignment = $record->roomAssignments()->lockForUpdate()->findOrFail($data['assignment_id']);
+                                $room = Room::query()->with('roomType')->lockForUpdate()->findOrFail($data['room_id']);
+                                if ($assignment->room_id !== $room->id && $room->isFull()) {
+                                    throw new \RuntimeException("Room {$room->room_number} is at capacity.");
+                                }
+                                $before = ['room_id' => $assignment->room_id, 'room_number' => $assignment->room?->room_number];
+                                $assignment->update(['room_id' => $room->id]);
+                                ReservationLog::record($record, 'room_assignment_corrected', 'Checked-in room assignment corrected.', ['assignment_id' => $assignment->id, 'before' => $before, 'room_id' => $room->id, 'reason' => $data['reason']]);
+                            });
+                            Notification::make()->success()->title('Room assignment correction recorded.')->send();
+                        }),
+
                     // Check Out action
                     Tables\Actions\Action::make('check_out')
                         ->icon('heroicon-o-arrow-left-on-rectangle')
@@ -1345,28 +1589,74 @@ class ReservationResource extends Resource
                         ->requiresConfirmation()
                         ->modalHeading('Check Out Guest')
                         ->visible(fn (Reservation $record) => $record->status === 'checked_in')
-                        ->form([
+                        ->form(fn (Reservation $record) => [
+                            Forms\Components\Placeholder::make('checkout_balance')
+                                ->label('Final balance')
+                                ->helperText(function () use ($record): string {
+                                    $extensions = $record->charges()->get()->filter(fn (ReservationCharge $charge) => str_starts_with((string) data_get($charge->meta, 'source', ''), 'in_stay_extension'));
+                                    return $extensions->isEmpty() ? '' : 'Extensions: '.$extensions->map(fn (ReservationCharge $charge) => $charge->description.' (PHP '.number_format((float) $charge->amount, 2).')')->implode('; ');
+                                })
+                                ->content(fn () => 'PHP '.number_format((float) $record->fresh()->balance_due, 2).' — charges and payments are reconciled when you submit.'),
                             Forms\Components\DatePicker::make('checked_out_at')
                                 ->label('Check-out Date')
                                 ->default(fn () => now())
                                 ->required()
                                 ->native(false),
+                            Forms\Components\Section::make('Final Payment')
+                                ->description('Required when there is an outstanding balance.')
+                                ->visible(fn () => (float) $record->fresh()->balance_due > 0.01)
+                                ->schema([
+                                    Forms\Components\TextInput::make('payment_amount')
+                                        ->label('Payment Amount')
+                                        ->numeric()
+                                        ->prefix('PHP')
+                                        ->default(fn () => round((float) $record->fresh()->balance_due, 2))
+                                        ->required(),
+                                    Forms\Components\Select::make('payment_mode')
+                                        ->label('Payment Method')
+                                        ->options([
+                                            'cash' => 'Cash',
+                                            'bank_transfer' => 'Bank Transfer',
+                                            'gcash' => 'GCash',
+                                            'check' => 'Check',
+                                            'others' => 'Others',
+                                        ])
+                                        ->required(),
+                                    Forms\Components\TextInput::make('reference_no')
+                                        ->label('Official Receipt / Reference No.')
+                                        ->required(),
+                                    Forms\Components\DatePicker::make('or_date')
+                                        ->label('OR / Payment Date')
+                                        ->default(fn () => now())
+                                        ->required()
+                                        ->native(false),
+                                    Forms\Components\Textarea::make('payment_remarks')
+                                        ->label('Payment Notes')
+                                        ->rows(2),
+                                ])
+                                ->columns(2),
                             Forms\Components\Textarea::make('remarks')
                                 ->label('Check-out Remarks')
                                 ->rows(2),
                         ])
                         ->action(function (Reservation $record, array $data) {
-                            app(ReservationWorkflowService::class)->checkOut(
-                                $record,
-                                $data['checked_out_at'] ?? now(),
-                                $data['remarks'] ?? null
-                            );
+                            try {
+                                app(ReservationWorkflowService::class)->settleAndCheckOut($record, [
+                                    'amount' => $data['payment_amount'] ?? 0,
+                                    'payment_mode' => $data['payment_mode'] ?? '',
+                                    'reference_no' => $data['reference_no'] ?? '',
+                                    'or_date' => $data['or_date'] ?? null,
+                                    'remarks' => $data['payment_remarks'] ?? null,
+                                ], $data['checked_out_at'] ?? now(), $data['remarks'] ?? null);
 
-                            Notification::make()
-                                ->success()
-                                ->title('Checked Out')
-                                ->body('All guests have been checked out successfully.')
-                                ->send();
+                                Notification::make()
+                                    ->success()
+                                    ->title('Checked Out')
+                                    ->body('Final balance settled and all guests checked out successfully.')
+                                    ->send();
+                            } catch (\RuntimeException $exception) {
+                                Notification::make()->danger()->title($exception->getMessage())->send();
+                            }
                         }),
 
                     // Cancel action
@@ -1840,13 +2130,27 @@ class ReservationResource extends Resource
                 }
 
                 $availableRooms = app(RoomHoldService::class)
-                    ->getAvailableRooms($roomType, $checkIn, $checkOut, $requestLine->requested_capacity);
+                    ->getAvailableRooms(
+                        $roomType,
+                        $checkIn,
+                        $checkOut,
+                        $requestLine->requested_capacity,
+                        $roomType->isPrivate() || (int) $requestLine->requested_room_count > 1
+                            ? null
+                            : (int) $requestLine->occupant_count,
+                    );
                 $requestedRooms = max(1, (int) $requestLine->requested_room_count);
                 $occupants = max(1, (int) $requestLine->occupant_count);
                 $options = $availableRooms
-                    ->mapWithKeys(fn (Room $room) => [
-                        $room->id => $room->room_number.($room->floor?->name ? ' - '.$room->floor->name : ''),
-                    ])
+                    ->mapWithKeys(function (Room $room) use ($roomType, $checkIn, $checkOut): array {
+                        $label = $room->room_number.($room->floor?->name ? ' - '.$room->floor->name : '');
+                        if (! $roomType->isPrivate()) {
+                            $beds = app(RoomHoldService::class)->availableSlotsForDates($room, $checkIn, $checkOut);
+                            $label .= " — {$beds} bed".($beds === 1 ? '' : 's').' available';
+                        }
+
+                        return [$room->id => $label];
+                    })
                     ->all();
 
                 $capacityLabel = $requestLine->requested_capacity ? " — up to {$requestLine->requested_capacity} guests" : '';
@@ -1861,9 +2165,24 @@ class ReservationResource extends Resource
                     ->searchable()
                     ->preload()
                     ->options($options)
+                    ->rules([
+                        function () use ($roomType, $checkIn, $checkOut, $occupants): \Closure {
+                            return function (string $attribute, mixed $value, \Closure $fail) use ($roomType, $checkIn, $checkOut, $occupants): void {
+                                if ($roomType->isPrivate() || ! is_array($value) || $value === []) {
+                                    return;
+                                }
+
+                                $rooms = Room::query()->with('roomType')->whereIn('id', $value)->get();
+                                if (! app(RoomHoldService::class)->selectedDormRoomsCanAccommodate($rooms, $checkIn, $checkOut, $occupants)) {
+                                    $available = $rooms->sum(fn (Room $room): int => app(RoomHoldService::class)->availableSlotsForDates($room, $checkIn, $checkOut));
+                                    $fail("The selected dorm rooms have {$available} available bed(s), but {$occupants} guest(s) need accommodation.");
+                                }
+                            };
+                        },
+                    ])
                     ->helperText($availableRooms->isEmpty()
                         ? 'No available rooms for this date range.'
-                        : 'Showing rooms available from '.$checkIn->format('M d, Y').' to '.$checkOut->format('M d, Y')
+                        : 'Showing rooms available from '.$checkIn->format('M d, Y').' to '.$checkOut->format('M d, Y').(! $roomType->isPrivate() ? '. Dorm labels show remaining beds.' : '')
                     );
             })
             ->filter()
@@ -1875,7 +2194,9 @@ class ReservationResource extends Resource
     {
         $checkIn = Carbon::parse($record->check_in_date);
         $checkOut = Carbon::parse($record->check_out_date);
-        $requests = $record->getEffectiveRoomRequests()->loadMissing('roomType');
+        // Older reservations predate room-request lines. Persist their
+        // equivalent line so the offer action receives a valid request ID.
+        $requests = $record->ensureRoomRequests()->loadMissing('roomType');
 
         return [
             Forms\Components\Select::make('reservation_room_request_id')
@@ -1893,9 +2214,13 @@ class ReservationResource extends Resource
 
                     return RoomType::query()->where('is_active', true)->get()
                         ->filter(function (RoomType $roomType) use ($requestLine, $checkIn, $checkOut): bool {
-                            $summary = app(RoomHoldService::class)->getDateAvailabilitySummary($roomType, $checkIn, $checkOut, (int) $requestLine->occupant_count);
-                            return $summary['available_rooms_count'] >= (int) $requestLine->requested_room_count
-                                && (bool) $summary['can_accommodate_requested_guests'];
+                            return app(RoomHoldService::class)->canAccommodateRoomRequest(
+                                $roomType,
+                                $checkIn,
+                                $checkOut,
+                                (int) $requestLine->occupant_count,
+                                (int) $requestLine->requested_room_count,
+                            );
                         })
                         ->mapWithKeys(fn (RoomType $roomType) => [$roomType->id => $roomType->name.' - PHP '.number_format((float) $roomType->base_rate, 2).' per night'])
                         ->all();
@@ -1914,7 +2239,10 @@ class ReservationResource extends Resource
                         ->mapWithKeys(fn (Room $room) => [$room->id => $room->room_number.($room->floor?->name ? ' - '.$room->floor->name : '')])
                         ->all();
                 })
-                ->required(),
+                ->required()
+                ->minItems(fn (Get $get): int => max(1, (int) ($requests->firstWhere('id', (int) $get('reservation_room_request_id'))?->requested_room_count ?? 1)))
+                ->maxItems(fn (Get $get): int => max(1, (int) ($requests->firstWhere('id', (int) $get('reservation_room_request_id'))?->requested_room_count ?? 1)))
+                ->helperText(fn (Get $get): string => 'Select exactly '.max(1, (int) ($requests->firstWhere('id', (int) $get('reservation_room_request_id'))?->requested_room_count ?? 1)).' available room(s) for this stay.'),
             Forms\Components\Textarea::make('message')->label('Message to guest (optional)')->rows(3),
         ];
     }

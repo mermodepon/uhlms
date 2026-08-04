@@ -61,7 +61,7 @@ class GuestSiteSettings
             'guest_booking_policy' => null,
             'guest_show_booking_policy' => false,
             'guest_show_faq' => false,
-            'guest_reservation_steps_heading' => 'How to Reserve',
+            'guest_reservation_steps_heading' => 'How to Request',
             'guest_reservation_steps_intro' => 'Simple steps to request a stay at CMU University Homestay',
             'guest_reservation_processing_time' => 'Estimated processing time: 1-2 business days after submitting your request.',
             'guest_footer_address' => "Central Mindanao University\nMusuan, Maramag, Bukidnon\nPhilippines",

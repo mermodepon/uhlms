@@ -26,7 +26,11 @@ class AlternativeRoomOfferService
             throw new \RuntimeException('Only pending reservations can receive an alternative room offer.');
         }
 
-        $requestLine = $reservation->roomRequests()->findOrFail((int) $data['reservation_room_request_id']);
+        $requestLine = $reservation->ensureRoomRequests()
+            ->firstWhere('id', (int) $data['reservation_room_request_id']);
+        if (! $requestLine) {
+            throw new \RuntimeException('Choose the requested room type that needs an alternative.');
+        }
         $roomType = RoomType::findOrFail((int) $data['offered_room_type_id']);
         $roomIds = array_values(array_unique(array_filter(array_map('intval', $data['room_ids'] ?? []))));
         $checkIn = Carbon::parse($reservation->check_in_date);
@@ -44,7 +48,8 @@ class AlternativeRoomOfferService
             throw new \RuntimeException('The requested room type is available. Use the normal approval action instead.');
         }
 
-        if (count($roomIds) !== (int) $requestLine->requested_room_count) {
+        $requestedRoomCount = max(1, (int) $requestLine->requested_room_count);
+        if (count($roomIds) !== $requestedRoomCount) {
             throw new \RuntimeException('Select exactly the number of rooms requested for this stay.');
         }
 
@@ -58,6 +63,16 @@ class AlternativeRoomOfferService
 
         if ($rooms->count() !== count($roomIds)) {
             throw new \RuntimeException('One or more selected rooms are not valid for the alternative room type.');
+        }
+
+        if (! app(RoomHoldService::class)->canAccommodateRoomRequest(
+            $roomType,
+            $checkIn,
+            $checkOut,
+            (int) $requestLine->occupant_count,
+            $requestedRoomCount,
+        )) {
+            throw new \RuntimeException('This alternative room type cannot accommodate the requested rooms and guests for these dates.');
         }
 
         $allocation = $this->allocateGuests($rooms, (int) $requestLine->occupant_count, $roomType->isPrivate());
@@ -183,6 +198,41 @@ class AlternativeRoomOfferService
             ]);
             $reservation->update(['status' => 'pending']);
             ReservationLog::record($reservation, 'alternative_offer_'.$reason, 'Alternative room offer '.$reason.'.', ['offer_id' => $offer->id]);
+        });
+    }
+
+    /** Withdraw an open staff offer and release only its temporary room holds. */
+    public function withdraw(Reservation $reservation, string $reason): void
+    {
+        if ($reservation->status !== 'awaiting_alternative_confirmation') {
+            throw new \RuntimeException('Only a reservation awaiting an alternative offer response can be withdrawn.');
+        }
+
+        $offer = $reservation->alternativeOffers()
+            ->where('status', ReservationAlternativeOffer::STATUS_PENDING)
+            ->latest('id')
+            ->first();
+        if (! $offer) {
+            throw new \RuntimeException('There is no active alternative room offer to withdraw.');
+        }
+
+        DB::transaction(function () use ($reservation, $offer, $reason): void {
+            $lockedReservation = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
+            $roomIds = $lockedReservation->roomHolds()
+                ->where('hold_type', 'short_term')
+                ->whereIn('room_id', $offer->room_ids)
+                ->pluck('room_id');
+            $lockedReservation->roomHolds()
+                ->where('hold_type', 'short_term')
+                ->whereIn('room_id', $offer->room_ids)
+                ->delete();
+            app(RoomHoldService::class)->recalculateRoomStatuses($roomIds);
+            $offer->update(['status' => ReservationAlternativeOffer::STATUS_DECLINED, 'responded_at' => now()]);
+            $lockedReservation->update(['status' => 'pending']);
+            ReservationLog::record($lockedReservation, 'alternative_offer_withdrawn', 'Alternative room offer withdrawn by staff.', [
+                'offer_id' => $offer->id,
+                'reason' => $reason,
+            ]);
         });
     }
 

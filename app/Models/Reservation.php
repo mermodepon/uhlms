@@ -22,7 +22,6 @@ class Reservation extends Model
         'awaiting_alternative_confirmation' => ['label' => 'Alternative Offer Pending', 'admin_label' => 'Awaiting Alternative Confirmation', 'hex' => '#f59e0b', 'badge_text' => '#422006', 'filament_color' => 'warning', 'guidance' => 'We have reserved a possible room alternative for you. Please check your email and accept or decline the offer before it expires.'],
         'approved' => ['label' => 'Approved', 'admin_label' => 'Approved', 'hex' => '#919F02', 'badge_text' => '#ffffff', 'filament_color' => 'info', 'guidance' => 'Your reservation request has been approved. Staff will reserve room space before online payment becomes available.'],
         'confirmed' => ['label' => 'Confirmed', 'admin_label' => 'Confirmed', 'hex' => '#10B981', 'badge_text' => '#ffffff', 'filament_color' => 'success', 'guidance' => 'Room space has been reserved for your stay. Please keep monitoring your email for payment reminders or arrival instructions.'],
-        'pending_payment' => ['label' => 'Payment Pending', 'admin_label' => 'Payment Pending', 'hex' => '#f97316', 'badge_text' => '#ffffff', 'filament_color' => 'warning', 'guidance' => 'Your reservation is awaiting payment. Please use the payment link sent to your email before it expires.'],
         'declined' => ['label' => 'Declined', 'admin_label' => 'Declined', 'hex' => '#EF4444', 'badge_text' => '#ffffff', 'filament_color' => 'danger', 'guidance' => 'This reservation request was declined. Please contact the homestay staff if you need clarification or would like to submit a new request.'],
         'cancelled' => ['label' => 'Cancelled', 'admin_label' => 'Cancelled', 'hex' => '#6B7280', 'badge_text' => '#ffffff', 'filament_color' => 'gray', 'guidance' => 'This reservation has been cancelled. Contact staff if you believe this was made in error.'],
         'checked_in' => ['label' => 'Checked In', 'admin_label' => 'Checked In', 'hex' => '#16a34a', 'badge_text' => '#ffffff', 'filament_color' => 'success', 'guidance' => 'You are currently checked in. If you need help during your stay, please contact the homestay staff.'],
@@ -515,6 +514,29 @@ class Reservation extends Model
         $request->setRelation('roomType', $this->preferredRoomType);
 
         return collect([$request]);
+    }
+
+    /**
+     * Persist the fallback room request used by reservations created before
+     * reservation_room_requests was introduced. Actions that need to refer to
+     * a request line (such as an alternative offer) must use a real record.
+     */
+    public function ensureRoomRequests()
+    {
+        $requests = $this->roomRequests()->with('roomType')->get();
+
+        if ($requests->isNotEmpty() || ! $this->preferred_room_type_id) {
+            return $requests;
+        }
+
+        $this->roomRequests()->create([
+            'room_type_id' => $this->preferred_room_type_id,
+            'requested_room_count' => 1,
+            'occupant_count' => max(1, (int) ($this->number_of_occupants ?? 1)),
+            'sort_order' => 0,
+        ]);
+
+        return $this->roomRequests()->with('roomType')->get();
     }
 
     /**

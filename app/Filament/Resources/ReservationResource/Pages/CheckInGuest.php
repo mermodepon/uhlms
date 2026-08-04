@@ -42,8 +42,16 @@ class CheckInGuest extends Page
         abort_unless(in_array($record->status, ['approved', 'confirmed']), 403, 'This reservation cannot be checked in.');
 
         $this->form->fill();
+        $initialRoomEntries = $this->buildInitialReservationRoomEntries();
         $this->form->fill(array_merge($this->data ?? [], [
-            'reservation_rooms' => $this->buildInitialReservationRoomEntries(),
+            'reservation_rooms' => $initialRoomEntries,
+        ]));
+
+        // Defaults are evaluated before the held-room entries are populated.
+        // Set the cash field after those entries are loaded so reception starts
+        // with the actual live amount still due, net of posted payments.
+        $this->form->fill(array_merge($this->data ?? [], [
+            'payment_amount' => $this->getRemainingBalance(),
         ]));
     }
 

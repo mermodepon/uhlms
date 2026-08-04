@@ -248,7 +248,7 @@ class GuestSiteSettings extends Page implements HasForms
                     ]),
 
                 Forms\Components\Section::make('Reservation Guide')
-                    ->description('Steps shown in the public How to Reserve section.')
+                    ->description('Steps shown in the public How to Request section.')
                     ->icon('heroicon-o-list-bullet')
                     ->columns(2)
                     ->schema([

@@ -109,7 +109,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                     ->label('➕ Add Guest')
                     ->icon('heroicon-o-user-plus')
                     ->color('success')
-                    ->visible(fn () => $this->pageClass === \App\Filament\Resources\ReservationResource\Pages\EditReservation::class && $this->getOwnerRecord()?->status === 'checked_in')
+                    ->visible(false)
                     ->modalHeading('Add New Guest')
                     ->modalWidth('md')
                     ->form([
@@ -546,7 +546,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                     ->label('Edit')
                     ->modalHeading('Edit Guest Assignment')
                     ->modalWidth('2xl')
-                    ->visible(fn () => $this->pageClass === \App\Filament\Resources\ReservationResource\Pages\EditReservation::class)
+                    ->visible(false)
                     ->form([
                         Forms\Components\Section::make('Guest Assignment')
                             ->schema([
@@ -592,7 +592,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                     ->label('Unassign')
                     ->icon('heroicon-o-trash')
                     ->color('danger')
-                    ->visible(fn () => $this->pageClass === \App\Filament\Resources\ReservationResource\Pages\EditReservation::class)
+                    ->visible(false)
                     ->requiresConfirmation()
                     ->modalHeading('Unassign Guest')
                     ->modalDescription('Are you sure you want to remove this guest assignment from this reservation?')

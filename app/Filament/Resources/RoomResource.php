@@ -64,7 +64,11 @@ class RoomResource extends Resource
                                 'inactive' => 'Inactive',
                             ])
                             ->default('available')
-                            ->required(),
+                            ->required()
+                            ->disabled(fn (?Room $record): bool => $record?->hasCurrentPrivateHold() ?? false)
+                            ->helperText(fn (?Room $record): ?string => ($record?->hasCurrentPrivateHold() ?? false)
+                                ? 'This private room has a current reservation hold. Release or amend the hold before changing its operational status.'
+                                : null),
                         Forms\Components\Textarea::make('notes')
                             ->rows(3)
                             ->columnSpanFull(),
@@ -77,6 +81,14 @@ class RoomResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query
+                ->with([
+                    'roomType',
+                    'roomHolds' => fn ($holdQuery) => $holdQuery->advance()->active(),
+                ])
+                ->withCount([
+                    'roomAssignments as checked_in_count' => fn (Builder $assignmentQuery) => $assignmentQuery->where('status', 'checked_in'),
+                ]))
             ->columns([
                 Tables\Columns\TextColumn::make('room_number')
                     ->sortable()
@@ -116,6 +128,12 @@ class RoomResource extends Resource
                         'inactive' => 'gray',
                         default => 'gray',
                     }),
+                Tables\Columns\TextColumn::make('reservation_availability')
+                    ->label('Reservation / Allocation')
+                    ->state(fn (Room $record): string => $record->reservationAvailability()['label'])
+                    ->color(fn (Room $record): string => $record->reservationAvailability()['color'])
+                    ->badge()
+                    ->wrap(),
                 Tables\Columns\IconColumn::make('is_active')
                     ->boolean()
                     ->sortable(),

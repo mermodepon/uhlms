@@ -26,6 +26,10 @@ echo [2/9] Running database migrations...
 call php artisan migrate --force
 if %errorlevel% neq 0 goto :error
 
+REM Reconcile room badges after deploying hold-status changes.
+call php artisan rooms:reconcile-availability
+if %errorlevel% neq 0 goto :error
+
 REM 3. Cache configuration
 echo.
 echo [3/9] Caching configuration...

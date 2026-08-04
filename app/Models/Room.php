@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 class Room extends Model
 {
@@ -57,6 +58,10 @@ class Room extends Model
      */
     public function currentOccupancy(): int
     {
+        if (array_key_exists('checked_in_count', $this->attributes)) {
+            return (int) $this->attributes['checked_in_count'];
+        }
+
         if ($this->relationLoaded('roomAssignments')) {
             return $this->roomAssignments
                 ->where('status', 'checked_in')
@@ -95,6 +100,69 @@ class Room extends Model
     }
 
     /**
+     * Date-aware reservation and capacity information for the staff rooms
+     * table. Holds are deliberately kept separate from occupancy: private
+     * rooms are exclusive, while dorms sell their remaining beds.
+     *
+     * @return array{label:string,color:string,current_holds:int,upcoming_holds:int,held_beds:int,available_beds:int}
+     */
+    public function reservationAvailability(?Carbon $date = null): array
+    {
+        $date = ($date ?? Carbon::today())->startOfDay();
+        $this->loadMissing('roomType');
+
+        $holds = $this->relationLoaded('roomHolds')
+            ? $this->roomHolds
+            : $this->roomHolds()->advance()->active()->get();
+        $holds = $holds->filter(fn (RoomHold $hold): bool => $hold->isAdvance() && ! $hold->isExpired());
+        $currentHolds = $holds->filter(fn (RoomHold $hold): bool => $hold->isCurrent($date));
+        $upcomingHolds = $holds->filter(fn (RoomHold $hold): bool => $hold->timelineStatus($date) === 'upcoming');
+        $checkedIn = $this->currentOccupancy();
+
+        if ($this->roomType?->isPrivate()) {
+            if ($checkedIn > 0) {
+                return ['label' => 'Checked in', 'color' => 'danger', 'current_holds' => $currentHolds->count(), 'upcoming_holds' => $upcomingHolds->count(), 'held_beds' => 0, 'available_beds' => 0];
+            }
+
+            if ($currentHolds->isNotEmpty()) {
+                $until = $currentHolds->max(fn (RoomHold $hold) => Carbon::parse($hold->hold_to)->toDateString());
+
+                return ['label' => 'Reserved until '.Carbon::parse($until)->format('M d, Y'), 'color' => 'warning', 'current_holds' => $currentHolds->count(), 'upcoming_holds' => $upcomingHolds->count(), 'held_beds' => 0, 'available_beds' => 0];
+            }
+
+            if ($upcomingHolds->isNotEmpty()) {
+                $next = $upcomingHolds->sortBy('hold_from')->first();
+
+                return ['label' => 'Upcoming hold: '.Carbon::parse($next->hold_from)->format('M d').'–'.Carbon::parse($next->hold_to)->format('M d'), 'color' => 'info', 'current_holds' => 0, 'upcoming_holds' => $upcomingHolds->count(), 'held_beds' => 0, 'available_beds' => max(0, (int) $this->capacity)];
+            }
+
+            return ['label' => 'No current hold', 'color' => 'success', 'current_holds' => 0, 'upcoming_holds' => 0, 'held_beds' => 0, 'available_beds' => max(0, (int) $this->capacity)];
+        }
+
+        $heldBeds = (int) $currentHolds->sum(fn (RoomHold $hold): int => max(1, (int) ($hold->held_guest_count ?? 1)));
+        $availableBeds = max(0, (int) $this->capacity - $checkedIn - $heldBeds);
+
+        return [
+            'label' => $availableBeds === 0
+                ? "Fully allocated ({$checkedIn} checked in · {$heldBeds} held)"
+                : "{$checkedIn} checked in · {$heldBeds} held · {$availableBeds} available",
+            'color' => $availableBeds === 0 ? 'warning' : 'success',
+            'current_holds' => $currentHolds->count(),
+            'upcoming_holds' => $upcomingHolds->count(),
+            'held_beds' => $heldBeds,
+            'available_beds' => $availableBeds,
+        ];
+    }
+
+    public function hasCurrentPrivateHold(?Carbon $date = null): bool
+    {
+        $this->loadMissing('roomType');
+
+        return (bool) ($this->roomType?->isPrivate() ?? false)
+            && $this->reservationAvailability($date)['current_holds'] > 0;
+    }
+
+    /**
      * Whether the room can accept a new guest right now.
      */
     public function isAvailable(): bool
@@ -120,27 +188,40 @@ class Room extends Model
      */
     public function recalculateStatus(): void
     {
+        $newStatus = $this->calculatedOperationalStatus();
+
+        if ($this->status !== $newStatus) {
+            $this->update(['status' => $newStatus]);
+        }
+    }
+
+    /** Determine the persisted operational status without changing the room. */
+    public function calculatedOperationalStatus(): string
+    {
         if (in_array($this->status, ['maintenance', 'inactive'], true)) {
-            return;
+            return $this->status;
         }
 
         $this->loadMissing('roomType');
 
-        // Private rooms are exclusive, so an active hold reserves the whole room.
-        // Public dorms keep selling remaining beds; holds are counted as slots.
+        $checkedInCount = $this->roomAssignments()->where('status', 'checked_in')->count();
+
+        // A checked-in guest always takes precedence over a remaining hold.
+        if (($this->roomType?->isPrivate() ?? false) && $checkedInCount > 0) {
+            return 'occupied';
+        }
+
+        // Private rooms are exclusive, so a current advance hold reserves the
+        // whole room. Public dorms keep selling any remaining beds.
         $hasAdvanceHold = $this->roomHolds()
             ->advance()
             ->where('hold_from', '<=', now()->toDateString())
             ->where('hold_to', '>', now()->toDateString())
             ->exists();
 
-        if (($this->roomType?->isPrivate() ?? false) && $hasAdvanceHold && $this->status !== 'reserved') {
-            $this->update(['status' => 'reserved']);
-
-            return;
+        if (($this->roomType?->isPrivate() ?? false) && $hasAdvanceHold) {
+            return 'reserved';
         }
-
-        $checkedInCount = $this->roomAssignments()->where('status', 'checked_in')->count();
 
         if ($this->roomType?->isPrivate()) {
             // Private room: occupied as soon as any guest is checked in
@@ -153,9 +234,7 @@ class Room extends Model
                 : 'available';
         }
 
-        if ($this->status !== $newStatus) {
-            $this->update(['status' => $newStatus]);
-        }
+        return $newStatus;
     }
 
     /**

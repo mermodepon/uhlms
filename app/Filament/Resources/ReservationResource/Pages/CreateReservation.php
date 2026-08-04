@@ -7,7 +7,6 @@ use App\Filament\Resources\ReservationResource;
 use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\RoomType;
-use App\Services\ReservationWorkflowService;
 use App\Services\RoomHoldService;
 use App\Support\ReservationRoomRequests;
 use Filament\Notifications\Notification;
@@ -46,9 +45,8 @@ class CreateReservation extends CreateRecord
     }
 
     /**
-     * Create the reservation and room-request lines, then reuse the regular
-     * approval workflow so exact rooms receive the same conflict-safe holds.
-     * The parent CreateRecord transaction rolls everything back on failure.
+     * Staff-created reservations begin as pending requests. Approval is the
+     * only workflow that creates advance holds or changes their status.
      *
      * @param  array<string, mixed>  $data
      */
@@ -60,36 +58,15 @@ class CreateReservation extends CreateRecord
 
         ReservationRoomRequests::persist($reservation, $this->directRoomAssignments);
 
-        $requestLines = $reservation->roomRequests()
-            ->orderBy('sort_order')
-            ->get()
-            ->values();
-
-        $roomsByRequest = [];
-        foreach ($requestLines as $index => $requestLine) {
-            $roomsByRequest['request_'.$requestLine->id] = $this->directRoomAssignments[$index]['room_ids'] ?? [];
-        }
-
-        $result = app(ReservationWorkflowService::class)->approve($reservation, [
-            'assigned_room_ids_by_type' => $roomsByRequest,
-            'admin_notes' => $data['admin_notes'] ?? null,
-        ]);
-
-        if ($result['hold_error']) {
-            throw ValidationException::withMessages([
-                'direct_room_assignments' => 'The reservation could not be confirmed: '.$result['hold_error'],
-            ]);
-        }
-
-        return $result['reservation'];
+        return $reservation;
     }
 
     protected function getCreatedNotification(): ?Notification
     {
         return Notification::make()
             ->success()
-            ->title('Reservation confirmed')
-            ->body('All selected rooms are held and the reservation is ready for payment follow-up.');
+            ->title('Reservation created as pending')
+            ->body('Review and approve the request to validate availability and create room holds.');
     }
 
     /**

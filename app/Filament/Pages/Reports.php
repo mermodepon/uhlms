@@ -3,6 +3,8 @@
 namespace App\Filament\Pages;
 
 use App\Models\Reservation;
+use App\Models\ReservationCharge;
+use App\Models\ReservationPayment;
 use App\Models\ReservationFeedback;
 use App\Models\Room;
 use App\Models\RoomAssignment;
@@ -335,9 +337,21 @@ class Reports extends Page
         $sheet->setCellValue("A{$summaryStartRow}", 'Total Pax Accommodated for the month of '.$data['month_label'].':');
         $sheet->mergeCells("A{$summaryStartRow}:E{$summaryStartRow}");
         $sheet->setCellValue("F{$summaryStartRow}", (int) $data['total_pax']);
-        $sheet->setCellValue("I{$summaryStartRow}", 'Grand Total');
+        $sheet->setCellValue("I{$summaryStartRow}", 'Check-in Payments');
         $sheet->setCellValue("K{$summaryStartRow}", (float) $data['grand_total']);
         $sheet->getStyle("A{$summaryStartRow}:K{$summaryStartRow}")->getFont()->setBold(true);
+
+        foreach ([
+            ['In-Stay Add-Ons Billed', (float) $data['in_stay_addons_billed']],
+            ['In-Stay Extensions Billed', (float) $data['in_stay_extensions_billed']],
+            ['Payments Collected', (float) $data['payments_collected']],
+            ['Outstanding Balance (Affected Stays)', (float) $data['outstanding_balance']],
+        ] as $index => [$label, $amount]) {
+            $financialRow = $summaryStartRow + $index + 1;
+            $sheet->setCellValue("I{$financialRow}", $label);
+            $sheet->setCellValue("K{$financialRow}", $amount);
+            $sheet->getStyle("I{$financialRow}:K{$financialRow}")->getFont()->setBold(true);
+        }
 
         $summaryRows = [
             ['*Domestic Male', $data['total_domestic_male']],
@@ -387,6 +401,7 @@ class Reports extends Page
         $sheet->getStyle("H".($headerRow + 1).":H{$lastDataRow}")->getNumberFormat()->setFormatCode('"₱"#,##0.00');
         $sheet->getStyle("K".($headerRow + 1).":K{$lastDataRow}")->getNumberFormat()->setFormatCode('"₱"#,##0.00');
         $sheet->getStyle("K{$summaryStartRow}")->getNumberFormat()->setFormatCode('"₱"#,##0.00');
+        $sheet->getStyle("K".($summaryStartRow + 1).":K".($summaryStartRow + 3))->getNumberFormat()->setFormatCode('"₱"#,##0.00');
         $sheet->getStyle('A1:K'.$metadataRow)->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
         $sheet->getStyle("A{$headerRow}:K{$lastDataRow}")->getAlignment()->setWrapText(true);
         $sheet->getStyle("C".($headerRow + 1).":C{$lastDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -641,7 +656,9 @@ class Reports extends Page
             }
 
             // One line per add-on charge
-            foreach ($reservation->charges->where('charge_type', 'addon') as $charge) {
+            foreach ($reservation->charges->where('charge_type', 'addon')->filter(
+                fn ($charge) => ! str_starts_with((string) data_get($charge->meta, 'source', ''), 'in_stay_addon')
+            ) as $charge) {
                 $qty = (int) max(1, $charge->qty ?? 1);
                 // Strip leading multiplier prefix (e.g. "3x ") so the Particulars column isn't redundant with the Qty column
                 $particulars = preg_replace('/^\d+x\s+/', '', $charge->description);
@@ -694,6 +711,8 @@ class Reports extends Page
                     'total_male' => 0,
                     'total_female' => 0,
                     'total_amount' => 0,
+                    'total_addons_billed' => 0,
+                    'total_extensions_billed' => 0,
                 ];
             }
 
@@ -705,6 +724,76 @@ class Reports extends Page
             $rowsByDate[$dateKey]['total_female'] += $femaleCount;
             $rowsByDate[$dateKey]['total_amount'] += $amountPaid;
         }
+
+        // In-stay add-ons and extensions belong to their posting month, not
+        // the reservation's original check-in month. Collection is separate.
+        $inStayCharges = ReservationCharge::query()
+            ->with('reservation.payments')
+            ->whereBetween('created_at', [$from, $to])
+            ->whereIn('charge_type', ['addon', 'room_rate', 'discount'])
+            ->get()
+            ->filter(fn (ReservationCharge $charge): bool => str_starts_with((string) data_get($charge->meta, 'source', ''), 'in_stay_addon') || str_starts_with((string) data_get($charge->meta, 'source', ''), 'in_stay_extension'));
+
+        $inStayAddonsBilled = 0.0;
+        $inStayExtensionsBilled = 0.0;
+        foreach ($inStayCharges as $charge) {
+            $reservation = $charge->reservation;
+            if (! $reservation) {
+                continue;
+            }
+
+            $postedAt = Carbon::parse($charge->created_at);
+            $dateKey = $postedAt->toDateString();
+            if (! isset($rowsByDate[$dateKey])) {
+                $rowsByDate[$dateKey] = [
+                    'date' => $postedAt->format('m/d/Y'),
+                    'date_sort' => $dateKey,
+                    'rows' => [],
+                    'total_male' => 0,
+                    'total_female' => 0,
+                    'total_amount' => 0,
+                    'total_addons_billed' => 0,
+                    'total_extensions_billed' => 0,
+                ];
+            }
+
+            $qty = (float) $charge->qty;
+            [$orNumber, $orDate] = $this->settlementReceiptForDeferredCharge($reservation, $charge);
+            $rowsByDate[$dateKey]['rows'][] = [
+                'guest_name' => trim(($reservation->guest_last_name ?? '').', '.($reservation->guest_first_name ?? '')) ?: ($reservation->guest_name ?? 'Unknown Guest'),
+                'guest_id_number' => '',
+                'nights' => $qty > 0 ? $qty : 1,
+                'room_particulars' => $charge->description,
+                'rate' => number_format((float) $charge->unit_price, 2),
+                'male_count' => null,
+                'female_count' => null,
+                'rf_number' => $reservation->reference_number ?? '-',
+                'amount' => (float) $charge->amount,
+                'or_number' => $orNumber,
+                'or_date' => $orDate,
+                'total' => null,
+                'show_total' => false,
+            ];
+            $source = (string) data_get($charge->meta, 'source', '');
+            if (str_starts_with($source, 'in_stay_extension')) {
+                $rowsByDate[$dateKey]['total_extensions_billed'] += (float) $charge->amount;
+                $inStayExtensionsBilled += (float) $charge->amount;
+            } else {
+                $rowsByDate[$dateKey]['total_addons_billed'] += (float) $charge->amount;
+                $inStayAddonsBilled += (float) $charge->amount;
+            }
+        }
+
+        $paymentsCollected = (float) ReservationPayment::query()
+            ->where('status', 'posted')
+            ->whereBetween(DB::raw('COALESCE(received_at, created_at)'), [$from, $to])
+            ->sum('amount');
+
+        $outstandingBalance = (float) $inStayCharges
+            ->pluck('reservation')
+            ->filter()
+            ->unique('id')
+            ->sum(fn (Reservation $reservation) => (float) $reservation->balance_due);
 
         // Sort by date
         $rowsByDate = collect($rowsByDate)
@@ -719,6 +808,10 @@ class Reports extends Page
             'month_label' => $month->format('F Y'),
             'rows_by_date' => $rowsByDate,
             'grand_total' => $grandTotal,
+            'in_stay_addons_billed' => $inStayAddonsBilled,
+            'in_stay_extensions_billed' => $inStayExtensionsBilled,
+            'payments_collected' => $paymentsCollected,
+            'outstanding_balance' => $outstandingBalance,
             'total_domestic_male' => $totalDomesticMale,
             'total_domestic_female' => $totalDomesticFemale,
             'total_international_male' => $totalInternationalMale,
@@ -739,6 +832,40 @@ class Reports extends Page
 
         return $orNumber;
     }
+
+    /** @return array{0:string,1:string} */
+    private function settlementReceiptForDeferredCharge(Reservation $reservation, ReservationCharge $charge): array
+    {
+        if ((float) $reservation->balance_due > 0.01) {
+            return ['—', '—'];
+        }
+
+        $effectiveCharge = $charge;
+        if (str_contains((string) data_get($charge->meta, 'source', ''), '_void')) {
+            $originalId = (int) data_get($charge->meta, 'voids_charge_id', 0);
+            if ($originalId) {
+                $effectiveCharge = $reservation->charges()->find($originalId) ?? $charge;
+            }
+        }
+
+        $settlement = $reservation->payments
+            ->filter(fn (ReservationPayment $payment): bool => $payment->status === 'posted'
+                && data_get($payment->meta, 'source') === 'checkout_settlement'
+                && filled($payment->reference_no)
+                && Carbon::parse($payment->received_at ?? $payment->created_at)->gte(Carbon::parse($effectiveCharge->created_at)))
+            ->sortBy(fn (ReservationPayment $payment) => $payment->received_at ?? $payment->created_at)
+            ->first();
+
+        if (! $settlement) {
+            return ['—', '—'];
+        }
+
+        return [
+            (string) $settlement->reference_no,
+            Carbon::parse($settlement->or_date ?? $settlement->received_at ?? $settlement->created_at)->format('m/d/Y'),
+        ];
+    }
+
 
     protected function getReservationSummary(): array
     {

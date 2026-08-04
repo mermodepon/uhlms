@@ -59,6 +59,10 @@ class StayLogsRelationManager extends RelationManager
                         'guest_checked_in',
                         'guest_checked_out',
                         'room_assignment_removed',
+                          'in_stay_addon_posted',
+                          'in_stay_addon_voided',
+                          'in_stay_extension_posted',
+                          'in_stay_extension_voided',
                     ])->mapWithKeys(fn ($e) => [$e => ReservationLog::eventLabel($e)])->all()),
             ])
             ->actions([])

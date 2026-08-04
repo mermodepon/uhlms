@@ -5,13 +5,18 @@ namespace Tests\Unit\Services;
 use App\Mail\SendPaymentLinkMail;
 use App\Models\Floor;
 use App\Models\Reservation;
+use App\Models\ReservationCharge;
 use App\Models\ReservationLog;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomHold;
 use App\Models\RoomType;
+use App\Models\Service;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\ReservationWorkflowService;
+use App\Services\InStayAddonService;
+use App\Services\InStayExtensionService;
 use Illuminate\Support\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -422,5 +427,188 @@ class ReservationWorkflowServiceTest extends TestCase
         $this->assertSame('checked_out', $assignment->status);
         $this->assertNotNull($assignment->checked_out_at);
         $this->assertStringContainsString('Late departure', (string) $assignment->remarks);
+    }
+
+    public function test_in_stay_addon_posting_applies_the_highest_guest_discount_and_updates_balance(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType, 'occupied');
+        $reservation = $this->createReservation($roomType, 'checked_in');
+        RoomAssignment::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $room->id,
+            'assigned_by' => $user->id,
+            'checked_in_at' => now(),
+            'is_student' => true,
+            'is_pwd' => true,
+        ]);
+        Setting::set('discount_student_percent', 10);
+        Setting::set('discount_pwd_percent', 20);
+        $service = Service::create(['name' => 'Extra Towel', 'price' => 50, 'is_active' => true]);
+
+        $charges = app(InStayAddonService::class)->post($reservation, [['code' => $service->code, 'qty' => 2]], 'Requested after arrival');
+
+        $this->assertCount(1, $charges);
+        $this->assertDatabaseHas('reservation_charges', [
+            'reservation_id' => $reservation->id,
+            'charge_type' => 'addon',
+            'amount' => 100,
+        ]);
+        $this->assertDatabaseHas('reservation_charges', [
+            'reservation_id' => $reservation->id,
+            'charge_type' => 'discount',
+            'amount' => -20,
+        ]);
+        $this->assertSame('80.00', $reservation->fresh()->balance_due);
+        $this->assertDatabaseHas('reservation_logs', ['reservation_id' => $reservation->id, 'event' => 'in_stay_addon_posted']);
+    }
+
+    public function test_in_stay_addon_void_posts_reversals_without_removing_history(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType, 'occupied');
+        $reservation = $this->createReservation($roomType, 'checked_in');
+        RoomAssignment::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $room->id,
+            'assigned_by' => $user->id,
+            'checked_in_at' => now(),
+        ]);
+        $service = Service::create(['name' => 'Laundry', 'price' => 120, 'is_active' => true]);
+        $addon = app(InStayAddonService::class)->post($reservation, [['code' => $service->code, 'qty' => 1]])->first();
+
+        app(InStayAddonService::class)->void($reservation, $addon, 'Guest cancelled request');
+
+        $this->assertSame(2, ReservationCharge::where('reservation_id', $reservation->id)->where('charge_type', 'addon')->count());
+        $this->assertSame('0.00', $reservation->fresh()->balance_due);
+        $this->assertDatabaseHas('reservation_logs', ['reservation_id' => $reservation->id, 'event' => 'in_stay_addon_voided']);
+    }
+
+    public function test_in_stay_extension_posts_new_room_charges_discount_and_updates_the_balance(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType, 'occupied');
+        $reservation = $this->createReservation($roomType, 'checked_in');
+        RoomAssignment::create(['reservation_id' => $reservation->id, 'room_id' => $room->id, 'assigned_by' => $user->id, 'status' => 'checked_in', 'checked_in_at' => now(), 'is_student' => true]);
+        Setting::set('discount_student_percent', 10);
+
+        $charges = app(InStayExtensionService::class)->extend($reservation, Carbon::parse($reservation->check_out_date)->addDays(2), 'Guest requested two extra nights');
+
+        $this->assertCount(1, $charges);
+        $this->assertSame(Carbon::parse($reservation->check_out_date)->addDays(2)->toDateString(), $reservation->fresh()->check_out_date->toDateString());
+        $this->assertDatabaseHas('reservation_charges', ['reservation_id' => $reservation->id, 'charge_type' => 'room_rate', 'amount' => 1000]);
+        $this->assertDatabaseHas('reservation_charges', ['reservation_id' => $reservation->id, 'charge_type' => 'discount', 'amount' => -100]);
+        $this->assertSame('900.00', $reservation->fresh()->balance_due);
+        $this->assertDatabaseHas('reservation_logs', ['reservation_id' => $reservation->id, 'event' => 'in_stay_extension_posted']);
+    }
+
+    public function test_in_stay_extension_void_posts_reversals_and_restores_checkout_date(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType, 'occupied');
+        $reservation = $this->createReservation($roomType, 'checked_in');
+        $originalCheckout = $reservation->check_out_date->toDateString();
+        RoomAssignment::create(['reservation_id' => $reservation->id, 'room_id' => $room->id, 'assigned_by' => $user->id, 'status' => 'checked_in', 'checked_in_at' => now()]);
+        $extension = app(InStayExtensionService::class)->extend($reservation, Carbon::parse($originalCheckout)->addDay())->first();
+
+        app(InStayExtensionService::class)->void($reservation, $extension, 'Guest changed plans');
+
+        $this->assertSame($originalCheckout, $reservation->fresh()->check_out_date->toDateString());
+        $this->assertSame(2, ReservationCharge::where('reservation_id', $reservation->id)->where('charge_type', 'room_rate')->count());
+        $this->assertSame('0.00', $reservation->fresh()->balance_due);
+        $this->assertDatabaseHas('reservation_logs', ['reservation_id' => $reservation->id, 'event' => 'in_stay_extension_voided']);
+    }
+
+    public function test_in_stay_extension_rejects_unavailable_rooms_without_changing_the_reservation(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType, 'occupied');
+        $reservation = $this->createReservation($roomType, 'checked_in');
+        RoomAssignment::create(['reservation_id' => $reservation->id, 'room_id' => $room->id, 'assigned_by' => $user->id, 'status' => 'checked_in', 'checked_in_at' => now()]);
+        $requestedCheckout = Carbon::parse($reservation->check_out_date)->addDay();
+        $other = $this->createReservation($roomType, 'confirmed');
+        RoomHold::create(['reservation_id' => $other->id, 'room_id' => $room->id, 'hold_from' => $reservation->check_out_date, 'hold_to' => $requestedCheckout, 'hold_type' => 'advance']);
+
+        try {
+            app(InStayExtensionService::class)->extend($reservation, $requestedCheckout);
+            $this->fail('Expected unavailable room rejection.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('unavailable', $exception->getMessage());
+        }
+        $this->assertSame(Carbon::parse($reservation->check_out_date)->toDateString(), $reservation->fresh()->check_out_date->toDateString());
+        $this->assertSame(0, ReservationCharge::where('reservation_id', $reservation->id)->count());
+    }
+
+    public function test_in_stay_extension_rejects_non_checked_in_reservations(): void
+    {
+        $roomType = $this->createRoomType();
+        $reservation = $this->createReservation($roomType, 'confirmed');
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('only be posted or voided while the reservation is checked in');
+        app(InStayExtensionService::class)->extend($reservation, Carbon::parse($reservation->check_out_date)->addDay());
+    }
+
+    public function test_checkout_requires_and_records_final_settlement_for_outstanding_balance(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType, 'occupied');
+        $reservation = $this->createReservation($roomType, 'checked_in');
+        RoomAssignment::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $room->id,
+            'assigned_by' => $user->id,
+            'checked_in_at' => now(),
+        ]);
+        $service = Service::create(['name' => 'Airport Transfer', 'price' => 300, 'is_active' => true]);
+        app(InStayAddonService::class)->post($reservation, [['code' => $service->code, 'qty' => 1]]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('outstanding balance');
+        $this->service->checkOut($reservation);
+    }
+
+    public function test_checkout_settlement_creates_a_new_payment_and_closes_the_stay(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+        $roomType = $this->createRoomType();
+        $room = $this->createRoom($roomType, 'occupied');
+        $reservation = $this->createReservation($roomType, 'checked_in');
+        RoomAssignment::create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $room->id,
+            'assigned_by' => $user->id,
+            'checked_in_at' => now(),
+        ]);
+        $service = Service::create(['name' => 'Breakfast', 'price' => 150, 'is_active' => true]);
+        app(InStayAddonService::class)->post($reservation, [['code' => $service->code, 'qty' => 1]]);
+
+        $this->service->settleAndCheckOut($reservation, [
+            'amount' => 150,
+            'payment_mode' => 'gcash',
+            'reference_no' => 'OR-SETTLE-1',
+            'or_date' => now()->toDateString(),
+        ]);
+
+        $this->assertSame('checked_out', $reservation->fresh()->status);
+        $this->assertSame('0.00', $reservation->fresh()->balance_due);
+        $this->assertDatabaseHas('reservation_payments', [
+            'reservation_id' => $reservation->id,
+            'amount' => 150,
+            'reference_no' => 'OR-SETTLE-1',
+            'status' => 'posted',
+        ]);
     }
 }
