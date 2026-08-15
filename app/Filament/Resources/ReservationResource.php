@@ -1265,7 +1265,7 @@ class ReservationResource extends Resource
                         ->color('success')
                         ->modalHeading('Approve Reservation')
                         ->successNotificationTitle('Reservation approved')
-                        ->modalDescription('Approve this reservation only after every requested room has been selected and can be held.')
+                        ->modalDescription('Approve this reservation only after every requested room has been selected and can be held. Rooms requested during reservation creation are preselected when they are still available.')
                         ->modalWidth('4xl')
                         ->visible(fn (Reservation $record) => $record->status === 'pending')
                         ->form(fn (Reservation $record) => [
@@ -2139,6 +2139,15 @@ class ReservationResource extends Resource
                             ? null
                             : (int) $requestLine->occupant_count,
                     );
+                $requestedRoomIds = collect((array) ($requestLine->requested_room_ids ?? []))
+                    ->map(fn ($roomId): int => (int) $roomId)
+                    ->filter()
+                    ->values();
+                $defaultRoomIds = $requestedRoomIds
+                    ->intersect($availableRooms->pluck('id'))
+                    ->take(max(1, (int) $requestLine->requested_room_count))
+                    ->values()
+                    ->all();
                 $requestedRooms = max(1, (int) $requestLine->requested_room_count);
                 $occupants = max(1, (int) $requestLine->occupant_count);
                 $options = $availableRooms
@@ -2164,6 +2173,7 @@ class ReservationResource extends Resource
                     ->maxItemsMessage("Select exactly {$requestedRooms} room(s) for this request.")
                     ->searchable()
                     ->preload()
+                    ->default($defaultRoomIds)
                     ->options($options)
                     ->rules([
                         function () use ($roomType, $checkIn, $checkOut, $occupants): \Closure {
@@ -2501,12 +2511,7 @@ class ReservationResource extends Resource
 
         $additionalRequests = $paidAssignment?->additional_requests ?? [];
 
-        $billingGuestName = $record->billingGuest
-            ? trim(($record->billingGuest->first_name ?? '').' '.($record->billingGuest->last_name ?? ''))
-            : '';
-        if ($billingGuestName === '' && $record->billingGuest?->full_name) {
-            $billingGuestName = (string) $record->billingGuest->full_name;
-        }
+        $billingGuestName = $record->billingGuest?->displayName() ?? '';
 
         $paymentAmount = (float) ($latestPayment?->amount
             ?? $paidAssignment?->payment_amount

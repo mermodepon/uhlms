@@ -513,12 +513,6 @@ class CheckInService
         mixed $checkOutAt,
         bool $includePayment
     ): RoomAssignment {
-        $fullName = trim(
-            ($guestData['first_name'] ?? '').' '.
-            (($guestData['middle_initial'] ?? '') ? ($guestData['middle_initial'].' ') : '').
-            ($guestData['last_name'] ?? '')
-        );
-
         $guest = Guest::firstOrCreate([
             'reservation_id' => $reservation->id,
             'first_name' => $guestData['first_name'] ?? null,
@@ -526,7 +520,6 @@ class CheckInService
             'middle_initial' => $guestData['middle_initial'] ?? null,
             'gender' => $guestData['gender'] ?? null,
         ], [
-            'full_name' => $fullName,
             'age' => $guestData['age'] ?? null,
             'contact_number' => $guestData['contact_number'] ?? null,
             'notes' => null,
