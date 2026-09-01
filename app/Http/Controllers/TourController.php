@@ -6,12 +6,14 @@ use App\Models\Reservation;
 use App\Models\RoomHold;
 use App\Models\TourWaypoint;
 use App\Models\RoomType;
+use App\Services\ActiveStayEligibilityService;
 use App\Services\RoomHoldService;
 use App\Support\MediaUrl;
 use App\Support\ReservationRoomRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class TourController extends Controller
@@ -236,15 +238,14 @@ class TourController extends Controller
                 'data' => $payload['data'] ?? $this->formatRoomTypeData($room->roomType),
             ]);
         } catch (\Exception $e) {
-            \Log::error('Room availability error: ' . $e->getMessage(), [
+            Log::error('Room availability error', [
                 'room_id' => $id,
-                'trace' => $e->getTraceAsString()
+                'error_type' => class_basename($e),
             ]);
             
             return response()->json([
                 'success' => false,
                 'message' => 'Error fetching room availability',
-                'error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
@@ -321,6 +322,23 @@ class TourController extends Controller
 
         if ($guestAccount && \Illuminate\Support\Str::lower($guestAccount->email) === \Illuminate\Support\Str::lower($validated['guest_email'])) {
             $validated['guest_account_id'] = $guestAccount->id;
+        }
+        $conflict = app(ActiveStayEligibilityService::class)->findConflictForIdentity(
+            guestAccountId: $validated['guest_account_id'] ?? null,
+            email: $validated['guest_email'],
+            phone: $validated['guest_phone'],
+            checkIn: $validated['check_in_date'],
+            checkOut: $validated['check_out_date'],
+        );
+
+        if ($conflict) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => [
+                    'check_in_date' => [app(ActiveStayEligibilityService::class)->reservationConflictMessage($conflict)],
+                ],
+            ], 422);
         }
 
         if (! empty($requestValidation['warnings'])) {

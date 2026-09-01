@@ -100,7 +100,7 @@ class ReservationObserverTest extends TestCase
 
         $reservation = $this->createReservation();
 
-        Mail::assertSent(\App\Mail\ReservationStatusMail::class, function ($mail) use ($reservation) {
+        Mail::assertQueued(\App\Mail\ReservationStatusMail::class, function ($mail) use ($reservation) {
             return $mail->reservation->is($reservation) && $mail->context === 'submitted';
         });
     }
@@ -184,11 +184,11 @@ class ReservationObserverTest extends TestCase
 
         $reservation = $this->createReservation(['status' => 'pending']);
 
-        Mail::assertSentCount(1);
+        Mail::assertQueuedCount(1);
 
         $reservation->update(['status' => 'approved']);
 
-        Mail::assertSent(\App\Mail\ReservationStatusMail::class, function ($mail) use ($reservation) {
+        Mail::assertQueued(\App\Mail\ReservationStatusMail::class, function ($mail) use ($reservation) {
             return $mail->reservation->id === $reservation->id
                 && $mail->context === 'status_changed'
                 && $mail->previousStatus === 'pending';

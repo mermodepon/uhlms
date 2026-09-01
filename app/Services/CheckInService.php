@@ -46,6 +46,7 @@ class CheckInService
             'age' => $payload['guest_age'] ?? null,
             'full_address' => $payload['guest_full_address'] ?? null,
             'contact_number' => $payload['guest_contact_number'] ?? null,
+            'nationality' => $payload['nationality'] ?? 'Filipino',
         ];
 
         $entries = $this->normalizeEntriesWithPrimaryGuest(
@@ -69,6 +70,20 @@ class CheckInService
             &$primaryLinked
 
         ): void {
+            $reservation = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
+            if (! in_array($reservation->status, ['approved', 'confirmed'], true)) {
+                throw new \RuntimeException('Only approved or confirmed reservations can be checked in.');
+            }
+            $conflict = app(ActiveStayEligibilityService::class)->findConflictForCheckIn(
+                $reservation,
+                $payload['id_number'] ?? null,
+            );
+            if ($conflict) {
+                throw new \RuntimeException(
+                    app(ActiveStayEligibilityService::class)->checkInConflictMessage($conflict)
+                );
+            }
+
             $checkInAt = $payload['detailed_checkin_datetime'] ?? now();
             $checkOutAt = $payload['detailed_checkout_datetime'] ?? $reservation->check_out_date;
 
@@ -116,18 +131,25 @@ class CheckInService
                 $room = $roomId ? Room::query()
                     ->where('id', $roomId)
                     ->where('is_active', true)
-                    ->when(
-                        $useHeldLocks,
-                        fn ($query) => $query->whereIn('status', ['available', 'reserved']),
-                        fn ($query) => $mode === 'dorm'
-                            ? $query->whereIn('status', ['available', 'occupied'])
-                            : $query->where('status', 'available')
-                    )
                     ->lockForUpdate()
                     ->first() : null;
 
                 if (! $room) {
                     $fail('No available room for entry #'.($entryIndex + 1).'.');
+
+                    continue;
+                }
+
+                $allowedStatuses = $useHeldLocks
+                    ? ['available', 'reserved']
+                    : ($mode === 'dorm' ? ['available', 'occupied'] : ['available']);
+
+                if (! in_array($room->status, $allowedStatuses, true)) {
+                    if ($room->status === 'occupied') {
+                        $fail("Room {$room->room_number} is currently occupied. Complete the previous guest checkout or reassign this reservation before checking in.");
+                    } else {
+                        $fail("Room {$room->room_number} is not available for check-in (status: {$room->status}).");
+                    }
 
                     continue;
                 }
@@ -323,6 +345,7 @@ class CheckInService
             'age' => $payload['guest_age'] ?? null,
             'full_address' => $payload['guest_full_address'] ?? null,
             'contact_number' => $payload['guest_contact_number'] ?? null,
+            'nationality' => $payload['nationality'] ?? 'Filipino',
         ];
 
         $payload['reservation_rooms'] = $this->normalizeEntriesWithPrimaryGuest(
@@ -544,7 +567,7 @@ class CheckInService
             'guest_contact_number' => $guestData['contact_number'] ?? null,
             'id_type' => $includePayment ? ($payload['id_type'] ?? null) : null,
             'id_number' => $includePayment ? ($payload['id_number'] ?? null) : null,
-            'nationality' => $includePayment ? ($payload['nationality'] ?? 'Filipino') : 'Filipino',
+            'nationality' => $guestData['nationality'] ?? ($includePayment ? ($payload['nationality'] ?? 'Filipino') : 'Filipino'),
             'is_student' => $includePayment ? ($payload['is_student'] ?? false) : false,
             'is_senior_citizen' => $includePayment ? ($payload['is_senior_citizen'] ?? false) : false,
             'is_pwd' => $includePayment ? ($payload['is_pwd'] ?? false) : false,
@@ -830,6 +853,7 @@ class CheckInService
                     blank($guest['first_name'] ?? null)
                     || blank($guest['last_name'] ?? null)
                     || blank($guest['gender'] ?? null)
+                    || blank($guest['nationality'] ?? null)
                 ) {
                     throw new \RuntimeException(
                         'Complete companion guest details for room entry #'.($entryIndex + 1).', guest #'.($guestIndex + 1).'.'

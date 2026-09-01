@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Exception\SuspiciousOperationException;
 use Tests\TestCase;
 
@@ -71,6 +72,40 @@ class HostHeaderSecurityTest extends TestCase
         ])->assertRedirect(route('guest.account.login'));
 
         $this->assertTrue(Hash::check('new-password-123', $account->fresh()->password));
+    }
+
+    public function test_password_reset_requests_are_limited_per_email(): void
+    {
+        Mail::fake();
+        $account = $this->guestAccount();
+
+        foreach (range(1, 3) as $attempt) {
+            $this->post(route('guest.account.password.email'), ['email' => $account->email])
+                ->assertSessionHas('success');
+        }
+
+        $this->post(route('guest.account.password.email'), ['email' => $account->email])
+            ->assertStatus(429);
+    }
+
+    public function test_expired_password_reset_token_is_rejected(): void
+    {
+        $account = $this->guestAccount();
+        $token = Str::random(64);
+        DB::table('guest_password_reset_tokens')->insert([
+            'email' => $account->email,
+            'token' => Hash::make($token),
+            'created_at' => now()->subMinutes(61),
+        ]);
+
+        $this->post(route('guest.account.password.update'), [
+            'email' => $account->email,
+            'token' => $token,
+            'password' => 'new-password-123',
+            'password_confirmation' => 'new-password-123',
+        ])->assertSessionHasErrors('email');
+
+        $this->assertTrue(Hash::check('password123', $account->fresh()->password));
     }
 
     public function test_verification_email_uses_canonical_host_and_relative_signature_remains_valid(): void

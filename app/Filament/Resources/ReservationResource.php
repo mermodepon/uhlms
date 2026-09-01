@@ -1352,6 +1352,7 @@ class ReservationResource extends Resource
                         ->icon('heroicon-o-pencil-square')
                         ->color('primary')
                         ->modalWidth('3xl')
+                        ->modalDescription('Use this action to replace an occupied or unavailable held room before check-in. The selected rooms will be revalidated and held again.')
                         ->visible(fn (Reservation $record) => in_array($record->status, ['approved', 'confirmed'], true))
                         ->form(fn (Reservation $record) => [
                             Forms\Components\TextInput::make('guest_name')->default($record->guest_name)->required(),

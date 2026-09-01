@@ -31,7 +31,7 @@ class ReservationStatusMailer
                 ?? $reservation->loadMissing(['preferredRoomType', 'roomRequests.roomType']);
 
             try {
-                Mail::to($freshReservation->guest_email)->send(
+                Mail::to($freshReservation->guest_email)->queue(
                     new ReservationStatusMail($freshReservation, $context, $previousStatus)
                 );
             } catch (\Throwable $e) {

@@ -45,6 +45,23 @@ class PaymentWebhookJobLifecycleTest extends TestCase
         $this->assertNotNull($receipt->processed_at);
     }
 
+    public function test_duplicate_job_does_not_reprocess_an_already_processed_receipt(): void
+    {
+        $receipt = $this->receipt('evt_already_processed');
+        $receipt->update([
+            'status' => PaymentWebhookEvent::STATUS_PROCESSED,
+            'attempts' => 1,
+            'processed_at' => now(),
+        ]);
+
+        $job = new ProcessPaymentWebhook($this->payload('payment.paid', ['attributes' => []]), $receipt->id);
+        $job->handle();
+
+        $receipt->refresh();
+        $this->assertSame(PaymentWebhookEvent::STATUS_PROCESSED, $receipt->status);
+        $this->assertSame(1, $receipt->attempts);
+    }
+
     public function test_retryable_exception_tracks_retrying_then_permanent_failure(): void
     {
         $receipt = $this->receipt('evt_retryable', 'source.chargeable');
