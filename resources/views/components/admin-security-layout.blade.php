@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
     <title>{{ $title }} · {{ config('app.name') }}</title>
-    <link rel="stylesheet" href="/css/filament/filament/app.css">
+    @vite('resources/css/app.css')
+    <link rel="stylesheet" href="{{ asset('css/filament/filament/app.css') }}">
 </head>
 <body class="min-h-screen bg-gray-100 text-gray-950 dark:bg-gray-950 dark:text-white">
     <main class="mx-auto flex min-h-screen w-full max-w-xl items-center px-4 py-10">
