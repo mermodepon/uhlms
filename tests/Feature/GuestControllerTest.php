@@ -1090,6 +1090,48 @@ class GuestControllerTest extends TestCase
         ]);
     }
 
+    public function test_reserve_submit_rejects_an_overlapping_stay_for_the_authenticated_guest(): void
+    {
+        $roomType = $this->createRoomType();
+        $this->createRoom($roomType);
+        $account = GuestAccount::create([
+            'first_name' => 'John',
+            'last_name' => 'Doe',
+            'email' => 'john-active@example.com',
+            'password' => 'password',
+            'email_verified_at' => now(),
+        ]);
+        Reservation::create([
+            'guest_account_id' => $account->id,
+            'guest_first_name' => 'John',
+            'guest_last_name' => 'Doe',
+            'guest_email' => $account->email,
+            'guest_phone' => '09171234567',
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => today()->subDay(),
+            'check_out_date' => today()->addDay(),
+            'number_of_occupants' => 1,
+            'status' => 'checked_in',
+        ]);
+
+        $response = $this->actingAs($account, 'guest')->from(route('guest.reserve'))->post(route('guest.reserve.submit'), [
+            'guest_last_name' => 'Doe',
+            'guest_first_name' => 'John',
+            'guest_gender' => 'Male',
+            'guest_email' => $account->email,
+            'guest_phone' => '09171234567',
+            'guest_age' => 18,
+            'preferred_room_type_id' => $roomType->id,
+            'check_in_date' => today()->toDateString(),
+            'check_out_date' => today()->addDays(2)->toDateString(),
+            'number_of_occupants' => 1,
+        ]);
+
+        $response->assertRedirect(route('guest.reserve'))
+            ->assertSessionHasErrors('check_in_date');
+        $this->assertSame(1, Reservation::where('guest_account_id', $account->id)->count());
+    }
+
     public function test_reserve_submit_creates_multiple_room_request_lines(): void
     {
         $executive = $this->createRoomType(['name' => 'Executive Multi']);

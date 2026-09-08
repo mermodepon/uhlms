@@ -109,7 +109,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                     ->label('➕ Add Guest')
                     ->icon('heroicon-o-user-plus')
                     ->color('success')
-                    ->visible(fn () => $this->pageClass === \App\Filament\Resources\ReservationResource\Pages\EditReservation::class && $this->getOwnerRecord()?->status === 'checked_in')
+                    ->visible(false)
                     ->modalHeading('Add New Guest')
                     ->modalWidth('md')
                     ->form([
@@ -248,11 +248,6 @@ class RoomAssignmentsRelationManager extends RelationManager
                             'middle_initial' => $data['middle_initial'] ?? null,
                             'gender' => $data['gender'],
                             'age' => $data['age'] ?? null,
-                            'full_name' => trim(
-                                ($data['first_name'] ?? '').' '.
-                                ($data['middle_initial'] ?? '').' '.
-                                ($data['last_name'] ?? '')
-                            ),
                         ]);
 
                         $selectedServices = collect($data['additional_requests'] ?? [])
@@ -291,7 +286,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                         Notification::make()
                             ->success()
                             ->title('Guest Added')
-                            ->body("{$guest->full_name} has been added to this reservation.")
+                            ->body("{$guest->displayName()} has been added to this reservation.")
                             ->send();
 
                         $livewire->dispatch('$refresh');
@@ -442,12 +437,6 @@ class RoomAssignmentsRelationManager extends RelationManager
                             ->action(function ($livewire, array $data) {
                                 $reservation = $livewire->getOwnerRecord();
 
-                                $data['full_name'] = trim(
-                                    ($data['first_name'] ?? '').' '.
-                                    ($data['middle_initial'] ?? '').' '.
-                                    ($data['last_name'] ?? '')
-                                );
-
                                 $reservation->guests()->create($data);
 
                                 Notification::make()
@@ -492,12 +481,6 @@ class RoomAssignmentsRelationManager extends RelationManager
                                 break;
                             }
 
-                            $fullName = trim(
-                                ($guest['first_name'] ?? '').' '.
-                                (($guest['middle_initial'] ?? '') ? $guest['middle_initial'].' ' : '').
-                                ($guest['last_name'] ?? '')
-                            );
-
                             $guestRecord = Guest::firstOrCreate([
                                 'reservation_id' => $reservation->id,
                                 'first_name' => $guest['first_name'] ?? null,
@@ -505,7 +488,6 @@ class RoomAssignmentsRelationManager extends RelationManager
                                 'middle_initial' => $guest['middle_initial'] ?? null,
                                 'gender' => $guest['gender'] ?? null,
                             ], [
-                                'full_name' => $fullName ?: 'Unknown',
                                 'age' => $guest['age'] ?? null,
                             ]);
 
@@ -546,7 +528,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                     ->label('Edit')
                     ->modalHeading('Edit Guest Assignment')
                     ->modalWidth('2xl')
-                    ->visible(fn () => $this->pageClass === \App\Filament\Resources\ReservationResource\Pages\EditReservation::class)
+                    ->visible(false)
                     ->form([
                         Forms\Components\Section::make('Guest Assignment')
                             ->schema([
@@ -592,7 +574,7 @@ class RoomAssignmentsRelationManager extends RelationManager
                     ->label('Unassign')
                     ->icon('heroicon-o-trash')
                     ->color('danger')
-                    ->visible(fn () => $this->pageClass === \App\Filament\Resources\ReservationResource\Pages\EditReservation::class)
+                    ->visible(false)
                     ->requiresConfirmation()
                     ->modalHeading('Unassign Guest')
                     ->modalDescription('Are you sure you want to remove this guest assignment from this reservation?')

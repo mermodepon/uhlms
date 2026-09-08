@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Mail\SendPaymentLinkMail;
 use App\Models\Reservation;
+use App\Models\ReservationPayment;
 use App\Models\ReservationLog;
 use App\Models\Room;
 use App\Models\RoomAssignment;
@@ -260,37 +261,114 @@ class ReservationWorkflowService
 
     public function checkOut(Reservation $reservation, mixed $checkedOutAt = null, ?string $remarks = null): Reservation
     {
-        if (! in_array($reservation->status, ['checked_in', 'checked_out'], true)) {
-            throw new \RuntimeException('Only checked-in or checked-out reservations can be checked out.');
+        if ($reservation->status !== 'checked_in') {
+            throw new \RuntimeException('Only checked-in reservations can be checked out.');
         }
 
         $checkoutAt = $checkedOutAt ? Carbon::parse($checkedOutAt) : now();
 
         DB::transaction(function () use ($reservation, $checkoutAt, $remarks): void {
-            RoomAssignment::where('reservation_id', $reservation->id)
-                ->whereNull('checked_out_at')
-                ->get()
-                ->each(fn (RoomAssignment $assignment) => $assignment->update([
-                    'status' => 'checked_out',
-                    'checked_out_at' => $checkoutAt,
-                    'checked_out_by' => auth()->id(),
-                ]));
-
-            if (filled($remarks)) {
-                RoomAssignment::where('reservation_id', $reservation->id)
-                    ->get()
-                    ->each(function (RoomAssignment $assignment) use ($remarks): void {
-                        $assignment->update([
-                            'remarks' => $assignment->remarks
-                                ? $assignment->remarks.' | '.$remarks
-                                : $remarks,
-                        ]);
-                    });
+            $reservation->refreshFinancialSummary();
+            if ((float) $reservation->fresh()->balance_due > 0.01) {
+                throw new \RuntimeException('The outstanding balance must be settled before checkout.');
             }
 
-            $reservation->update(['status' => 'checked_out']);
+            $this->completeCheckOut($reservation, $checkoutAt, $remarks);
         });
 
         return $reservation->fresh();
+    }
+
+    /**
+     * Record the final desk payment and complete checkout atomically.
+     *
+     * @param  array{amount:numeric,payment_mode:string,reference_no:string,or_date:mixed,remarks?:?string}  $paymentData
+     */
+    public function settleAndCheckOut(Reservation $reservation, array $paymentData, mixed $checkedOutAt = null, ?string $remarks = null): Reservation
+    {
+        if ($reservation->status !== 'checked_in') {
+            throw new \RuntimeException('Only checked-in reservations can be settled and checked out.');
+        }
+
+        $checkoutAt = $checkedOutAt ? Carbon::parse($checkedOutAt) : now();
+
+        DB::transaction(function () use ($reservation, $paymentData, $checkoutAt, $remarks): void {
+            $reservation->refreshFinancialSummary();
+            $balance = round((float) $reservation->fresh()->balance_due, 2);
+
+            if ($balance <= 0.01) {
+                $this->completeCheckOut($reservation, $checkoutAt, $remarks);
+
+                return;
+            }
+
+            $amount = round((float) ($paymentData['amount'] ?? 0), 2);
+            $mode = strtolower(trim((string) ($paymentData['payment_mode'] ?? '')));
+            $reference = trim((string) ($paymentData['reference_no'] ?? ''));
+
+            if (! in_array($mode, ['cash', 'bank_transfer', 'gcash', 'check', 'others'], true)) {
+                throw new \RuntimeException('Choose a valid payment method.');
+            }
+            if (abs($amount - $balance) > 0.01) {
+                throw new \RuntimeException('Checkout payment must equal the outstanding balance of PHP '.number_format($balance, 2).'.');
+            }
+            if ($reference === '') {
+                throw new \RuntimeException('Official receipt or payment reference number is required.');
+            }
+
+            ReservationPayment::create([
+                'reservation_id' => $reservation->id,
+                'amount' => $amount,
+                'payment_mode' => $mode,
+                'reference_no' => $reference,
+                'or_date' => $paymentData['or_date'] ?? $checkoutAt->toDateString(),
+                'status' => 'posted',
+                'received_by' => auth()->id(),
+                'received_at' => now(),
+                'remarks' => $paymentData['remarks'] ?? null,
+                'meta' => ['source' => 'checkout_settlement'],
+            ]);
+
+            $reservation->refreshFinancialSummary();
+            if ((float) $reservation->fresh()->balance_due > 0.01) {
+                throw new \RuntimeException('Checkout payment did not settle the outstanding balance.');
+            }
+
+            $this->completeCheckOut($reservation, $checkoutAt, $remarks);
+        });
+
+        return $reservation->fresh();
+    }
+
+    private function completeCheckOut(Reservation $reservation, Carbon $checkoutAt, ?string $remarks): void
+    {
+        $roomIds = RoomAssignment::where('reservation_id', $reservation->id)
+            ->whereNull('checked_out_at')
+            ->pluck('room_id')
+            ->unique();
+
+        RoomAssignment::where('reservation_id', $reservation->id)
+            ->whereNull('checked_out_at')
+            ->get()
+            ->each(fn (RoomAssignment $assignment) => $assignment->update([
+                'status' => 'checked_out',
+                'checked_out_at' => $checkoutAt,
+                'checked_out_by' => auth()->id(),
+            ]));
+
+        if (filled($remarks)) {
+            RoomAssignment::where('reservation_id', $reservation->id)
+                ->get()
+                ->each(function (RoomAssignment $assignment) use ($remarks): void {
+                    $assignment->update([
+                        'remarks' => $assignment->remarks
+                            ? $assignment->remarks.' | '.$remarks
+                            : $remarks,
+                    ]);
+                });
+        }
+
+        $reservation->update(['status' => 'checked_out']);
+        app(RoomHoldService::class)->recalculateRoomStatuses($roomIds);
     }
 }

@@ -33,7 +33,6 @@ class SensitiveDataProcessor
         'guest_last_name',
         'first_name',
         'last_name',
-        'full_name',
         'phone',
         'guest_phone',
         'mobile',

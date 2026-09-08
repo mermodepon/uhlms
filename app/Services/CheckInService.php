@@ -28,6 +28,7 @@ class CheckInService
     {
         $entries = $payload['reservation_rooms'] ?? [];
         $useHeldLocks = (bool) ($options['use_held_locks'] ?? false);
+        $atomic = (bool) ($options['atomic'] ?? false);
 
         $checkedInCount = 0;
         $maleCount = 0;
@@ -45,6 +46,7 @@ class CheckInService
             'age' => $payload['guest_age'] ?? null,
             'full_address' => $payload['guest_full_address'] ?? null,
             'contact_number' => $payload['guest_contact_number'] ?? null,
+            'nationality' => $payload['nationality'] ?? 'Filipino',
         ];
 
         $entries = $this->normalizeEntriesWithPrimaryGuest(
@@ -58,6 +60,7 @@ class CheckInService
             $payload,
             &$entries,
             $useHeldLocks,
+            $atomic,
             &$checkedInCount,
             &$maleCount,
             &$femaleCount,
@@ -67,8 +70,60 @@ class CheckInService
             &$primaryLinked
 
         ): void {
+            $reservation = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
+            if (! in_array($reservation->status, ['approved', 'confirmed'], true)) {
+                throw new \RuntimeException('Only approved or confirmed reservations can be checked in.');
+            }
+            $conflict = app(ActiveStayEligibilityService::class)->findConflictForCheckIn(
+                $reservation,
+                $payload['id_number'] ?? null,
+            );
+            if ($conflict) {
+                throw new \RuntimeException(
+                    app(ActiveStayEligibilityService::class)->checkInConflictMessage($conflict)
+                );
+            }
+
             $checkInAt = $payload['detailed_checkin_datetime'] ?? now();
             $checkOutAt = $payload['detailed_checkout_datetime'] ?? $reservation->check_out_date;
+
+            // A normal check-in must consume this reservation's active holds exactly.
+            // Reserved rooms are therefore usable by their own reservation, but never by
+            // another reservation that happens to be checking in at the same time.
+            $heldRoomIds = [];
+            if ($useHeldLocks) {
+                $heldRoomIds = RoomHold::query()
+                    ->where('reservation_id', $reservation->id)
+                    ->where('hold_type', 'advance')
+                    ->active()
+                    ->lockForUpdate()
+                    ->pluck('room_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->sort()
+                    ->values()
+                    ->all();
+
+                $entryRoomIds = collect($entries)
+                    ->pluck('room_id')
+                    ->filter()
+                    ->map(fn ($id) => (int) $id)
+                    ->sort()
+                    ->values()
+                    ->all();
+
+                if ($heldRoomIds !== $entryRoomIds) {
+                    throw new \RuntimeException('The selected rooms no longer match this reservation\'s active room holds. Refresh the reservation and try again.');
+                }
+            }
+
+            $fail = function (string $message) use (&$allSucceeded, &$roomErrors, $atomic): void {
+                if ($atomic) {
+                    throw new \RuntimeException($message);
+                }
+
+                $allSucceeded = false;
+                $roomErrors[] = $message;
+            };
 
             foreach ($entries as $entryIndex => $entry) {
                 $mode = $entry['room_mode'] ?? 'dorm';
@@ -76,18 +131,25 @@ class CheckInService
                 $room = $roomId ? Room::query()
                     ->where('id', $roomId)
                     ->where('is_active', true)
-                    ->when(
-                        $useHeldLocks,
-                        fn ($query) => $query->whereIn('status', ['available', 'reserved']),
-                        fn ($query) => $mode === 'dorm'
-                            ? $query->whereIn('status', ['available', 'occupied'])
-                            : $query->where('status', 'available')
-                    )
+                    ->lockForUpdate()
                     ->first() : null;
 
                 if (! $room) {
-                    $allSucceeded = false;
-                    $roomErrors[] = 'No available room for entry #'.($entryIndex + 1).'.';
+                    $fail('No available room for entry #'.($entryIndex + 1).'.');
+
+                    continue;
+                }
+
+                $allowedStatuses = $useHeldLocks
+                    ? ['available', 'reserved']
+                    : ($mode === 'dorm' ? ['available', 'occupied'] : ['available']);
+
+                if (! in_array($room->status, $allowedStatuses, true)) {
+                    if ($room->status === 'occupied') {
+                        $fail("Room {$room->room_number} is currently occupied. Complete the previous guest checkout or reassign this reservation before checking in.");
+                    } else {
+                        $fail("Room {$room->room_number} is not available for check-in (status: {$room->status}).");
+                    }
 
                     continue;
                 }
@@ -96,8 +158,7 @@ class CheckInService
                 if (! $useHeldLocks && $mode === 'dorm') {
                     $room->loadMissing('roomType');
                     if ($room->isFull()) {
-                        $allSucceeded = false;
-                        $roomErrors[] = "Room {$room->room_number} has no available slots (capacity: {$room->capacity}).";
+                        $fail("Room {$room->room_number} has no available slots (capacity: {$room->capacity}).");
 
                         continue;
                     }
@@ -105,8 +166,7 @@ class CheckInService
 
                 $entryGuests = $entry['guests'] ?? [];
                 if (empty($entryGuests)) {
-                    $allSucceeded = false;
-                    $roomErrors[] = 'No guests provided for room entry #'.($entryIndex + 1).'.';
+                    $fail('No guests provided for room entry #'.($entryIndex + 1).'.');
 
                     continue;
                 }
@@ -153,9 +213,13 @@ class CheckInService
                     // Check capacity before assigning
                     $currentOccupancy = $room->roomAssignments()->where('status', 'checked_in')->count();
                     if ($room->capacity > 0 && $currentOccupancy >= $room->capacity) {
-                        $allSucceeded = false;
                         $guestName = trim(($guest['first_name'] ?? '').' '.($guest['last_name'] ?? ''));
-                        $failedGuests[] = "No available slot for guest {$guestName} in room {$room->room_number} (capacity reached).";
+                        $message = "No available slot for guest {$guestName} in room {$room->room_number} (capacity reached).";
+                        if ($atomic) {
+                            throw new \RuntimeException($message);
+                        }
+                        $allSucceeded = false;
+                        $failedGuests[] = $message;
 
                         continue;
                     }
@@ -198,9 +262,14 @@ class CheckInService
 
                 // Clear all room holds since check-in is complete
                 // This includes any advance holds that weren't used (e.g., staff changed the room)
-                $deletedHolds = RoomHold::query()
+                $holdsToRelease = RoomHold::query()
                     ->where('reservation_id', $reservation->id)
-                    ->delete();
+                    ->get();
+                $deletedHolds = $holdsToRelease->count();
+                RoomHold::query()->whereKey($holdsToRelease->pluck('id'))->delete();
+                app(RoomHoldService::class)->recalculateRoomStatuses(
+                    $holdsToRelease->pluck('room_id')->merge($reservation->roomAssignments()->pluck('room_id')),
+                );
 
                 if ($deletedHolds > 0) {
                     ReservationLog::record(
@@ -210,7 +279,7 @@ class CheckInService
                         ['deleted_holds' => $deletedHolds]
                     );
                 }
-            } else {
+            } elseif (! $atomic) {
                 // If check-in partially succeeded or failed, release advance holds for rooms that weren't actually assigned
                 // This prevents unused held rooms from staying locked
                 $assignedRoomIds = $reservation->roomAssignments()
@@ -219,11 +288,16 @@ class CheckInService
                     ->unique()
                     ->toArray();
 
-                $deletedHolds = RoomHold::query()
+                $holdsToRelease = RoomHold::query()
                     ->where('reservation_id', $reservation->id)
                     ->where('hold_type', 'advance')
                     ->whereNotIn('room_id', $assignedRoomIds)
-                    ->delete();
+                    ->get();
+                $deletedHolds = $holdsToRelease->count();
+                RoomHold::query()->whereKey($holdsToRelease->pluck('id'))->delete();
+                app(RoomHoldService::class)->recalculateRoomStatuses(
+                    $holdsToRelease->pluck('room_id')->merge($assignedRoomIds),
+                );
 
                 if ($deletedHolds > 0) {
                     ReservationLog::record(
@@ -271,6 +345,7 @@ class CheckInService
             'age' => $payload['guest_age'] ?? null,
             'full_address' => $payload['guest_full_address'] ?? null,
             'contact_number' => $payload['guest_contact_number'] ?? null,
+            'nationality' => $payload['nationality'] ?? 'Filipino',
         ];
 
         $payload['reservation_rooms'] = $this->normalizeEntriesWithPrimaryGuest(
@@ -285,7 +360,17 @@ class CheckInService
             $this->validateAndNormalizeFinalizePaymentData($payload, $payableAmount)
         );
 
-        $result = $this->execute($reservation, $payload);
+        $hasActiveAdvanceHolds = $reservation->roomHolds()
+            ->where('hold_type', 'advance')
+            ->active()
+            ->exists();
+
+        // Reception check-in is all-or-nothing.  If the reservation owns active
+        // advance holds, its reserved rooms are the only rooms it may consume.
+        $result = $this->execute($reservation, $payload, [
+            'use_held_locks' => $hasActiveAdvanceHolds,
+            'atomic' => true,
+        ]);
 
         if (($result['all_succeeded'] ?? false) === true) {
             $reservation->refresh();
@@ -451,12 +536,6 @@ class CheckInService
         mixed $checkOutAt,
         bool $includePayment
     ): RoomAssignment {
-        $fullName = trim(
-            ($guestData['first_name'] ?? '').' '.
-            (($guestData['middle_initial'] ?? '') ? ($guestData['middle_initial'].' ') : '').
-            ($guestData['last_name'] ?? '')
-        );
-
         $guest = Guest::firstOrCreate([
             'reservation_id' => $reservation->id,
             'first_name' => $guestData['first_name'] ?? null,
@@ -464,7 +543,6 @@ class CheckInService
             'middle_initial' => $guestData['middle_initial'] ?? null,
             'gender' => $guestData['gender'] ?? null,
         ], [
-            'full_name' => $fullName,
             'age' => $guestData['age'] ?? null,
             'contact_number' => $guestData['contact_number'] ?? null,
             'notes' => null,
@@ -489,7 +567,7 @@ class CheckInService
             'guest_contact_number' => $guestData['contact_number'] ?? null,
             'id_type' => $includePayment ? ($payload['id_type'] ?? null) : null,
             'id_number' => $includePayment ? ($payload['id_number'] ?? null) : null,
-            'nationality' => $includePayment ? ($payload['nationality'] ?? 'Filipino') : 'Filipino',
+            'nationality' => $guestData['nationality'] ?? ($includePayment ? ($payload['nationality'] ?? 'Filipino') : 'Filipino'),
             'is_student' => $includePayment ? ($payload['is_student'] ?? false) : false,
             'is_senior_citizen' => $includePayment ? ($payload['is_senior_citizen'] ?? false) : false,
             'is_pwd' => $includePayment ? ($payload['is_pwd'] ?? false) : false,
@@ -775,6 +853,7 @@ class CheckInService
                     blank($guest['first_name'] ?? null)
                     || blank($guest['last_name'] ?? null)
                     || blank($guest['gender'] ?? null)
+                    || blank($guest['nationality'] ?? null)
                 ) {
                     throw new \RuntimeException(
                         'Complete companion guest details for room entry #'.($entryIndex + 1).', guest #'.($guestIndex + 1).'.'

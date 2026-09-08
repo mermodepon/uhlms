@@ -1524,8 +1524,8 @@
                                 <tr class="bg-gray-100 dark:bg-gray-700/30 border-b-2 border-gray-400 dark:border-gray-600">
                                     <td colspan="5" class="py-2 px-2 text-right font-semibold text-gray-800 dark:text-gray-200">Total Pax:</td>
                                     <td class="py-2 px-2 text-center font-bold text-primary-700 dark:text-primary-400">{{ $dateGroup['total_male'] }}/{{ $dateGroup['total_female'] }}</td>
-                                    <td class="py-2 px-2 text-right font-semibold text-gray-800 dark:text-gray-200">Total Amount:</td>
-                                    <td colspan="4" class="py-2 px-2 text-right font-bold text-primary-700 dark:text-primary-400">₱{{ number_format($dateGroup['total_amount'], 2) }}</td>
+                                    <td class="py-2 px-2 text-right font-semibold text-gray-800 dark:text-gray-200">Payments:</td>
+                                    <td colspan="4" class="py-2 px-2 text-right font-bold text-primary-700 dark:text-primary-400">₱{{ number_format($dateGroup['total_amount'], 2) }} @if(($dateGroup['total_addons_billed'] ?? 0) != 0) <span class="ml-2 text-xs text-gray-600 dark:text-gray-300">Add-ons billed: ₱{{ number_format($dateGroup['total_addons_billed'], 2) }}</span> @endif</td>
                                 </tr>
                             @empty
                                 <tr>
@@ -1545,9 +1545,25 @@
                                     </td>
                                     <td class="py-3 px-2"></td>
                                     <td class="py-3 px-2"></td>
-                                    <td class="py-3 px-2 font-bold uppercase text-right text-gray-900 dark:text-gray-100">Grand Total</td>
+                                    <td class="py-3 px-2 font-bold uppercase text-right text-gray-900 dark:text-gray-100">Check-in Payments</td>
                                     <td class="py-3 px-2 font-bold text-right text-gray-900 dark:text-gray-100">₱</td>
                                     <td class="py-3 px-2 font-bold text-right text-gray-900 dark:text-gray-100">{{ number_format($data['grand_total'], 2) }}</td>
+                                </tr>
+                                <tr class="border-t border-gray-300 dark:border-gray-600">
+                                    <td colspan="8" class="py-1 px-2 text-right font-semibold text-gray-800 dark:text-gray-200">In-Stay Add-Ons Billed This Month</td>
+                                    <td colspan="3" class="py-1 px-2 text-right font-bold text-gray-900 dark:text-gray-100">₱{{ number_format($data['in_stay_addons_billed'], 2) }}</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="8" class="py-1 px-2 text-right font-semibold text-gray-800 dark:text-gray-200">In-Stay Extensions Billed This Month</td>
+                                    <td colspan="3" class="py-1 px-2 text-right font-bold text-gray-900 dark:text-gray-100">PHP {{ number_format($data['in_stay_extensions_billed'], 2) }}</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="8" class="py-1 px-2 text-right font-semibold text-gray-800 dark:text-gray-200">Payments Collected This Month</td>
+                                    <td colspan="3" class="py-1 px-2 text-right font-bold text-gray-900 dark:text-gray-100">₱{{ number_format($data['payments_collected'], 2) }}</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="8" class="py-1 px-2 text-right font-semibold text-gray-800 dark:text-gray-200">Current Outstanding Balance for Affected Stays</td>
+                                    <td colspan="3" class="py-1 px-2 text-right font-bold text-red-700 dark:text-red-300">₱{{ number_format($data['outstanding_balance'], 2) }}</td>
                                 </tr>
                                 {{-- Summary section --}}
                                 <tr class="border-t border-gray-300 dark:border-gray-600">

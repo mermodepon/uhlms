@@ -81,6 +81,36 @@ class RoomHold extends Model
         return $this->expires_at && Carbon::parse($this->expires_at)->isPast();
     }
 
+    /**
+     * Return the operational timeline state for staff displays.
+     *
+     * An advance hold intentionally has no expiry, so "active" alone is not
+     * enough to tell whether its stay is still current.
+     */
+    public function timelineStatus(?Carbon $date = null): string
+    {
+        $date = ($date ?? Carbon::today())->startOfDay();
+
+        if ($this->isExpired()) {
+            return 'expired';
+        }
+
+        if (Carbon::parse($this->hold_to)->startOfDay()->lte($date)) {
+            return 'past';
+        }
+
+        if (Carbon::parse($this->hold_from)->startOfDay()->gt($date)) {
+            return 'upcoming';
+        }
+
+        return 'current';
+    }
+
+    public function isCurrent(?Carbon $date = null): bool
+    {
+        return $this->timelineStatus($date) === 'current';
+    }
+
     public function isAdvance(): bool
     {
         return $this->hold_type === 'advance';

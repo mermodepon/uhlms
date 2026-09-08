@@ -28,7 +28,7 @@
                             {{ $index + 1 }}
                         </td>
                         <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                            {{ $guest->full_name }}
+                            {{ $guest->displayName() }}
                         </td>
                         <td class="px-4 py-3 text-sm">
                             @if($guest->gender)

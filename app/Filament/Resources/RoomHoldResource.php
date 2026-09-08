@@ -57,6 +57,7 @@ class RoomHoldResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn ($query) => $query->with(['room.roomType', 'reservation']))
             ->columns([
                 Tables\Columns\TextColumn::make('room.room_number')
                     ->label('Room')
@@ -79,17 +80,43 @@ class RoomHoldResource extends Resource
                     ->label('Hold To')
                     ->date('M d, Y')
                     ->sortable(),
-                Tables\Columns\IconColumn::make('is_active')
-                    ->label('Active')
-                    ->boolean()
-                    ->getStateUsing(fn (RoomHold $record): bool => ! $record->isExpired()),
+                Tables\Columns\TextColumn::make('timeline_status')
+                    ->label('Status')
+                    ->state(fn (RoomHold $record): string => ucfirst($record->timelineStatus()))
+                    ->badge()
+                    ->color(fn (RoomHold $record): string => match ($record->timelineStatus()) {
+                        'current' => 'warning',
+                        'upcoming' => 'info',
+                        'past' => 'gray',
+                        default => 'danger',
+                    }),
             ])
             ->defaultSort('hold_from')
             ->filters([
-                Tables\Filters\Filter::make('is_active')
-                    ->label('Active only')
-                    ->toggle()
-                    ->query(fn ($query) => $query->active()),
+                Tables\Filters\SelectFilter::make('timeline')
+                    ->label('Timeline')
+                    ->options([
+                        'current_upcoming' => 'Current & Upcoming',
+                        'current' => 'Current',
+                        'upcoming' => 'Upcoming',
+                        'past' => 'Past',
+                        'expired' => 'Expired',
+                        'all' => 'All holds',
+                    ])
+                    ->default('current_upcoming')
+                    ->query(function ($query, array $data) {
+                        $timeline = $data['value'] ?? 'current_upcoming';
+                        $today = now()->toDateString();
+
+                        return match ($timeline) {
+                            'current' => $query->active()->where('hold_from', '<=', $today)->where('hold_to', '>', $today),
+                            'upcoming' => $query->active()->where('hold_from', '>', $today),
+                            'past' => $query->where('hold_to', '<=', $today),
+                            'expired' => $query->whereNotNull('expires_at')->where('expires_at', '<=', now()),
+                            'all' => $query,
+                            default => $query->active()->where('hold_to', '>', $today),
+                        };
+                    }),
                 Tables\Filters\Filter::make('holds_for_date')
                     ->label('Holds for date')
                     ->form([
@@ -110,7 +137,9 @@ class RoomHoldResource extends Resource
                     ->label('Release Hold')
                     ->icon('heroicon-o-lock-open')
                     ->color('danger')
-                    ->visible(fn (RoomHold $record) => $record->isAdvance() && (auth()->user()?->hasPermission(User::ROOM_HOLDS_RELEASE) ?? false))
+                    ->visible(fn (RoomHold $record) => $record->isAdvance()
+                        && in_array($record->timelineStatus(), ['current', 'upcoming'], true)
+                        && (auth()->user()?->hasPermission(User::ROOM_HOLDS_RELEASE) ?? false))
                     ->requiresConfirmation()
                     ->modalHeading('Release Room Hold')
                     ->modalDescription(fn (RoomHold $record) => "Release hold on Room {$record->room->room_number} for reservation {$record->reservation->reference_number}? The room will become available for other reservations.")

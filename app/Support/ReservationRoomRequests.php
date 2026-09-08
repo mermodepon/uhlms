@@ -11,7 +11,7 @@ use Illuminate\Support\Carbon;
 class ReservationRoomRequests
 {
     /**
-     * @return array<int, array{room_type_id:int,requested_capacity:?int,requested_room_count:int,occupant_count:int,notes:?string,sort_order:int}>
+     * @return array<int, array{room_type_id:int,requested_capacity:?int,requested_room_count:int,occupant_count:int,notes:?string,sort_order:int,requested_room_ids?:array<int,int>}>
      */
     public static function fromRequest(Request $request): array
     {
@@ -172,6 +172,7 @@ class ReservationRoomRequests
                     'room_type_id' => (int) $line['room_type_id'],
                     'requested_capacity' => filled($line['requested_capacity'] ?? null) ? (int) $line['requested_capacity'] : null,
                     'requested_room_count' => max(1, (int) ($line['requested_room_count'] ?? 1)),
+                    'requested_room_ids' => array_values(array_unique(array_filter(array_map('intval', (array) ($line['room_ids'] ?? []))))),
                     'occupant_count' => max(1, (int) ($line['occupant_count'] ?? 1)),
                     'sort_order' => $index,
                     'notes' => filled($line['notes'] ?? null) ? (string) $line['notes'] : null,

@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -22,7 +23,15 @@ class PasswordResetController extends Controller
     public function send(Request $request)
     {
         $data = $request->validate(['email' => 'required|email|max:255']);
-        $account = GuestAccount::where('email', $data['email'])->first();
+        $email = Str::lower(trim($data['email']));
+        $throttleKey = 'guest-password-reset:'.hash_hmac('sha256', $email, (string) config('app.key'));
+
+        if (RateLimiter::tooManyAttempts($throttleKey, 3)) {
+            abort(429, 'Too many reset requests. Please try again later.');
+        }
+
+        RateLimiter::hit($throttleKey, 3600);
+        $account = GuestAccount::where('email', $email)->first();
 
         if ($account) {
             $token = Str::random(64);
@@ -69,6 +78,7 @@ class PasswordResetController extends Controller
         $account = GuestAccount::where('email', $data['email'])->firstOrFail();
         $account->update(['password' => $data['password']]);
         DB::table('guest_password_reset_tokens')->where('email', $data['email'])->delete();
+        RateLimiter::clear('guest-password-reset:'.hash_hmac('sha256', Str::lower(trim($data['email'])), (string) config('app.key')));
 
         return redirect()->route('guest.account.login')->with('success', 'Password reset. You can now log in.');
     }

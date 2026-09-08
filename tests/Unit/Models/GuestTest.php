@@ -18,7 +18,7 @@ class GuestTest extends TestCase
         $fillable = $guest->getFillable();
 
         $this->assertContains('reservation_id', $fillable);
-        $this->assertContains('full_name', $fillable);
+        $this->assertNotContains('full_name', $fillable);
         $this->assertContains('first_name', $fillable);
         $this->assertContains('last_name', $fillable);
         $this->assertContains('gender', $fillable);
@@ -31,6 +31,17 @@ class GuestTest extends TestCase
         $casts = $guest->getCasts();
 
         $this->assertEquals('integer', $casts['age']);
+    }
+
+    public function test_display_name_is_derived_from_separated_name_parts(): void
+    {
+        $guest = new Guest([
+            'first_name' => 'Juan',
+            'middle_initial' => 'D.',
+            'last_name' => 'Dela Cruz',
+        ]);
+
+        $this->assertSame('Juan D. Dela Cruz', $guest->displayName());
     }
 
     public function test_reservation_relationship(): void

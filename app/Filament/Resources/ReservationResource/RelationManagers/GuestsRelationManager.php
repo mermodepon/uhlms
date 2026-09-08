@@ -2,11 +2,13 @@
 
 namespace App\Filament\Resources\ReservationResource\RelationManagers;
 
+use App\Models\Guest;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class GuestsRelationManager extends RelationManager
 {
@@ -44,12 +46,29 @@ class GuestsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('full_name')
+            ->recordTitle(fn (Guest $record): string => $record->displayName())
             ->columns([
-                Tables\Columns\TextColumn::make('full_name')
+                Tables\Columns\TextColumn::make('display_name')
                     ->label('Full Name')
-                    ->searchable()
-                    ->sortable(),
+                    ->getStateUsing(fn (Guest $record): string => $record->displayName())
+                    ->searchable(query: function (Builder $query, string $search): Builder {
+                        $terms = preg_split('/\s+/', trim($search), -1, PREG_SPLIT_NO_EMPTY);
+
+                        return $query->where(function (Builder $nameQuery) use ($terms): void {
+                            foreach ($terms as $term) {
+                                $nameQuery->where(function (Builder $termQuery) use ($term): void {
+                                    $termQuery
+                                        ->where('first_name', 'like', "%{$term}%")
+                                        ->orWhere('middle_initial', 'like', "%{$term}%")
+                                        ->orWhere('last_name', 'like', "%{$term}%");
+                                });
+                            }
+                        });
+                    })
+                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query
+                        ->orderBy('first_name', $direction)
+                        ->orderBy('middle_initial', $direction)
+                        ->orderBy('last_name', $direction)),
                 Tables\Columns\TextColumn::make('first_name')
                     ->label('First Name')
                     ->searchable()
@@ -91,30 +110,10 @@ class GuestsRelationManager extends RelationManager
                     ->tooltip('Recalculate occupant and gender counts based on guest list'),
                 Tables\Actions\CreateAction::make()
                     ->label('Add Guest')
-                    ->mutateFormDataUsing(function (array $data): array {
-                        // Auto-generate full_name from parts
-                        $data['full_name'] = trim(
-                            ($data['first_name'] ?? '').' '.
-                            ($data['middle_initial'] ?? '').' '.
-                            ($data['last_name'] ?? '')
-                        );
-
-                        return $data;
-                    })
                     ->after(fn () => $this->recalculateGenderCounts()),
             ])
             ->actions([
                 Tables\Actions\EditAction::make()
-                    ->mutateFormDataUsing(function (array $data): array {
-                        // Auto-generate full_name from parts
-                        $data['full_name'] = trim(
-                            ($data['first_name'] ?? '').' '.
-                            ($data['middle_initial'] ?? '').' '.
-                            ($data['last_name'] ?? '')
-                        );
-
-                        return $data;
-                    })
                     ->after(fn () => $this->recalculateGenderCounts()),
                 Tables\Actions\DeleteAction::make()
                     ->after(fn () => $this->recalculateGenderCounts()),

@@ -89,6 +89,10 @@ class ReservationLog extends Model
             'alternative_offer_accepted' => 'Alternative Offer Accepted',
             'alternative_offer_declined' => 'Alternative Offer Declined',
             'alternative_offer_expired' => 'Alternative Offer Expired',
+            'alternative_offer_withdrawn' => 'Alternative Offer Withdrawn',
+            'reservation_amended' => 'Pre-Stay Reservation Amended',
+            'guest_identity_corrected' => 'Guest Identity Corrected',
+            'room_assignment_corrected' => 'Room Assignment Corrected',
             'checkin_hold_prepared' => 'Hold Prepared',
             'checkin_hold_released' => 'Hold Released',
             'checkin_hold_expired' => 'Hold Expired',
@@ -96,6 +100,10 @@ class ReservationLog extends Model
             'guest_checked_in' => 'Guest Checked In',
             'guest_checked_out' => 'Guest Checked Out',
             'room_assignment_removed' => 'Assignment Removed',
+            'in_stay_addon_posted' => 'In-Stay Add-On Posted',
+            'in_stay_addon_voided' => 'In-Stay Add-On Voided',
+            'in_stay_extension_posted' => 'In-Stay Extension Posted',
+            'in_stay_extension_voided' => 'In-Stay Extension Voided',
             default => ucwords(str_replace('_', ' ', $event)),
         };
     }
@@ -115,6 +123,10 @@ class ReservationLog extends Model
             'alternative_offer_accepted' => 'success',
             'alternative_offer_declined',
             'alternative_offer_expired' => 'gray',
+            'alternative_offer_withdrawn' => 'warning',
+            'reservation_amended' => 'info',
+            'guest_identity_corrected' => 'info',
+            'room_assignment_corrected' => 'info',
             'checkin_hold_prepared' => 'warning',
             'checkin_hold_released' => 'gray',
             'checkin_hold_expired' => 'warning',
@@ -122,6 +134,10 @@ class ReservationLog extends Model
             'guest_checked_in' => 'info',
             'guest_checked_out' => 'gray',
             'room_assignment_removed' => 'warning',
+            'in_stay_addon_posted' => 'success',
+            'in_stay_addon_voided' => 'warning',
+            'in_stay_extension_posted' => 'success',
+            'in_stay_extension_voided' => 'warning',
             default => 'gray',
         };
     }

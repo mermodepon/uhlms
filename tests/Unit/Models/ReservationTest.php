@@ -221,7 +221,7 @@ class ReservationTest extends TestCase
         );
     }
 
-    public function test_refresh_financial_summary_paid(): void
+    public function test_financial_summary_refreshes_when_ledger_entries_change(): void
     {
         $reservation = $this->createReservation();
 
@@ -242,7 +242,6 @@ class ReservationTest extends TestCase
             'status' => 'posted',
         ]);
 
-        $reservation->refreshFinancialSummary();
         $reservation->refresh();
 
         $this->assertEquals('0.00', $reservation->addons_total);

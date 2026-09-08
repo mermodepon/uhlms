@@ -51,11 +51,11 @@
             <input id="password" type="password" name="password" autocomplete="current-password" required autofocus class="block w-full rounded-lg border-gray-300 shadow-sm">
             <button type="submit" class="w-full rounded-lg bg-primary-600 px-4 py-2.5 font-semibold text-white hover:bg-primary-500">Begin MFA setup</button>
         </form>
-        <a href="/admin/profile" class="mt-5 block text-center text-sm font-semibold text-primary-700 hover:underline">Open profile</a>
+        <a href="/admin/profile" class="security-profile-link">Open profile</a>
     @endif
 
-    <form method="POST" action="/admin/logout" class="mt-5 text-center">
+    <form method="POST" action="/admin/logout" class="security-signout-form">
         @csrf
-        <button type="submit" class="text-sm text-gray-600 hover:underline">Sign out</button>
+        <button type="submit" class="security-signout-button">Sign out</button>
     </form>
 </x-admin-security-layout>

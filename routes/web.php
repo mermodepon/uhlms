@@ -84,8 +84,8 @@ Route::prefix('account')->middleware('throttle:20,1')->group(function () {
 Route::prefix('api/tour')->group(function () {
     Route::get('/waypoints', [TourController::class, 'waypoints'])->name('api.tour.waypoints');
     Route::get('/waypoint/{slug}', [TourController::class, 'waypoint'])->name('api.tour.waypoint');
-    Route::get('/room-type/{id}/availability', [TourController::class, 'roomTypeAvailability'])->name('api.tour.room-type-availability');
-    Route::get('/room/{id}/availability', [TourController::class, 'roomAvailability'])->name('api.tour.room-availability');
+    Route::get('/room-type/{id}/availability', [TourController::class, 'roomTypeAvailability'])->middleware('throttle:30,1')->name('api.tour.room-type-availability');
+    Route::get('/room/{id}/availability', [TourController::class, 'roomAvailability'])->middleware('throttle:30,1')->name('api.tour.room-availability');
     Route::post('/reserve', [TourController::class, 'reserveSubmit'])
         ->middleware(['throttle:5,1', \Spatie\Honeypot\ProtectAgainstSpam::class])
         ->name('api.tour.reserve');
@@ -97,7 +97,7 @@ Route::get('/tour/{slug?}', [TourController::class, 'viewer'])->name('guest.tour
 // Guest payment routes (online payments - TESTING)
 Route::prefix('reserve/pay')->middleware(['throttle:10,1'])->group(function () {
     Route::get('/{token}', [GuestPaymentController::class, 'showPaymentPage'])->name('guest.payment.show');
-    Route::post('/{token}', [GuestPaymentController::class, 'initializePayment'])->name('guest.payment.initialize');
+    Route::post('/{token}', [GuestPaymentController::class, 'initializePayment'])->middleware('throttle:5,1')->name('guest.payment.initialize');
 });
 Route::get('/reserve/payment-success', [GuestPaymentController::class, 'paymentSuccess'])->name('guest.payment.success');
 Route::get('/reserve/payment-failed', [GuestPaymentController::class, 'paymentFailed'])->name('guest.payment.failed');

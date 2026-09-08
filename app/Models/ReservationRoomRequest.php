@@ -12,6 +12,7 @@ class ReservationRoomRequest extends Model
         'room_type_id',
         'requested_capacity',
         'requested_room_count',
+        'requested_room_ids',
         'occupant_count',
         'sort_order',
         'notes',
@@ -21,6 +22,7 @@ class ReservationRoomRequest extends Model
     {
         return [
             'requested_room_count' => 'integer',
+            'requested_room_ids' => 'array',
             'requested_capacity' => 'integer',
             'occupant_count' => 'integer',
             'sort_order' => 'integer',

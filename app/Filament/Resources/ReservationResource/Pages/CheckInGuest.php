@@ -35,6 +35,9 @@ class CheckInGuest extends Page
 
     public ?array $roomHoldLoadStatus = null;
 
+    /** @var array<int, array{room_number:string, occupant_references:array<int, string>}> */
+    public array $occupiedHeldRooms = [];
+
     public function mount(Reservation $record): void
     {
         $this->record = $record;
@@ -42,8 +45,16 @@ class CheckInGuest extends Page
         abort_unless(in_array($record->status, ['approved', 'confirmed']), 403, 'This reservation cannot be checked in.');
 
         $this->form->fill();
+        $initialRoomEntries = $this->buildInitialReservationRoomEntries();
         $this->form->fill(array_merge($this->data ?? [], [
-            'reservation_rooms' => $this->buildInitialReservationRoomEntries(),
+            'reservation_rooms' => $initialRoomEntries,
+        ]));
+
+        // Defaults are evaluated before the held-room entries are populated.
+        // Set the cash field after those entries are loaded so reception starts
+        // with the actual live amount still due, net of posted payments.
+        $this->form->fill(array_merge($this->data ?? [], [
+            'payment_amount' => $this->getRemainingBalance(),
         ]));
     }
 
@@ -105,6 +116,11 @@ class CheckInGuest extends Page
                     ? 'Add one row per room involved in this check-in. Private reservations are room-level only (no bed assignment).'
                     : 'Add one row per room involved in this check-in. Use PRIVATE for whole-room assignment or DORM for per-bed assignment.')
                 ->schema([
+                    Forms\Components\Placeholder::make('room_availability_warning')
+                        ->label('Room availability warning')
+                        ->content(fn (): HtmlString => $this->occupiedHeldRoomWarning())
+                        ->visible(fn (): bool => $this->occupiedHeldRooms !== [])
+                        ->columnSpanFull(),
                     Forms\Components\Repeater::make('reservation_rooms')
                         ->default(fn () => [$this->blankReservationRoomEntry()])
                         ->helperText(function () {
@@ -290,6 +306,13 @@ class CheckInGuest extends Page
                                         ->label('Gender')
                                         ->required()
                                         ->options(fn () => $this->getGenderOptions())
+                                        ->native(false),
+                                    Forms\Components\Select::make('nationality')
+                                        ->label('Nationality')
+                                        ->required()
+                                        ->default('Filipino')
+                                        ->searchable()
+                                        ->options($this->getNationalitiesOptions())
                                         ->native(false),
                                 ])
                                 ->columns(5)
@@ -596,8 +619,35 @@ class CheckInGuest extends Page
         $holds = $this->record->roomHolds()
             ->advance()
             ->active()
-            ->with('room.roomType')
+            ->with(['room.roomType', 'room.roomAssignments.reservation'])
             ->get();
+
+        $this->occupiedHeldRooms = $holds
+            ->map(function ($hold): ?array {
+                $room = $hold->room;
+                if (! $room) {
+                    return null;
+                }
+
+                $occupyingAssignments = $room->roomAssignments
+                    ->where('status', 'checked_in')
+                    ->whereNull('checked_out_at');
+
+                if ($occupyingAssignments->isEmpty()) {
+                    return null;
+                }
+
+                return [
+                    'room_number' => (string) $room->room_number,
+                    'occupant_references' => $occupyingAssignments
+                        ->map(fn ($assignment): string => (string) ($assignment->reservation?->reference_number ?? 'another reservation'))
+                        ->values()
+                        ->all(),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
 
         if ($holds->isEmpty()) {
             $this->roomHoldLoadStatus = null;
@@ -648,6 +698,47 @@ class CheckInGuest extends Page
         return ! empty($entries)
             ? $entries
             : [$this->blankReservationRoomEntry()];
+    }
+
+    public function refreshRoomAvailability(): void
+    {
+        $this->record->refresh();
+        $entries = $this->buildInitialReservationRoomEntries();
+        $state = $this->form->getState();
+
+        $this->form->fill(array_merge($state, [
+            'reservation_rooms' => $entries,
+            'payment_amount' => $this->getRemainingBalance(),
+        ]));
+
+        Notification::make()
+            ->title($this->occupiedHeldRooms === [] ? 'Room availability refreshed.' : 'Room is still occupied.')
+            ->body($this->occupiedHeldRooms === []
+                ? 'The held room is ready for check-in.'
+                : 'Complete the previous guest checkout or amend this reservation to another room.')
+            ->color($this->occupiedHeldRooms === [] ? 'success' : 'warning')
+            ->send();
+    }
+
+    protected function occupiedHeldRoomWarning(): HtmlString
+    {
+        $rooms = collect($this->occupiedHeldRooms)
+            ->map(function (array $room): string {
+                $references = $room['occupant_references'] !== []
+                    ? ' ('.implode(', ', array_map('e', $room['occupant_references'])).')'
+                    : '';
+
+                return '<li><strong>'.e($room['room_number']).'</strong> is occupied by a checked-in guest'.$references.'.</li>';
+            })
+            ->implode('');
+
+        return new HtmlString(
+            '<div class="rounded-lg bg-amber-50 p-4 text-sm text-amber-950 ring-1 ring-amber-200">'
+            .'<p class="font-semibold">This reservation cannot be checked in to its held room yet.</p>'
+            .'<ul class="mt-2 list-disc space-y-1 pl-5">'.$rooms.'</ul>'
+            .'<p class="mt-2">Complete the previous guest checkout, or return to the reservation list and use <strong>Modify Pre-Stay Reservation</strong> to assign a replacement room. Then refresh this page.</p>'
+            .'</div>'
+        );
     }
 
     protected function blankReservationRoomEntry(): array
@@ -1192,6 +1283,11 @@ class CheckInGuest extends Page
         $data = $this->form->getState();
 
         try {
+            $this->buildInitialReservationRoomEntries();
+            if ($this->occupiedHeldRooms !== []) {
+                throw new \RuntimeException('The held room is still occupied. Complete the previous guest checkout or amend this reservation to another room before checking in.');
+            }
+
             $this->validateSinglePrimaryGuestRoom($data);
 
             $result = app(CheckInService::class)->completeOnsiteCheckIn($this->record, $data);

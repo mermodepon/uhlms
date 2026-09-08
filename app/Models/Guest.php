@@ -10,7 +10,6 @@ class Guest extends Model
 {
     protected $fillable = [
         'reservation_id',
-        'full_name',
         'first_name',
         'last_name',
         'middle_initial',
@@ -38,5 +37,17 @@ class Guest extends Model
     public function roomAssignments(): HasMany
     {
         return $this->hasMany(RoomAssignment::class);
+    }
+
+    public function displayName(): string
+    {
+        return collect([
+            $this->first_name,
+            $this->middle_initial,
+            $this->last_name,
+        ])
+            ->filter(fn ($part): bool => filled($part))
+            ->map(fn ($part): string => trim((string) $part))
+            ->implode(' ');
     }
 }

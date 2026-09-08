@@ -10,49 +10,54 @@ echo "============================================"
 echo "  UH Lodging System — Production Deploy"
 echo "============================================"
 
-# 1. Install PHP dependencies (production-only, optimized autoloader)
+# 1. Audit locked PHP dependencies before deployment
 echo ""
-echo "[1/9] Installing composer dependencies..."
+echo "[1/10] Auditing composer dependencies..."
+composer audit --locked --abandoned=report
+
+# 2. Install PHP dependencies (production-only, optimized autoloader)
+echo ""
+echo "[2/10] Installing composer dependencies..."
 composer install --optimize-autoloader --no-dev --no-interaction
 
-# 2. Run database migrations
+# 3. Run database migrations
 echo ""
-echo "[2/9] Running database migrations..."
+echo "[3/10] Running database migrations..."
 php artisan migrate --force
 
-# 3. Cache configuration (merges all config files into one cached file)
+# 4. Cache configuration (merges all config files into one cached file)
 echo ""
-echo "[3/9] Caching configuration..."
+echo "[4/10] Caching configuration..."
 php artisan config:cache
 
-# 4. Cache routes (compiles all routes into a single file)
+# 5. Cache routes (compiles all routes into a single file)
 echo ""
-echo "[4/9] Caching routes..."
+echo "[5/10] Caching routes..."
 php artisan route:cache
 
-# 5. Cache views (pre-compiles all Blade templates)
+# 6. Cache views (pre-compiles all Blade templates)
 echo ""
-echo "[5/9] Caching views..."
+echo "[6/10] Caching views..."
 php artisan view:cache
 
-# 6. Cache events (maps events to listeners)
+# 7. Cache events (maps events to listeners)
 echo ""
-echo "[6/9] Caching events..."
+echo "[7/10] Caching events..."
 php artisan event:cache
 
-# 7. Cache Filament icons (avoids runtime icon discovery)
+# 8. Cache Filament icons (avoids runtime icon discovery)
 echo ""
-echo "[7/9] Caching Filament icons..."
+echo "[8/10] Caching Filament icons..."
 php artisan icons:cache
 
-# 8. Create storage link if it doesn't exist
+# 9. Create storage link if it doesn't exist
 echo ""
-echo "[8/9] Creating storage symlink..."
+echo "[9/10] Creating storage symlink..."
 php artisan storage:link 2>/dev/null || true
 
-# 9. Build frontend assets for production
+# 10. Build frontend assets for production
 echo ""
-echo "[9/9] Building frontend assets..."
+echo "[10/10] Building frontend assets..."
 npm ci --production=false
 npm run build
 

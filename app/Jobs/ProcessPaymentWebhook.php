@@ -68,7 +68,9 @@ class ProcessPaymentWebhook implements ShouldBeEncrypted, ShouldQueue
      */
     public function handle(): void
     {
-        $this->markReceiptProcessing();
+        if (! $this->claimReceiptForProcessing()) {
+            return;
+        }
 
         try {
             // Re-normalizing also keeps jobs serialized before this deployment executable.
@@ -399,14 +401,24 @@ class ProcessPaymentWebhook implements ShouldBeEncrypted, ShouldQueue
         return $processed;
     }
 
-    private function markReceiptProcessing(): void
+    private function claimReceiptForProcessing(): bool
     {
-        $this->updateReceipt([
-            'status' => PaymentWebhookEvent::STATUS_PROCESSING,
-            'attempts' => DB::raw('attempts + 1'),
-            'processed_at' => null,
-            'failed_at' => null,
-        ]);
+        if ($this->webhookEventRecordId === null) {
+            return true;
+        }
+
+        return PaymentWebhookEvent::query()
+            ->whereKey($this->webhookEventRecordId)
+            ->whereIn('status', [
+                PaymentWebhookEvent::STATUS_QUEUED,
+                PaymentWebhookEvent::STATUS_RETRYING,
+            ])
+            ->update([
+                'status' => PaymentWebhookEvent::STATUS_PROCESSING,
+                'attempts' => DB::raw('attempts + 1'),
+                'processed_at' => null,
+                'failed_at' => null,
+            ]) === 1;
     }
 
     private function markReceiptRetrying(string $message): void

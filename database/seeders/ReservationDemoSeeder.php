@@ -257,7 +257,6 @@ class ReservationDemoSeeder extends Seeder
         $idType = $nameData['id_types'][($sequence - 1) % count($nameData['id_types'])];
 
         $guests = [[
-            'full_name' => "{$primaryFirst} {$middle} {$lastName}",
             'first_name' => $primaryFirst,
             'last_name' => $lastName,
             'middle_initial' => $middle,
@@ -277,7 +276,6 @@ class ReservationDemoSeeder extends Seeder
                 : $nameData['female_names'][($sequence + $index) % count($nameData['female_names'])];
 
             $guests[] = [
-                'full_name' => "{$firstName} {$lastName}",
                 'first_name' => $firstName,
                 'last_name' => $lastName,
                 'middle_initial' => null,
@@ -292,6 +290,21 @@ class ReservationDemoSeeder extends Seeder
         }
 
         return $guests;
+    }
+
+    /**
+     * @param  array<string, mixed>  $guest
+     */
+    private function formatGuestName(array $guest): string
+    {
+        return collect([
+            $guest['first_name'] ?? null,
+            $guest['middle_initial'] ?? null,
+            $guest['last_name'] ?? null,
+        ])
+            ->filter(fn ($part): bool => filled($part))
+            ->map(fn ($part): string => trim((string) $part))
+            ->implode(' ');
     }
 
     private function buildFinancials(
@@ -400,7 +413,7 @@ class ReservationDemoSeeder extends Seeder
 
         return [
             'reference_number' => Carbon::today()->year.'-'.str_pad((string) $sequence, 4, '0', STR_PAD_LEFT),
-            'guest_name' => $primaryGuest['full_name'],
+            'guest_name' => $this->formatGuestName($primaryGuest),
             'guest_last_name' => $primaryGuest['last_name'],
             'guest_first_name' => $primaryGuest['first_name'],
             'guest_middle_initial' => $primaryGuest['middle_initial'],
@@ -623,10 +636,10 @@ class ReservationDemoSeeder extends Seeder
             'captured_at' => $checkedInAt,
         ]);
 
-        $this->log($reservation, 'guest_checked_in', "Guest {$primaryGuest->full_name} checked into Room {$allocatedRoom->room_number}.", $reviewer, $checkedInAt);
+        $this->log($reservation, 'guest_checked_in', "Guest {$primaryGuest->displayName()} checked into Room {$allocatedRoom->room_number}.", $reviewer, $checkedInAt);
 
         if ($checkedOutAt) {
-            $this->log($reservation, 'guest_checked_out', "Guest {$primaryGuest->full_name} checked out of Room {$allocatedRoom->room_number}.", $reviewer, $checkedOutAt);
+            $this->log($reservation, 'guest_checked_out', "Guest {$primaryGuest->displayName()} checked out of Room {$allocatedRoom->room_number}.", $reviewer, $checkedOutAt);
         }
     }
 

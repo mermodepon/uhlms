@@ -9,6 +9,7 @@ use App\Models\RoomAssignment;
 use App\Models\RoomType;
 use App\Models\Service;
 use App\Models\TourWaypoint;
+use App\Services\ActiveStayEligibilityService;
 use App\Services\RoomHoldService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -397,6 +398,19 @@ class GuestController extends Controller
 
         if ($guestAccount && Str::lower($guestAccount->email) === Str::lower($validated['guest_email'])) {
             $validated['guest_account_id'] = $guestAccount->id;
+        }
+        $conflict = app(ActiveStayEligibilityService::class)->findConflictForIdentity(
+            guestAccountId: $validated['guest_account_id'] ?? null,
+            email: $validated['guest_email'],
+            phone: $validated['guest_phone'],
+            checkIn: $validated['check_in_date'],
+            checkOut: $validated['check_out_date'],
+        );
+
+        if ($conflict) {
+            throw ValidationException::withMessages([
+                'check_in_date' => app(ActiveStayEligibilityService::class)->reservationConflictMessage($conflict),
+            ]);
         }
 
         if (! empty($requestValidation['warnings'])) {

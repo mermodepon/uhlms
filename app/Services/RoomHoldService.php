@@ -254,7 +254,13 @@ class RoomHoldService
      *
      * @return Collection<int, Room>
      */
-    public function getAvailableRooms(RoomType $roomType, Carbon $checkIn, Carbon $checkOut, ?int $capacity = null): Collection
+    public function getAvailableRooms(
+        RoomType $roomType,
+        Carbon $checkIn,
+        Carbon $checkOut,
+        ?int $capacity = null,
+        ?int $minimumAvailableSlots = null,
+    ): Collection
     {
         $roomId = Room::query()
             ->where('room_type_id', $roomType->id)
@@ -272,8 +278,37 @@ class RoomHoldService
             ->with(['roomType', 'floor'])
             ->orderBy('room_number')
             ->get()
-            ->filter(fn (Room $room): bool => ! $this->hasConflict($room, $checkIn, $checkOut))
+            ->filter(function (Room $room) use ($roomType, $checkIn, $checkOut, $minimumAvailableSlots): bool {
+                if ($roomType->isPrivate()) {
+                    return ! $this->hasConflict($room, $checkIn, $checkOut);
+                }
+
+                return $this->availableSlotsForDates($room, $checkIn, $checkOut) >= max(1, (int) ($minimumAvailableSlots ?? 1));
+            })
             ->values();
+    }
+
+    /** Return the sellable dorm beds in a room for a proposed stay. */
+    public function availableSlotsForDates(Room $room, Carbon $checkIn, Carbon $checkOut): int
+    {
+        $room->loadMissing('roomType');
+
+        if ($room->roomType?->isPrivate()) {
+            return $this->hasConflict($room, $checkIn, $checkOut)
+                ? 0
+                : max(1, (int) $room->capacity);
+        }
+
+        return max(0, (int) $room->capacity - $this->getReservedSlotsForDates($room, $checkIn, $checkOut));
+    }
+
+    /**
+     * Validate a staff-selected set of dorm rooms against their combined
+     * remaining beds for the reservation's exact date range.
+     */
+    public function selectedDormRoomsCanAccommodate(Collection $rooms, Carbon $checkIn, Carbon $checkOut, int $guestCount): bool
+    {
+        return $rooms->sum(fn (Room $room): int => $this->availableSlotsForDates($room, $checkIn, $checkOut)) >= max(1, $guestCount);
     }
 
     /**
@@ -282,6 +317,37 @@ class RoomHoldService
     public function getAvailableRoomCount(RoomType $roomType, Carbon $checkIn, Carbon $checkOut, ?int $capacity = null): int
     {
         return $this->getAvailableRooms($roomType, $checkIn, $checkOut, $capacity)->count();
+    }
+
+    /**
+     * Determine whether a room type can fulfil a room-request line. For shared
+     * rooms, this considers the free beds in the selected number of rooms,
+     * rather than merely the total number of free beds across the whole type.
+     */
+    public function canAccommodateRoomRequest(
+        RoomType $roomType,
+        Carbon $checkIn,
+        Carbon $checkOut,
+        int $guestCount,
+        int $roomCount,
+    ): bool {
+        $rooms = $this->getAvailableRooms($roomType, $checkIn, $checkOut);
+        $roomCount = max(1, $roomCount);
+
+        if ($rooms->count() < $roomCount) {
+            return false;
+        }
+
+        if ($roomType->isPrivate()) {
+            return $rooms->sortByDesc(fn (Room $room): int => max(0, (int) $room->capacity))
+                ->take($roomCount)
+                ->sum(fn (Room $room): int => max(0, (int) $room->capacity)) >= max(1, $guestCount);
+        }
+
+        return $rooms->map(fn (Room $room): int => max(0, (int) $room->capacity - $this->getReservedSlotsForDates($room, $checkIn, $checkOut)))
+            ->sortDesc()
+            ->take($roomCount)
+            ->sum() >= max(1, $guestCount);
     }
 
     /**
@@ -356,6 +422,8 @@ class RoomHoldService
                 $reservation->update(['status' => 'confirmed']);
             }
         });
+
+        $this->recalculateRoomStatuses($rooms->pluck('id'));
 
         return [
             'holds' => $holds,
@@ -442,6 +510,8 @@ class RoomHoldService
             throw new \RuntimeException('At least one room must be selected.');
         }
 
+        $this->recalculateRoomStatuses(collect($holds)->pluck('room_id'));
+
         return [
             'holds' => $holds,
             'room_count' => count($holds),
@@ -453,7 +523,10 @@ class RoomHoldService
      */
     public function releaseAllHolds(Reservation $reservation): int
     {
+        $roomIds = $reservation->roomHolds()->pluck('room_id')->unique();
         $count = $reservation->roomHolds()->delete();
+
+        $this->recalculateRoomStatuses($roomIds);
 
         if ($count > 0) {
             ReservationLog::record(
@@ -511,8 +584,10 @@ class RoomHoldService
      */
     public function clearHoldsAfterCheckIn(Reservation $reservation): int
     {
+        $roomIds = $reservation->roomHolds()->pluck('room_id')->unique();
         $count = $reservation->roomHolds()->count();
         $reservation->roomHolds()->delete();
+        $this->recalculateRoomStatuses($roomIds);
 
         return $count;
     }
@@ -546,6 +621,18 @@ class RoomHoldService
         }
 
         return $count;
+    }
+
+    /** Recalculate persisted operational statuses for rooms affected by a hold change. */
+    public function recalculateRoomStatuses(iterable $roomIds): void
+    {
+        $ids = collect($roomIds)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        Room::query()->whereIn('id', $ids)->with('roomType')->get()
+            ->each(fn (Room $room) => $room->recalculateStatus());
     }
 
     /**

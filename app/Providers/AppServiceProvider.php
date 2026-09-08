@@ -6,6 +6,8 @@ use App\Http\Responses\AdminLoginResponse;
 use App\Models\Amenity;
 use App\Models\Floor;
 use App\Models\Reservation;
+use App\Models\ReservationCharge;
+use App\Models\ReservationPayment;
 use App\Models\Room;
 use App\Models\RoomAssignment;
 use App\Models\RoomType;
@@ -14,6 +16,7 @@ use App\Models\User;
 use App\Observers\AmenityObserver;
 use App\Observers\FloorObserver;
 use App\Observers\ReservationObserver;
+use App\Observers\ReservationFinancialObserver;
 use App\Observers\RoomAssignmentObserver;
 use App\Observers\RoomObserver;
 use App\Observers\RoomTypeObserver;
@@ -25,6 +28,7 @@ use App\Policies\RoomPolicy;
 use App\Policies\RoomTypePolicy;
 use App\Policies\ServicePolicy;
 use App\Policies\UserPolicy;
+use App\Support\ProductionConfigurationValidator;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\DateTimePicker;
 use Illuminate\Database\Eloquent\Model;
@@ -51,6 +55,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        ProductionConfigurationValidator::validate(app()->isProduction());
+
         // Add the request nonce while trusted Blade templates are compiled. This
         // covers framework-owned inline scripts without rewriting rendered HTML.
         Blade::prepareStringsForCompilationUsing(static function (string $value): string {
@@ -92,6 +98,8 @@ class AppServiceProvider extends ServiceProvider
         Amenity::observe(AmenityObserver::class);
         Floor::observe(FloorObserver::class);
         Reservation::observe(ReservationObserver::class);
+        ReservationCharge::observe(ReservationFinancialObserver::class);
+        ReservationPayment::observe(ReservationFinancialObserver::class);
         Room::observe(RoomObserver::class);
         RoomAssignment::observe(RoomAssignmentObserver::class);
         RoomType::observe(RoomTypeObserver::class);
