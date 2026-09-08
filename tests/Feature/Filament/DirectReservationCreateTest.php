@@ -15,7 +15,7 @@ class DirectReservationCreateTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_staff_can_create_a_confirmed_multi_capacity_reservation_with_exact_rooms_held(): void
+    public function test_staff_can_create_a_pending_multi_capacity_reservation_with_exact_room_requests(): void
     {
         $admin = User::create([
             'name' => 'Admin',
@@ -87,14 +87,14 @@ class DirectReservationCreateTest extends TestCase
         $this->callProtected($page, 'handleRecordCreation', [$data]);
         $reservation = Reservation::query()->firstOrFail();
 
-        $this->assertSame('confirmed', $reservation->status);
+        $this->assertSame('pending', $reservation->status);
         $this->assertSame(7, (int) $reservation->number_of_occupants);
         $this->assertSame($roomType->id, $reservation->preferred_room_type_id);
         $this->assertCount(2, $reservation->roomRequests);
         $this->assertSame([3, 4], $reservation->roomRequests->pluck('requested_capacity')->all());
-        $this->assertSame(2, $reservation->roomHolds()->count());
-        $this->assertDatabaseHas('room_holds', ['room_id' => $familyThree->id, 'reservation_id' => $reservation->id]);
-        $this->assertDatabaseHas('room_holds', ['room_id' => $familyFour->id, 'reservation_id' => $reservation->id]);
+        $this->assertSame(0, $reservation->roomHolds()->count());
+        $this->assertDatabaseMissing('room_holds', ['room_id' => $familyThree->id, 'reservation_id' => $reservation->id]);
+        $this->assertDatabaseMissing('room_holds', ['room_id' => $familyFour->id, 'reservation_id' => $reservation->id]);
     }
 
     public function test_staff_cannot_select_the_same_room_on_two_assignment_lines(): void
